@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12151c">
+<title>Виселица</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+<style>
+  :root{
+    --bg:#12151c; --panel:#1b202b; --panel-2:#232a38;
+    --text:#eef2f8; --muted:#8d97ab;
+    --accent:#5b9dff; --ok:#3ecf8e; --bad:#ff5f6d; --line:#c9d3e6;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+    padding:env(safe-area-inset-top) 12px calc(12px + env(safe-area-inset-bottom));
+    user-select:none;
+  }
+  .wrap{width:100%; max-width:520px; display:flex; flex-direction:column; gap:14px; padding-top:14px}
+  h1{font-size:22px; margin:0; text-align:center; letter-spacing:.5px}
+  .sub{color:var(--muted); font-size:14px; text-align:center; margin:0}
+  .card{background:var(--panel); border-radius:16px; padding:16px; box-shadow:0 6px 24px rgba(0,0,0,.25)}
+  .field{display:flex; gap:8px; align-items:center; background:var(--panel-2); border-radius:12px; padding:4px 4px 4px 12px}
+  input[type=text],input[type=password]{
+    flex:1; min-width:0; background:transparent; border:0; outline:0; color:var(--text);
+    font-size:19px; padding:12px 0; letter-spacing:2px; font-family:inherit;
+  }
+  input::placeholder{color:#5d677d; letter-spacing:0}
+  .eye{background:transparent; border:0; color:var(--muted); font-size:20px; padding:10px 12px; cursor:pointer}
+  button{font-family:inherit}
+  .btn{
+    width:100%; margin-top:12px; padding:15px; border:0; border-radius:12px;
+    background:var(--accent); color:#08111f; font-size:17px; font-weight:700; cursor:pointer;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:var(--panel-2); color:var(--text); font-weight:600}
+  .err{color:var(--bad); font-size:13px; min-height:18px; margin:8px 2px 0}
+  .hidden{display:none !important}
+
+  .status{display:flex; justify-content:space-between; align-items:center; font-size:14px; color:var(--muted)}
+  .status b{color:var(--text)}
+  svg.gallows{display:block; width:100%; max-width:190px; height:auto; margin:2px auto 0}
+  svg.gallows [data-part]{
+    stroke:var(--line); stroke-width:5; stroke-linecap:round; fill:none;
+    opacity:0; transition:opacity .25s ease;
+  }
+  svg.gallows [data-part].on{opacity:1}
+  svg.gallows [data-part].body{stroke:var(--bad)}
+
+  .word{
+    display:flex; flex-wrap:wrap; justify-content:center; gap:10px 18px; margin:10px 0 2px;
+  }
+  .wgroup{display:flex; gap:6px}
+  .slot{
+    font-size:26px; font-weight:700; line-height:1.1; min-width:24px; text-align:center;
+    border-bottom:3px solid var(--muted); padding-bottom:3px;
+  }
+  .slot.free{border-bottom-color:transparent}
+  .slot.new{animation:pop .28s ease}
+  @keyframes pop{from{transform:scale(.4); opacity:.2}to{transform:scale(1); opacity:1}}
+
+  .keys{display:grid; grid-template-columns:repeat(auto-fit,minmax(38px,1fr)); gap:7px; margin-top:4px}
+  .key{
+    padding:12px 0; border:0; border-radius:10px; background:var(--panel-2); color:var(--text);
+    font-size:18px; font-weight:600; cursor:pointer;
+  }
+  .key:disabled{cursor:default}
+  .key.hit{background:rgba(62,207,142,.18); color:var(--ok)}
+  .key.miss{background:rgba(255,95,109,.14); color:var(--bad); opacity:.55}
+
+  .result{text-align:center}
+  .result h2{margin:0 0 6px; font-size:22px}
+  .result h2.win{color:var(--ok)}
+  .result h2.lose{color:var(--bad)}
+  .result p{margin:0; color:var(--muted); font-size:15px}
+  .result .answer{color:var(--text); font-weight:700; letter-spacing:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎯 Виселица</h1>
+
+  <!-- ЭКРАН 1: ввод слова -->
+  <section id="setup" class="card">
+    <p class="sub" style="margin-bottom:12px">Загадайте слово — второй игрок будет его отгадывать</p>
+    <div class="field">
+      <input id="secret" type="password" inputmode="text" autocomplete="off" autocapitalize="off"
+             autocorrect="off" spellcheck="false" placeholder="Введите слово или фразу">
+      <button id="toggleEye" class="eye" type="button" title="Показать слово">👁</button>
+    </div>
+    <p class="err" id="setupErr"></p>
+    <button id="startBtn" class="btn">Начать игру</button>
+  </section>
+
+  <!-- ЭКРАН 2: игра -->
+  <section id="game" class="card hidden">
+    <div class="status">
+      <span>Ошибки: <b id="misses">0</b> / <span id="maxMisses">11</span></span>
+      <span id="left"></span>
+    </div>
+
+    <svg class="gallows" viewBox="0 0 200 215" aria-hidden="true">
+      <path data-part d="M20 200 H120"/>
+      <path data-part d="M45 200 V20"/>
+      <path data-part d="M45 20 H130"/>
+      <path data-part d="M45 45 L70 20"/>
+      <path data-part d="M130 20 V45"/>
+      <circle data-part class="body" cx="130" cy="60" r="15"/>
+      <path data-part class="body" d="M130 75 V125"/>
+      <path data-part class="body" d="M130 90 L110 115"/>
+      <path data-part class="body" d="M130 90 L150 115"/>
+      <path data-part class="body" d="M130 125 L112 160"/>
+      <path data-part class="body" d="M130 125 L148 160"/>
+    </svg>
+
+    <div class="word" id="word"></div>
+    <div class="keys" id="keys"></div>
+    <button id="giveUp" class="btn ghost">Загадать другое слово</button>
+  </section>
+
+  <!-- ЭКРАН 3: результат -->
+  <section id="over" class="card result hidden">
+    <h2 id="overTitle"></h2>
+    <p id="overText"></p>
+    <button id="againBtn" class="btn">Загадать новое слово</button>
+  </section>
+</div>
+
+<script>
+(function(){
+  var RU = "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ".split("");
+  var EN = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+
+  var setup   = document.getElementById("setup");
+  var game    = document.getElementById("game");
+  var over    = document.getElementById("over");
+  var secret  = document.getElementById("secret");
+  var eye     = document.getElementById("toggleEye");
+  var setupErr= document.getElementById("setupErr");
+  var wordEl  = document.getElementById("word");
+  var keysEl  = document.getElementById("keys");
+  var missesEl= document.getElementById("misses");
+  var maxEl   = document.getElementById("maxMisses");
+  var leftEl  = document.getElementById("left");
+  var parts   = Array.prototype.slice.call(document.querySelectorAll("[data-part]"));
+  var MAX     = parts.length;
+
+  var word = "";        // слово для сравнения (в верхнем регистре, Ё -> Е)
+  var wordRaw = "";     // слово как его написали (для показа Ё)
+  var opened = {};      // угаданные буквы
+  var misses = 0;
+  var playing = false;
+
+  maxEl.textContent = MAX;
+
+  // Ё и Е считаем одной буквой — так честнее для отгадывающего
+  function norm(s){ return s.toUpperCase().replace(/Ё/g,"Е"); }
+  function isLetter(ch){ return RU.indexOf(ch) >= 0 || EN.indexOf(ch) >= 0; }
+
+  function alphabetFor(w){
+    var hasRu=false, hasEn=false, i;
+    for(i=0;i<w.length;i++){
+      if(RU.indexOf(w[i])>=0) hasRu=true;
+      if(EN.indexOf(w[i])>=0) hasEn=true;
+    }
+    if(hasRu && hasEn) return RU.concat(EN);
+    if(hasEn) return EN;
+    return RU;
+  }
+
+  function show(el){
+    [setup, game, over].forEach(function(s){ s.classList.add("hidden"); });
+    el.classList.remove("hidden");
+  }
+
+  eye.addEventListener("click", function(){
+    var hiddenNow = secret.type === "password";
+    secret.type = hiddenNow ? "text" : "password";
+    eye.textContent = hiddenNow ? "🙈" : "👁";
+    secret.focus();
+  });
+
+  document.getElementById("startBtn").addEventListener("click", start);
+  secret.addEventListener("keydown", function(e){ if(e.key === "Enter") start(); });
+
+  function start(){
+    var raw = norm(secret.value.trim());
+    var letters = raw.split("").filter(isLetter).length;
+    if(!letters){
+      setupErr.textContent = "Введите слово из букв (русских или английских).";
+      return;
+    }
+    if(raw.length > 40){
+      setupErr.textContent = "Слишком длинно — не больше 40 символов.";
+      return;
+    }
+    setupErr.textContent = "";
+    wordRaw = secret.value.trim().toUpperCase();
+    word = raw;
+    opened = {};
+    misses = 0;
+    playing = true;
+    secret.value = "";
+    secret.type = "password";
+    eye.textContent = "👁";
+
+    parts.forEach(function(p){ p.classList.remove("on"); });
+    missesEl.textContent = "0";
+    buildKeys();
+    renderWord();
+    updateLeft();
+    show(game);
+  }
+
+  function buildKeys(){
+    keysEl.innerHTML = "";
+    alphabetFor(word).forEach(function(ch){
+      var b = document.createElement("button");
+      b.className = "key";
+      b.type = "button";
+      b.textContent = ch;
+      b.dataset.letter = ch;
+      b.addEventListener("click", function(){ guess(ch); });
+      keysEl.appendChild(b);
+    });
+  }
+
+  function renderWord(animate){
+    wordEl.innerHTML = "";
+    var group = document.createElement("span");
+    group.className = "wgroup";
+    for(var i=0;i<word.length;i++){
+      var ch = word[i], shown = wordRaw[i] || ch;
+      if(ch === " "){                       // пробел = разрыв между словами
+        if(group.childNodes.length) wordEl.appendChild(group);
+        group = document.createElement("span");
+        group.className = "wgroup";
+        continue;
+      }
+      var s = document.createElement("span");
+      if(!isLetter(ch)){
+        s.className = "slot free";
+        s.textContent = shown;
+      } else if(opened[ch]){
+        s.className = "slot";
+        s.textContent = shown;
+        if(animate === ch) s.classList.add("new");
+      } else {
+        s.className = "slot";
+        s.textContent = "\u00A0";
+      }
+      group.appendChild(s);
+    }
+    if(group.childNodes.length) wordEl.appendChild(group);
+  }
+
+  function updateLeft(){
+    var left = MAX - misses;
+    leftEl.textContent = left > 0 ? "Осталось: " + left : "";
+    leftEl.style.color = left <= 3 ? "var(--bad)" : "var(--muted)";
+  }
+
+  function guess(ch){
+    var btn = keysEl.querySelector('[data-letter="' + ch + '"]');
+    if(!playing || !btn || btn.disabled) return;
+
+    btn.disabled = true;
+    if(word.indexOf(ch) >= 0){
+      opened[ch] = true;
+      btn.classList.add("hit");
+      renderWord(ch);
+      if(isSolved()) finish(true);
+    } else {
+      btn.classList.add("miss");
+      if(misses < MAX) parts[misses].classList.add("on");
+      misses++;
+      missesEl.textContent = String(misses);
+      updateLeft();
+      if(misses >= MAX) finish(false);
+    }
+  }
+
+  function isSolved(){
+    for(var i=0;i<word.length;i++){
+      var ch = word[i];
+      if(isLetter(ch) && !opened[ch]) return false;
+    }
+    return true;
+  }
+
+  function finish(win){
+    playing = false;
+    var title = document.getElementById("overTitle");
+    var text  = document.getElementById("overText");
+    title.className = win ? "win" : "lose";
+    title.textContent = win ? "🎉 Слово отгадано!" : "💀 Виселица построена";
+    text.innerHTML = win
+      ? 'Слово: <span class="answer">' + esc(wordRaw) + '</span><br>Ошибок: ' + misses + ' из ' + MAX
+      : 'Было загадано: <span class="answer">' + esc(wordRaw) + '</span>';
+    setTimeout(function(){ show(over); }, win ? 600 : 900);
+  }
+
+  function esc(s){
+    return s.replace(/[&<>]/g, function(c){
+      return c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;";
+    });
+  }
+
+  function newRound(){
+    playing = false;
+    show(setup);
+    setupErr.textContent = "";
+    secret.focus();
+  }
+  document.getElementById("giveUp").addEventListener("click", newRound);
+  document.getElementById("againBtn").addEventListener("click", newRound);
+
+  // Ввод с физической клавиатуры
+  document.addEventListener("keydown", function(e){
+    if(!playing || e.ctrlKey || e.metaKey || e.altKey) return;
+    if(e.key.length !== 1) return;
+    var ch = norm(e.key);
+    if(isLetter(ch)) guess(ch);
+  });
+})();
+</script>
+</body>
+</html>

@@ -32,3 +32,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./habit-tracker/dist
+          # не удалять другие проекты на gh-pages (например /hangman)
+          keep_files: true

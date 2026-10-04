@@ -24,7 +24,7 @@ S.genWorld = seed => {
     let t = GRASS;
     if (n < .31 && dc > 18) t = WATER;
     if (x < 1 || y < 1 || x >= N - 1 || y >= N - 1) t = WATER;
-    if (dc < 5.5) t = DIRT;
+    if (dc < 4.2) t = DIRT;
     w.tiles[y * N + x] = t;
   }
   for (let y = 1; y < N - 1; y++) for (let x = 1; x < N - 1; x++) {
@@ -61,9 +61,9 @@ S.genWorld = seed => {
   }
   // guaranteed starter resources around both camps
   for (const c of [pT, rT]) {
-    for (let i = 0; i < 48; i++) { const a = rand() * 6.283, r = 10 + rand() * 4; place('tree', Math.round(c.x + Math.cos(a) * r), Math.round(c.y + Math.sin(a) * r)); }
-    for (let i = 0; i < 6; i++) { const a = rand() * 6.283, r = 11 + rand() * 3; place('rock', Math.round(c.x + Math.cos(a) * r), Math.round(c.y + Math.sin(a) * r)); }
-    for (let i = 0; i < 8; i++) { const a = rand() * 6.283, r = 10 + rand() * 3; place('bush', Math.round(c.x + Math.cos(a) * r), Math.round(c.y + Math.sin(a) * r)); }
+    for (let i = 0; i < 70; i++) { const a = rand() * 6.283, r = 5.8 + rand() * 6; place('tree', Math.round(c.x + Math.cos(a) * r), Math.round(c.y + Math.sin(a) * r)); }
+    for (let i = 0; i < 7; i++) { const a = rand() * 6.283, r = 9 + rand() * 3; place('rock', Math.round(c.x + Math.cos(a) * r), Math.round(c.y + Math.sin(a) * r)); }
+    for (let i = 0; i < 10; i++) { const a = rand() * 6.283, r = 5.8 + rand() * 3; place('bush', Math.round(c.x + Math.cos(a) * r), Math.round(c.y + Math.sin(a) * r)); }
   }
   // wild spawn spots: forest tiles far from camps
   w.wildSpots = [];
@@ -103,8 +103,8 @@ S.nearestRes = (x, y, kind, maxR, filter) => {
 // Called when a node is used up; it regrows on a timer.
 S.depleteRes = r => {
   if (r.kind === 'tree') { r.state = 'fall'; r.timer = .7; }
-  else if (r.kind === 'rock') { r.state = 'gone'; r.timer = 240; }
-  else { r.state = 'empty'; r.timer = 70; }
+  else if (r.kind === 'rock') { r.state = 'gone'; r.timer = 90; }
+  else { r.state = 'empty'; r.timer = 30; }
   S.world.dirty.add(r);
   S.minimapDirty = true;
 };
@@ -112,8 +112,8 @@ S.updateResources = dt => {
   for (const r of S.world.dirty) {
     r.timer -= dt;
     if (r.timer > 0) continue;
-    if (r.state === 'fall') { r.state = 'stump'; r.timer = 160; continue; }
-    if (r.state === 'stump') { r.state = 'grow'; r.timer = 25; continue; }
+    if (r.state === 'fall') { r.state = 'stump'; r.timer = 45; continue; }
+    if (r.state === 'stump') { r.state = 'grow'; r.timer = 15; continue; }
     r.state = 'ok'; r.amt = r.max; if (r.kind === 'tree') r.hp = 3;
     S.world.dirty.delete(r); S.minimapDirty = true;
   }

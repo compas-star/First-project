@@ -39,11 +39,9 @@ function drawTree(r, t) {
   let { x, y } = r;
   if (r.state === 'stump') { shadow(x, y, 9); ell(x, y - 2, 8, 4.5, '#7a5530'); ell(x, y - 3, 6, 3, '#d9b98a'); return; }
   let sc = 1;
-  if (r.state === 'grow') sc = .25 + .75 * (1 - r.timer / 25);
+  if (r.state === 'grow') sc = .25 + .75 * (1 - r.timer / 15);
   const shake = r.shake > 0 ? Math.sin(t * 60) * 2 : 0;
   ctx.save(); ctx.translate(x + shake, y);
-  const p = S.game.player; // see-through when the tree hides the player
-  if (r.y > p.y && r.y - p.y < 75 && Math.abs(r.x - p.x) < 28) ctx.globalAlpha = .45;
   if (r.state === 'fall') { const k = 1 - r.timer / .7; ctx.rotate(k * k * 1.5 * (r.fallDir || 1)); ctx.globalAlpha = Math.min(1, r.timer * 3); }
   ctx.scale(sc, sc);
   if (r.state !== 'fall') shadow(0, 0, 20);
@@ -195,39 +193,42 @@ function drawWallStake(x, y, level, broken, i) {
 }
 
 // ---------- units ----------
+const JOB_LOOK = {
+  wood: { tunic: '#3b7dd8', tool: 'axe' }, stone: { tunic: '#7a6aa8', tool: 'pick' }, food: { tunic: '#4f9a45', tool: 'none' },
+};
 function drawHuman(u, t, carry) {
   const { x, y } = u, f = u.face;
-  const hurt = u.hurt > 0;
-  const tunic = hurt ? '#ff6b5b' : u.kind === 'player' ? '#2f6fd0' : FAC_COL[u.fac];
+  const W = S.WORKERS[u.job] || S.WORKERS.lumberjack, look = JOB_LOOK[W.res];
+  const bronze = S.E.era >= 1;
+  const tunic = u.hurt > 0 ? '#ff6b5b' : look.tunic;
   const ph = u.moving ? Math.sin(u.walk) : 0;
+  const pop = u.born > 0 ? 1 + Math.sin(u.born * 10) * .15 : 1;
+  if (u.born > 0) { ctx.save(); ctx.translate(x, y); ctx.scale(pop, pop); ctx.translate(-x, -y); }
   shadow(x, y, 11);
   ctx.strokeStyle = '#4a3523'; ctx.lineWidth = 3.4; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(x - 3, y - 12); ctx.lineTo(x - 3 + ph * 5, y - 1); ctx.moveTo(x + 3, y - 12); ctx.lineTo(x + 3 - ph * 5, y - 1); ctx.stroke();
-  // back stack behind body
   if (carry && carry.length) drawStack(x - f * 10, y - 22, carry, u.walk, u.moving);
   ctx.fillStyle = tunic; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - 8, y - 28, 16, 17, 4) : ctx.rect(x - 8, y - 28, 16, 17); ctx.fill();
   rect(x - 8, y - 15, 16, 3, '#5b4128');
+  if (u.job === 'hunter') rect(x - 8, y - 28, 16, 5, '#8a6440');
   ell(x, y - 34, 6.5, 6.5, '#e8b98a');
-  ctx.fillStyle = u.kind === 'player' ? '#3a2616' : u.fac === 'r' ? '#2a1d14' : '#6b4a2a';
-  ctx.beginPath(); ctx.arc(x, y - 35, 6.8, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
-  if (u.kind === 'player') rect(x - 7, y - 37, 14, 2.4, '#ffcc2e');
-  if (S.eraOf(S.campLevel(u.fac === 'n' ? 'p' : u.fac)) >= 1 && (u.kind === 'warrior' || u.kind === 'player')) { ctx.fillStyle = '#c7913a'; ctx.beginPath(); ctx.arc(x, y - 36, 7.2, Math.PI, 0); ctx.fill(); }
+  ctx.fillStyle = '#4a3020'; ctx.beginPath(); ctx.arc(x, y - 35, 6.8, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+  if (W.node === 'farm') { ell(x, y - 39, 11, 3, '#e2c04a'); ctx.fillStyle = '#e2c04a'; ctx.beginPath(); ctx.arc(x, y - 39, 6, Math.PI, 0); ctx.fill(); }
+  else if (S.E.era >= 2 && W.res !== 'food') { ctx.fillStyle = '#8d9096'; ctx.beginPath(); ctx.arc(x, y - 36, 7.2, Math.PI, 0); ctx.fill(); }
   ell(x + f * 3, y - 34, 1.2, 1.4, '#2a1d14');
-  // arm + tool
   const sw = u.swing > 0 ? Math.sin((1 - u.swing / .25) * Math.PI) : 0;
   ctx.save(); ctx.translate(x + f * 6, y - 24); ctx.scale(f, 1); ctx.rotate(-.9 + sw * 2.0);
   ctx.strokeStyle = '#e8b98a'; ctx.lineWidth = 3.2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(6, 6); ctx.stroke();
-  if (u.kind !== 'neutral') {
+  const metal = bronze ? '#c7913a' : '#8d9096';
+  if (u.job === 'hunter') { ctx.strokeStyle = '#6e4a2a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(18, -14); ctx.stroke(); poly([18, -14, 21, -21, 15, -16], metal); }
+  else if (W.node === 'farm') { ctx.strokeStyle = metal; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(14, -4, 6, -1.2, 1.6); ctx.stroke(); }
+  else if (look.tool !== 'none') {
     ctx.strokeStyle = '#6e4a2a'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(4, 8); ctx.lineTo(14, -6); ctx.stroke();
-    if (u.kind === 'warrior') { ctx.strokeStyle = '#c7c9cc'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(14, -6); ctx.lineTo(20, -14); ctx.stroke(); }
-    else poly([12, -8, 18, -9, 17, -2, 12, -3], S.eraOf(S.campLevel(u.fac === 'n' ? 'p' : u.fac)) >= 1 ? '#c7913a' : '#8d9096');
-  }
+    if (look.tool === 'axe') poly([12, -8, 18, -9, 17, -2, 12, -3], metal);
+    else { ctx.strokeStyle = metal; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(8, -9); ctx.quadraticCurveTo(14, -8, 19, -2); ctx.stroke(); }
+  } else { ell(7, 7, 5, 3.5, '#a57a43'); ell(6, 5, 1.8, 1.8, '#d2384a'); }
   ctx.restore();
-  if (u.kind === 'neutral') {
-    if (u.state === 'wander') { const by = y - 58 + Math.sin(t * 4) * 3; ell(x, by, 9, 9, '#ffcc2e'); ctx.fillStyle = '#3a2616'; ctx.font = 'bold 13px Rubik, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', x, by + 1); }
-    if (u.state === 'wait') { ell(x, y - 58, 11, 9, 'rgba(255,255,255,.9)'); ctx.save(); ctx.translate(x, y - 52); ctx.scale(.3, .3); poly([-30, 0, -4, -46, 26, 0], '#8a6a3c'); ctx.restore(); }
-  }
-  if (u.fac === 'p' && u.kind === 'worker' && S.game.res.food <= 0) { ctx.fillStyle = '#fff'; ctx.font = '11px Rubik, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('голоден', x, y - 48); }
+  if (u.born > 0) ctx.restore();
 }
 function drawStack(x, y, items, walk, moving) {
   for (let i = 0; i < items.length; i++) {
@@ -244,12 +245,15 @@ function drawBeast(u, t) {
   const hurt = u.hurt > 0;
   if (u.kind === 'deer') {
     shadow(x, y, 16);
-    ctx.strokeStyle = '#7a5530'; ctx.lineWidth = 2.2; ctx.beginPath();
-    for (const [dx, s] of [[-9, 1], [-5, -1], [6, 1], [10, -1]]) { ctx.moveTo(x + dx * f, y - 14); ctx.lineTo(x + dx * f + ph * 4 * s, y); } ctx.stroke();
-    ell(x, y - 17, 15, 7, hurt ? '#ff8b7b' : '#b98a55'); ell(x - 13 * f, y - 19, 3, 3, '#f3ebe0');
-    poly([x + 10 * f, y - 20, x + 16 * f, y - 32, x + 20 * f, y - 30, x + 14 * f, y - 18], '#b98a55');
-    ell(x + 19 * f, y - 32, 5, 3.6, '#a87a48');
-    ctx.strokeStyle = '#6e4a2a'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(x + 17 * f, y - 35); ctx.lineTo(x + 14 * f, y - 46); ctx.moveTo(x + 15 * f, y - 41); ctx.lineTo(x + 10 * f, y - 44); ctx.moveTo(x + 20 * f, y - 35); ctx.lineTo(x + 24 * f, y - 45); ctx.stroke();
+    ctx.strokeStyle = '#c99a2a'; ctx.lineWidth = 2.2; ctx.beginPath();
+    const run = Math.sin(u.t * 18);
+    for (const [dx, s] of [[-9, 1], [-5, -1], [6, 1], [10, -1]]) { ctx.moveTo(x + dx * f, y - 14); ctx.lineTo(x + dx * f + run * 6 * s, y); } ctx.stroke();
+    const glow = ctx.createRadialGradient(x, y - 22, 4, x, y - 22, 46); glow.addColorStop(0, 'rgba(255,230,120,.55)'); glow.addColorStop(1, 'rgba(255,230,120,0)');
+    ctx.fillStyle = glow; ctx.fillRect(x - 46, y - 68, 92, 92);
+    ell(x, y - 17, 15, 7, '#f2c437'); ell(x - 13 * f, y - 19, 3, 3, '#fff6cf'); ell(x - 3, y - 20, 8, 3, '#ffe27a');
+    poly([x + 10 * f, y - 20, x + 16 * f, y - 32, x + 20 * f, y - 30, x + 14 * f, y - 18], '#f2c437');
+    ell(x + 19 * f, y - 32, 5, 3.6, '#e0ad2a');
+    ctx.strokeStyle = '#fff1b0'; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(x + 17 * f, y - 35); ctx.lineTo(x + 14 * f, y - 46); ctx.moveTo(x + 15 * f, y - 41); ctx.lineTo(x + 10 * f, y - 44); ctx.moveTo(x + 20 * f, y - 35); ctx.lineTo(x + 24 * f, y - 45); ctx.stroke();
     return;
   }
   const bear = u.kind === 'bear', s = bear ? 1.45 : 1;
@@ -271,127 +275,104 @@ function hpBar(x, y, hp, max, col = '#5bd16a') {
   rect(x - 14, y, 28, 4, 'rgba(0,0,0,.5)'); rect(x - 14, y, 28 * hp / max, 4, hp / max < .35 ? '#ff5a46' : col);
 }
 
-// ---------- pads ----------
-const PAD_FONT = '600 13px Rubik, sans-serif';
-function drawPad(info, t) {
-  const { x, y, size } = info, h = size / 2, g = S.game;
-  const p = g.player, on = Math.abs(p.x - x) < h && Math.abs(p.y - y) < h;
-  ctx.save();
-  ctx.fillStyle = info.locked ? 'rgba(60,60,60,.25)' : on ? 'rgba(255,230,140,.35)' : 'rgba(255,255,255,.18)';
-  ctx.strokeStyle = info.locked ? 'rgba(80,80,80,.7)' : '#fff8dc';
-  ctx.lineWidth = 2.5; ctx.setLineDash([8, 6]); ctx.lineDashOffset = -t * 20;
-  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - h, y - h, size, size, 10) : ctx.rect(x - h, y - h, size, size); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
-  const total = Object.values(info.cost).reduce((a, b) => a + b, 0) || 1;
-  const done = Object.keys(info.cost).reduce((a, r) => a + Math.min(info.cost[r], info.b.prog[r] || 0), 0);
-  if (done > 0) { ctx.fillStyle = 'rgba(120,200,90,.45)'; ctx.fillRect(x - h + 3, y + h - 3 - (size - 6) * done / total, size - 6, (size - 6) * done / total); }
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  if (!info.plot) { ctx.fillStyle = '#fff8dc'; ctx.font = 'bold 20px Rubik, sans-serif'; ctx.fillText('▲', x, y); }
-  // label
-  const label = (info.plot ? '' : '↑ ') + info.next.name;
-  ctx.font = PAD_FONT;
-  const lw = ctx.measureText(label).width + 14, ly = y - h - 16;
-  ctx.fillStyle = 'rgba(30,24,16,.72)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - lw / 2, ly - 10, lw, 20, 6) : ctx.rect(x - lw / 2, ly - 10, lw, 20); ctx.fill();
-  ctx.fillStyle = '#fff'; ctx.fillText(label, x, ly + 1);
-  // costs
-  const left = S.remaining(info), keys = Object.keys(left);
-  if (info.locked) { ctx.fillStyle = '#ffd36b'; ctx.font = '12px Rubik, sans-serif'; ctx.fillText('🔒', x, y + (info.plot ? 0 : 22)); }
-  else if (keys.length) {
-    const cw = 50, cx0 = x - (keys.length * cw) / 2 + cw / 2, cy = y + h + 14;
-    keys.forEach((r, i) => {
-      const cx = cx0 + i * cw;
-      ctx.fillStyle = 'rgba(30,24,16,.72)'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx - 23, cy - 10, 46, 20, 6) : ctx.rect(cx - 23, cy - 10, 46, 20); ctx.fill();
-      icon(r, cx - 12, cy, .8);
-      ctx.fillStyle = g.res[r] + g.carry.filter(c => c === r).length >= left[r] ? '#c9f5a8' : '#fff'; ctx.font = '600 12px Rubik, sans-serif'; ctx.textAlign = 'left'; ctx.fillText(left[r], cx - 3, cy + 1); ctx.textAlign = 'center';
-    });
-  }
-  ctx.restore();
+function drawQuarry(b) {
+  const { x, y } = b, L = b.level;
+  shadow(x, y, 46);
+  poly([x - 46, y, x - 40, y - 34, x - 14, y - 50, x + 18, y - 44, x + 44, y - 20, x + 46, y], '#8f949b', OUT);
+  poly([x - 36, y - 30, x - 14, y - 46, x + 14, y - 40, x - 6, y - 26], '#b5b9bf');
+  if (L >= 3) { ell(x + 6, y - 14, 13, 12, '#2c2a28'); rect(x - 8, y - 26, 4, 26, '#6e4a2a'); rect(x + 16, y - 26, 4, 26, '#6e4a2a'); rect(x - 10, y - 28, 32, 4, '#6e4a2a'); }
+  const blocks = L >= 2 ? 6 : 3;
+  for (let i = 0; i < blocks; i++) { const bx = x + 30 + (i % 3) * 13 - (i >= 3 ? 6 : 0), by = y + 6 - Math.floor(i / 3) * 10; rect(bx - 6, by - 9, 12, 9, '#a9adb3'); rect(bx - 6, by - 9, 12, 3, '#c6c9ce'); }
+  ctx.strokeStyle = '#6e4a2a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 50, y + 4); ctx.lineTo(x - 30, y - 70); ctx.lineTo(x + 6, y - 58); ctx.stroke();
+  ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x + 6, y - 58); ctx.lineTo(x + 6, y - 34); ctx.stroke(); rect(x + 1, y - 34, 10, 8, '#a9adb3');
+}
+function drawWonder2(b) {
+  const { x, y } = b;
+  shadow(x, y, 100, 36);
+  rect(x - 80, y - 90, 160, 90, '#b9b4a8'); rect(x - 80, y - 90, 160, 6, '#d2cdc0');
+  poly([x - 86, y - 88, x - 30, y - 128, x + 26, y - 88], '#a8473b', OUT);
+  rect(x + 26, y - 170, 44, 170, '#c2bdb1'); poly([x + 20, y - 168, x + 48, y - 230, x + 76, y - 168], '#8f3b31', OUT);
+  ell(x - 30, y - 60, 16, 16, '#4a6fa5'); ell(x - 30, y - 60, 9, 9, '#d6a24a');
+  rect(x - 40, y - 34, 20, 34, '#5a3e26'); for (let i = 0; i < 3; i++) rect(x + 38, y - 150 + i * 40, 20, 26, '#4a6fa5');
+  ctx.strokeStyle = '#d6a24a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + 48, y - 230); ctx.lineTo(x + 48, y - 252); ctx.moveTo(x + 40, y - 244); ctx.lineTo(x + 56, y - 244); ctx.stroke();
+}
+const WONDER_DRAW = { wonder0: drawWonder0, wonder1: drawWonder1, wonder2: drawWonder2 };
+const WONDER_H = { wonder0: 60, wonder1: 170, wonder2: 260 };
+function drawWonder(b) {
+  if (b.progress >= 1) { WONDER_DRAW[b.type](b); return; }
+  const h = WONDER_H[b.type], top = b.y - h * b.progress;
+  ctx.save(); ctx.beginPath(); ctx.rect(b.x - 140, top, 280, h + 40); ctx.clip(); WONDER_DRAW[b.type](b); ctx.restore();
+  // scaffolding up to the next stage
+  ctx.strokeStyle = '#8a6a3c'; ctx.lineWidth = 2.5; ctx.beginPath();
+  const sh = h * Math.min(1, b.progress + .2) + 10;
+  for (let i = -3; i <= 3; i++) { ctx.moveTo(b.x + i * 34, b.y); ctx.lineTo(b.x + i * 34, b.y - sh); }
+  for (let yy = b.y - 22; yy > b.y - sh; yy -= 26) { ctx.moveTo(b.x - 102, yy); ctx.lineTo(b.x + 102, yy); }
+  ctx.stroke();
 }
 
 // ---------- main render ----------
 const lightCanvas = document.createElement('canvas');
+S.onScreen = (x, y, m = 60) => { const z = S.cam.z; const sx = (x - S.cam.x) * z + W / 2, sy = (y - S.cam.y) * z + H / 2; return sx > -m && sx < W + m && sy > -m && sy < H + m; };
 S.render = t => {
   const g = S.game, cam = S.cam, z = cam.z;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.fillStyle = '#2d5a2a'; ctx.fillRect(0, 0, W, H);
-  if (S.mode === 'map') { drawMap(t); return; }
   const left = cam.x - W / 2 / z, top = cam.y - H / 2 / z, right = cam.x + W / 2 / z, bottom = cam.y + H / 2 / z;
   ctx.setTransform(z * DPR, 0, 0, z * DPR, (W / 2 - cam.x * z) * DPR, (H / 2 - cam.y * z) * DPR);
 
-  // ground
-  const q = Math.min(2, Math.round(z * DPR * 2) / 2), CP = S.CHUNK_PX;
+  const q = Math.min(2, Math.max(.5, Math.round(z * DPR * 2) / 2)), CP = S.CHUNK_PX;
   for (let cy = Math.floor(top / CP); cy <= Math.floor(bottom / CP); cy++) for (let cx = Math.floor(left / CP); cx <= Math.floor(right / CP); cx++) {
     if (cx < 0 || cy < 0 || cx * CP >= S.WORLD || cy * CP >= S.WORLD) continue;
     ctx.drawImage(S.groundChunk(cx, cy, q), cx * CP, cy * CP, CP, CP);
   }
   const vis = (x, y, m = 120) => x > left - m && x < right + m && y > top - m && y < bottom + m * 2;
+  const blds = S.cityBuildings();
 
-  // flat layer: farms, stockpile, pads
-  for (const b of g.buildings) if (b.type === 'farm' && b.level > 0 && vis(b.x, b.y, 200)) drawFarm(b, t);
-  for (const fac of ['p', 'r']) {
-    const st = S.stockPos(fac);
-    if (!vis(st.x, st.y)) continue;
-    ell(st.x, st.y, 40, 20, 'rgba(90,70,40,.35)');
-    const res = fac === 'p' ? g.res : g.rival.res;
-    const piles = [['wood', -18, 0], ['stone', 14, -4], ['food', 0, 10]];
-    for (const [r, dx, dy] of piles) { const n = Math.min(6, Math.ceil((res[r] || 0) / 10)); for (let i = 0; i < n; i++) icon(r, st.x + dx + (i % 3) * 5 - 5, st.y + dy - Math.floor(i / 3) * 6 - i * .5, 1.1); }
+  // flat layer: fields and the stockpile
+  for (const b of blds) if (b.flat && vis(b.x, b.y, 200)) drawFarm({ x: b.x, y: b.y, level: b.style }, t);
+  const st = g.stock;
+  if (vis(st.x, st.y)) {
+    ell(st.x, st.y, 44, 22, 'rgba(90,70,40,.35)');
+    const piles = [['wood', -20, 0], ['stone', 16, -4], ['food', 0, 12]];
+    for (const [r, dx, dy] of piles) { const n = S.clamp(Math.floor(Math.log10(S.E.res[r] + 1) * 1.6), 0, 9); for (let i = 0; i < n; i++) icon(r, st.x + dx + (i % 3) * 6 - 6, st.y + dy - Math.floor(i / 3) * 6, 1.15); }
   }
-  for (const info of S.activePads()) if (vis(info.x, info.y, 200)) drawPad(info, t);
 
-  // sprites, y-sorted
   const list = [];
   for (const r of g.visRes = collectRes(left, top, right, bottom)) list.push({ y: r.y, k: 'r', o: r });
-  for (const b of g.buildings) {
-    if (b.level < 1 || b.type === 'farm') continue;
-    if (b.type === 'wall') {
-      const c = g.camps[b.fac], n = b.level === 1 ? 150 : 90;
-      for (let i = 0; i < n; i++) { const a = i / n * 6.283, x = c.x + Math.cos(a) * S.WALL_R, y = c.y + Math.sin(a) * S.WALL_R; if (vis(x, y, 40)) list.push({ y, k: 'w', x, i, b }); }
-      continue;
-    }
-    if (vis(b.x, b.y, 220)) list.push({ y: b.y, k: 'b', o: b });
+  for (const b of blds) if (!b.flat && vis(b.x, b.y, 260)) list.push({ y: b.y, k: 'b', o: b });
+  if (S.E.b.wall > 0) {
+    const c = g.camp, lv = Math.min(2, S.E.b.wall), n = lv === 1 ? 150 : 90;
+    for (let i = 0; i < n; i++) { const a = i / n * 6.283, x = c.x + Math.cos(a) * S.WALL_R, y = c.y + Math.sin(a) * S.WALL_R; if (vis(x, y, 40)) list.push({ y, k: 'w', x, i, lv }); }
   }
-  for (const u of g.allUnits) if (!u.dead && vis(u.x, u.y)) list.push({ y: u.y, k: 'u', o: u });
+  for (const u of g.units) if (vis(u.x, u.y)) list.push({ y: u.y, k: 'u', o: u });
   list.sort((a, b) => a.y - b.y);
   for (const e of list) {
     if (e.k === 'r') { const r = e.o; if (r.kind === 'tree') drawTree(r, t); else if (r.kind === 'rock') drawRock(r); else drawBush(r); }
-    else if (e.k === 'w') drawWallStake(e.x, e.y, e.b.level, e.b.broken, e.i);
+    else if (e.k === 'w') drawWallStake(e.x, e.y, e.lv, false, e.i);
     else if (e.k === 'b') {
-      const b = e.o;
-      ({ center: drawCenter, hut: drawHut, storage: drawStorage, tower: drawTower, wonder0: drawWonder0, wonder1: drawWonder1 })[b.type](b, t);
-      if (b.hp < S.maxHp(b) && b.type !== 'wall') hpBar(b.x, b.y + 8, b.hp, S.maxHp(b), '#e8c25a');
+      const b = e.o, o = { x: b.x, y: b.y, level: b.style, fac: 'p' };
+      if (b.type === 'center') drawCenter(o, t); else if (b.type === 'hut') drawHut(o); else if (b.type === 'storage') drawStorage(o);
+      else if (b.type === 'quarry') drawQuarry(o); else if (b.type === 'tower') drawTower(o, t); else drawWonder(b);
     } else {
       const u = e.o;
-      if (u.kind === 'wolf' || u.kind === 'bear' || u.kind === 'deer') { drawBeast(u, t); hpBar(u.x, u.y - 34, u.hp, u.maxHp); }
-      else { drawHuman(u, t, u.kind === 'player' ? g.carry : u.carry); hpBar(u.x, u.y - 52, u.hp, u.maxHp); }
+      if (u.kind === 'worker') drawHuman(u, t, u.carry);
+      else drawBeast(u, t);
     }
   }
-  // walls hp bar near gate pad
-  for (const fac of ['p', 'r']) { const w = S.wallB(fac); if (w && w.level && w.hp < S.maxHp(w)) { const c = g.camps[fac]; hpBar(c.x, c.y + S.WALL_R + 12, w.hp, S.maxHp(w), '#e8c25a'); } }
-
-  // arrows
   ctx.strokeStyle = '#3a2a1a'; ctx.lineWidth = 2;
   for (const a of g.proj) { ctx.beginPath(); ctx.moveTo(a.x - Math.cos(a.ang) * 12, a.y - Math.sin(a.ang) * 12); ctx.lineTo(a.x, a.y); ctx.stroke(); }
 
-  // fx
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (const f of g.fx) {
     if (f.k === 'p') { ctx.globalAlpha = Math.min(1, f.life * 2); rect(f.x - f.size / 2, f.y - f.z - f.size / 2, f.size, f.size, f.color); }
-    else if (f.k === 'item') {
-      const k = Math.min(1, f.t / f.dur), tx = f.to.x, ty = f.to.y - (f.to.kind ? 40 : 10);
-      const x = f.x0 + (tx - f.x0) * k, y = f.y0 + (ty - f.y0) * k - Math.sin(k * Math.PI) * 40;
-      icon(f.type, x, y, 1);
-    } else if (f.k === 'text') {
-      ctx.globalAlpha = Math.min(1, f.life * 2); ctx.font = '600 15px Rubik, sans-serif';
-      ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(20,14,8,.8)'; const y = f.y - (1.2 - f.life) * 30;
+    else if (f.k === 'text') {
+      ctx.globalAlpha = Math.min(1, f.life * 2.5); ctx.font = `700 ${f.size}px Rubik, sans-serif`;
+      ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(20,14,8,.8)'; const y = f.y - (1.1 - f.life) * 36;
       ctx.strokeText(f.text, f.x, y); ctx.fillStyle = f.color; ctx.fillText(f.text, f.x, y);
     }
     ctx.globalAlpha = 1;
   }
-
-  // night
-  if (g.dark > 0) drawNight(z, t);
-  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  drawGuide(t);
-  drawJoystick();
+  if (g.dark > 0) drawNight(z, t, blds);
 };
 
 function collectRes(l, tp, r, b) {
@@ -403,83 +384,49 @@ function collectRes(l, tp, r, b) {
   return out;
 }
 
-function drawNight(z, t) {
+function drawNight(z, t, blds) {
   const g = S.game;
   if (lightCanvas.width !== Math.round(W * DPR) || lightCanvas.height !== Math.round(H * DPR)) { lightCanvas.width = Math.round(W * DPR); lightCanvas.height = Math.round(H * DPR); }
   const l = lightCanvas.getContext('2d');
   l.setTransform(1, 0, 0, 1, 0, 0); l.globalCompositeOperation = 'source-over';
   l.clearRect(0, 0, lightCanvas.width, lightCanvas.height);
-  l.fillStyle = `rgba(12,16,42,${.66 * g.dark})`; l.fillRect(0, 0, lightCanvas.width, lightCanvas.height);
+  l.fillStyle = `rgba(12,16,42,${.5 * g.dark})`; l.fillRect(0, 0, lightCanvas.width, lightCanvas.height);
   l.globalCompositeOperation = 'destination-out';
   const toS = (x, y) => [((x - S.cam.x) * z + W / 2) * DPR, ((y - S.cam.y) * z + H / 2) * DPR];
   const light = (x, y, r) => { const [sx, sy] = toS(x, y), rr = r * z * DPR * (1 + Math.sin(t * 9 + x) * .02); const gr = l.createRadialGradient(sx, sy, 0, sx, sy, rr); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(.55, 'rgba(0,0,0,.75)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); l.fillStyle = gr; l.fillRect(sx - rr, sy - rr, rr * 2, rr * 2); };
-  for (const fac of ['p', 'r']) { const c = g.camps[fac]; light(c.x, c.y - 10, 300); }
-  for (const b of g.buildings) if (b.level > 0 && (b.type === 'tower' || b.type === 'hut' || b.type.startsWith('wonder'))) light(b.x, b.y - 30, b.type === 'tower' ? 170 : 110);
-  light(g.player.x, g.player.y - 20, 150);
+  light(g.camp.x, g.camp.y - 10, 320);
+  for (const b of blds) if (b.type === 'tower' || b.type === 'hut' || b.type.startsWith('wonder')) light(b.x, b.y - 30, b.type === 'hut' ? 110 : 170);
+  for (const u of g.units) if (u.kind === 'deer') light(u.x, u.y - 20, 90);
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(lightCanvas, 0, 0); ctx.restore();
 }
 
-function drawGuide(t) {
-  const g = S.game, p = g.player;
-  if (p.dead) return;
-  const target = S.guideTarget();
-  if (!target) return;
-  const z = S.cam.z, sx = (target.x - S.cam.x) * z + W / 2, sy = (target.y - S.cam.y) * z + H / 2;
-  const m = 46, onScreen = sx > m && sx < W - m && sy > m + 60 && sy < H - m;
-  ctx.save();
-  if (onScreen) {
-    const by = sy - 60 * z - 14 + Math.sin(t * 5) * 6;
-    ctx.translate(sx, by); poly([-11, -14, 11, -14, 0, 4], '#ffcc2e', 'rgba(60,40,10,.8)');
-  } else {
-    const cx = W / 2, cy = H / 2, a = Math.atan2(sy - cy, sx - cx);
-    const ex = S.clamp(cx + Math.cos(a) * W, m, W - m), ey = S.clamp(cy + Math.sin(a) * H, m + 70, H - m - 20);
-    ctx.translate(ex, ey); ctx.rotate(a);
-    ell(0, 0, 20, 20, 'rgba(30,24,16,.6)');
-    poly([14, 0, -6, -10, -2, 0, -6, 10], '#ffcc2e');
+// ---------- shop card icons ----------
+S.drawCardIcon = (c, kind, key) => {
+  const old = ctx; ctx = c;
+  const w = c.canvas.width, h = c.canvas.height;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, w, h);
+  const k = w / 64, era = S.E.era;
+  c.setTransform(k, 0, 0, k, 0, 0);
+  const fake = (job, x, y, s) => { c.save(); c.translate(x, y); c.scale(s, s); drawHuman({ x: 0, y: 0, job, face: 1, walk: 0, moving: false, swing: 0, hurt: 0 }, 0, []); c.restore(); };
+  const at = (x, y, s, fn) => { c.save(); c.translate(x, y); c.scale(s, s); fn(); c.restore(); };
+  if (kind === 'worker') fake(key, 32, 58, 1.35);
+  else if (kind === 'building') {
+    const B = { x: 0, y: 0, fac: 'p' };
+    if (key === 'center') at(32, 52, .5, () => drawCenter(Object.assign(B, { level: era === 0 ? 3 : era === 1 ? 4 : 6 }), 0));
+    else if (key === 'house') at(32, 56, .8, () => drawHut(Object.assign(B, { level: era ? 3 : 2 })));
+    else if (key === 'garden') at(32, 36, .28, () => drawFarm(Object.assign(B, { level: era ? 2 : 1 }), 0));
+    else if (key === 'sawmill') at(32, 54, .65, () => drawStorage(Object.assign(B, { level: 2 })));
+    else if (key === 'quarry') at(34, 52, .6, () => drawQuarry(Object.assign(B, { level: 2 })));
+    else if (key === 'tower') at(32, 60, .55, () => drawTower(Object.assign(B, { level: era ? 2 : 1 }), 0));
+    else if (key === 'wall') at(14, 52, 1, () => { for (let i = 0; i < 4; i++) drawWallStake(i * 12, 0, Math.max(1, Math.min(2, S.E.b.wall + 1)), false, i); });
+    else if (key === 'wonder') { const i = Math.min(2, S.E.wonder.idx); at(32, 56, i === 2 ? .2 : i === 1 ? .26 : .3, () => WONDER_DRAW['wonder' + i]({ x: 0, y: 0 })); }
+  } else if (kind === 'upgrade') {
+    const u = S.UPGRADES.find(u => u.id === key);
+    if (u.kind === 'worker') fake(u.target, 28, 58, 1.2);
+    else if (u.kind === 'deer') at(30, 52, 1.1, () => drawBeast({ x: 0, y: 0, kind: 'deer', face: 1, walk: 0, t: 0 }, 0));
+    else { ell(32, 32, 16, 16, '#ffd36b'); ell(32, 32, 9, 9, '#fff6cf'); c.strokeStyle = '#d98e2b'; c.lineWidth = 3; c.beginPath(); for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283; c.moveTo(32 + Math.cos(a) * 20, 32 + Math.sin(a) * 20); c.lineTo(32 + Math.cos(a) * 27, 32 + Math.sin(a) * 27); } c.stroke(); }
+    c.setTransform(k, 0, 0, k, 0, 0); ell(52, 12, 9, 9, '#b07ce8'); c.fillStyle = '#fff'; c.font = '700 10px Rubik, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(u.tapMult ? '×' + u.tapMult : u.kind === 'worker' ? '×2' : '★', 52, 12.5);
   }
-  ctx.restore();
-}
-function drawJoystick() {
-  const j = S.input.joy; if (!j) return;
-  ctx.globalAlpha = .55;
-  ctx.beginPath(); ctx.arc(j.ox, j.oy, S.JOY_R, 0, 6.283); ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 2; ctx.stroke();
-  const dx = j.x - j.ox, dy = j.y - j.oy, d = Math.hypot(dx, dy), k = d > S.JOY_R ? S.JOY_R / d : 1;
-  ctx.beginPath(); ctx.arc(j.ox + dx * k, j.oy + dy * k, 24, 0, 6.283); ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fill();
-  ctx.globalAlpha = 1;
-}
-
-// ---------- strategic map (overview for now) ----------
-function drawMap(t) {
-  const g = S.game;
-  if (S.minimapDirty || !S.minimap) S.renderMinimap();
-  const pad = 16, top = 70;
-  const size = Math.min(W - pad * 2, H - top - 90), ox = (W - size) / 2, oy = top;
-  const k = size / S.WORLD;
-  ctx.fillStyle = '#1e2a1c'; ctx.fillRect(0, 0, W, H);
-  ctx.imageSmoothingEnabled = false; ctx.drawImage(S.minimap, ox, oy, size, size); ctx.imageSmoothingEnabled = true;
-  ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1; ctx.strokeRect(ox, oy, size, size);
-  const P = (x, y) => [ox + x * k, oy + y * k];
-  for (const fac of ['p', 'r']) {
-    const c = g.camps[fac], [x, y] = P(c.x, c.y);
-    if (S.wallUp(fac)) { ctx.beginPath(); ctx.arc(x, y, S.WALL_R * k, 0, 6.283); ctx.strokeStyle = FAC_COL[fac]; ctx.lineWidth = 2; ctx.stroke(); }
-    for (const b of g.buildings) if (b.fac === fac && b.level > 0 && b.type !== 'wall') { const [bx, by] = P(b.x, b.y); ctx.fillStyle = FAC_COL[fac]; ctx.fillRect(bx - 3, by - 3, 6, 6); }
-    ctx.font = '600 13px Rubik, sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.7)';
-    const label = fac === 'p' ? 'Твой лагерь' : 'Соседнее племя', lv = S.BLD.center.levels[S.campLevel(fac)].name;
-    ctx.strokeText(label, x, y - 18); ctx.fillStyle = '#fff'; ctx.fillText(label, x, y - 18);
-    ctx.font = '11px Rubik, sans-serif'; ctx.strokeText(lv, x, y + 22); ctx.fillText(lv, x, y + 22);
-  }
-  for (const u of g.units) {
-    if (u.dead) continue;
-    const [x, y] = P(u.x, u.y);
-    ctx.fillStyle = u.kind === 'neutral' ? '#ffcc2e' : u.fac === 'p' ? '#9cc8ff' : u.fac === 'r' ? '#ff9a8a' : u.kind === 'deer' ? '#d9b98a' : '#3a3a3a';
-    ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
-  }
-  const [px, py] = P(g.player.x, g.player.y);
-  ctx.beginPath(); ctx.arc(px, py, 5 + Math.sin(t * 6), 0, 6.283); ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#2f6fd0'; ctx.lineWidth = 2; ctx.stroke();
-  // legend
-  ctx.font = '12px Rubik, sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.8)';
-  const ly = oy + size + 22;
-  const items = [['#ffcc2e', 'поселенцы'], ['#3a3a3a', 'звери'], ['#ff9a8a', 'соседи']];
-  let lx = ox; for (const [c, s] of items) { ctx.fillStyle = c; ctx.fillRect(lx, ly - 5, 8, 8); ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillText(s, lx + 12, ly); lx += ctx.measureText(s).width + 30; }
-}
+  ctx = old;
+};
 })();

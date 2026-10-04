@@ -1,0 +1,141 @@
+<meta charset="utf-8">
+<title>Эпохи Племени</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ruslan+Display&family=Rubik:wght@400;500;700&display=swap">
+<style>
+/* Layout: full-screen canvas world; parchment chips float at the top edge, the quest card sits under them, menus are centered tablets. */
+:root {
+  --parch: #f3e6c8;
+  --parch-deep: #e2cfa4;
+  --bark: #3a2616;
+  --bark-soft: #6e5236;
+  --ochre: #d98e2b;
+  --ochre-deep: #a9651a;
+  --moss: #4b7a35;
+  --danger: #c9453a;
+  --night: #1c2442;
+  --font-title: "Ruslan Display", "Georgia", serif;
+  --font-body: "Rubik", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; overflow: hidden; background: #2d5a2a; color: var(--bark);
+  font-family: var(--font-body); font-size: 15px;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; touch-action: none;
+}
+canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+button { font-family: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--ochre); outline-offset: 2px; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; }
+.topbar {
+  position: absolute; left: 0; right: 0; top: 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 0;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+}
+.res { display: flex; flex-wrap: wrap; gap: 6px; max-width: 70%; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px 3px 4px;
+  background: var(--parch); border: 2px solid var(--bark); border-radius: 999px;
+  font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; box-shadow: 0 2px 0 rgba(58,38,22,.5);
+}
+.chip img { width: 22px; height: 22px; }
+.chip.warn { background: #f7c6bd; }
+.chip .pop { width: 22px; height: 22px; display: grid; place-items: center; font-size: 13px; }
+.side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: auto; }
+.btnrow { display: flex; gap: 6px; }
+.tbtn {
+  background: var(--ochre); color: #fff; border: 2px solid var(--bark); border-radius: 12px;
+  font-weight: 700; font-size: 13px; padding: 6px 11px; box-shadow: 0 3px 0 var(--bark);
+}
+.tbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--bark); }
+.tbtn.ghost { background: var(--parch); color: var(--bark); }
+.era { background: var(--parch); border: 2px solid var(--bark); border-radius: 10px; padding: 3px 9px; text-align: right; box-shadow: 0 2px 0 rgba(58,38,22,.5); }
+.era b { display: block; font-size: 12px; letter-spacing: .04em; }
+#dayChip { font-size: 11px; color: var(--bark-soft); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+#dayChip.night { color: var(--night); }
+#questCard {
+  position: absolute; left: 12px; top: calc(env(safe-area-inset-top, 0px) + 84px);
+  max-width: min(300px, 66vw); background: rgba(243,230,200,.94); border: 2px solid var(--bark); border-left-width: 2px;
+  border-radius: 12px; padding: 7px 10px; font-size: 13px; line-height: 1.35; box-shadow: 0 2px 0 rgba(58,38,22,.5);
+}
+#questCard small { display: block; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ochre-deep); }
+.carry { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); transform: translateX(-50%);
+  background: rgba(58,38,22,.75); color: var(--parch); border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+#toast {
+  position: fixed; left: 50%; top: 34%; transform: translate(-50%, -50%); max-width: 80vw; text-align: center;
+  background: var(--bark); color: var(--parch); border: 2px solid var(--ochre); border-radius: 14px; padding: 9px 16px;
+  font-weight: 700; font-size: 15px; pointer-events: none; opacity: 0;
+}
+#toast.show { animation: toast 2.4s ease forwards; }
+@keyframes toast { 0% { opacity: 0; transform: translate(-50%, -40%); } 10%, 80% { opacity: 1; transform: translate(-50%, -50%); } 100% { opacity: 0; } }
+
+#menu { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: linear-gradient(rgba(28,36,66,.25), rgba(28,36,66,.6)); }
+.tablet {
+  width: min(380px, 100%); box-sizing: border-box; background: var(--parch); border: 3px solid var(--bark); border-radius: 20px;
+  padding: 22px 20px 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 8px 0 rgba(58,38,22,.6);
+}
+.tablet h1 { margin: 0; font-family: var(--font-title); font-weight: 400; font-size: 34px; line-height: 1.05; text-align: center; color: var(--bark); text-wrap: balance; }
+.eras { display: flex; justify-content: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--bark-soft); }
+.eras span + span::before { content: "→"; margin-right: 6px; color: var(--ochre-deep); }
+.how { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; line-height: 1.35; }
+.how li { padding-left: 16px; position: relative; }
+.how li::before { content: ""; position: absolute; left: 2px; top: 7px; width: 7px; height: 7px; border-radius: 2px; background: var(--ochre); }
+.big { width: 100%; border: 3px solid var(--bark); border-radius: 14px; background: var(--ochre); color: #fff; font-size: 19px; font-weight: 700; padding: 12px; box-shadow: 0 4px 0 var(--bark); }
+.big.alt { background: var(--moss); }
+.big:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--bark); }
+.linkbtn { background: none; border: none; color: var(--bark-soft); text-decoration: underline; font-size: 13px; padding: 4px; }
+.ver { text-align: center; font-size: 11px; color: var(--bark-soft); }
+@media (prefers-reduced-motion: reduce) { #toast.show { animation-duration: .01s; opacity: 1; } }
+</style>
+
+<canvas id="game"></canvas>
+
+<div id="hud" hidden>
+  <div class="topbar">
+    <div class="res">
+      <span class="chip"><img data-icon="wood" alt="Дерево"><span id="rWood">0</span></span>
+      <span class="chip"><img data-icon="stone" alt="Камень"><span id="rStone">0</span></span>
+      <span class="chip"><img data-icon="food" alt="Еда"><span id="rFood">0</span></span>
+      <span class="chip" title="Поселенцы / места в жилищах"><span class="pop">👥</span><span id="rPop">0/0</span></span>
+      <span class="chip" title="Очки богов"><img data-icon="gp" alt="Очки богов"><span id="rGp">0</span></span>
+    </div>
+    <div class="side">
+      <div class="btnrow"><button class="tbtn" id="mapBtn" type="button">Карта</button><button class="tbtn ghost" id="menuBtn" type="button">Меню</button></div>
+      <div class="era"><b id="eraLabel">Каменный век</b><span id="dayChip"><span id="dayLabel">День 1</span></span></div>
+    </div>
+  </div>
+  <div id="questCard"><small>Цель</small><span id="questText"></span></div>
+  <div class="carry">Груз <span id="carryLabel">0/10</span></div>
+</div>
+
+<div id="toast" hidden></div>
+
+<div id="menu" class="ui-block">
+  <div class="tablet">
+    <h1>Эпохи Племени</h1>
+    <div class="eras"><span>Камень</span><span>Бронза</span><span>Феодализм</span></div>
+    <ul class="how">
+      <li>Веди поселенца пальцем: рубка, добыча камня и сбор ягод идут сами.</li>
+      <li>Неси груз к костру, вставай на площадки и строй лагерь.</li>
+      <li>Находи поселенцев со знаком «!», они будут работать на тебя.</li>
+      <li>Ночью приходят волки, а соседнее племя ходит в набеги. Строй вышки и частокол.</li>
+    </ul>
+    <button class="big alt" id="contBtn" type="button" hidden>Продолжить</button>
+    <button class="big" id="newBtn" type="button">Новая игра</button>
+    <button class="linkbtn" id="soundBtn" type="button">Звук: вкл</button>
+    <div class="ver">Версия 0.1 · прогресс хранится в этом браузере</div>
+  </div>
+</div>
+
+<script src="js/core.js" charset="utf-8"></script>
+<script src="js/data.js" charset="utf-8"></script>
+<script src="js/world.js" charset="utf-8"></script>
+<script src="js/units.js" charset="utf-8"></script>
+<script src="js/build.js" charset="utf-8"></script>
+<script src="js/render.js" charset="utf-8"></script>
+<script src="js/main.js" charset="utf-8"></script>

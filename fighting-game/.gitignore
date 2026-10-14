@@ -1,2 +1,4 @@
 node_modules/
 dist/
+# The root .gitignore drops package.json; this project needs its own.
+!package.json

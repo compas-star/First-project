@@ -1,7 +1,8 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import type { FighterParams } from './config';
-import { MOVES, type Move } from './moves';
+import { MOVES, MOVE_BY_ID, FOLLOW, type Move } from './moves';
+import { punchOverride } from './strikes';
 import { POWER_BY_ID, type PowerId } from './powers';
 import { react, think } from './ai';
 import { clonePose, STANCE, PELVIS_Y, type Pose } from './rig';
@@ -55,6 +56,56 @@ export interface Action {
   lunge: number;
   /** Sloppiness of an untrained fighter: random joint offsets for this swing. */
   noise: Partial<Pose> | null;
+  /** Aimed at the head or the body. */
+  zone: 'head' | 'body' | 'leg';
+  /** Miss distance of this particular blow (meters for a 1.8 m fighter). */
+  jitter: THREE.Vector3;
+  /** Fist position at the start of an aimed punch, in the body frame. */
+  handStart: THREE.Vector3 | null;
+}
+
+/**
+ * A fighter's own manner of moving, fixed for a given build. Two fighters with
+ * the same numbers still look different.
+ */
+export interface FightStyle {
+  /** How much the hips and shoulders turn into a blow. */
+  twist: number;
+  /** Constant small head and torso movement. */
+  headMove: number;
+  /** Bouncing on the feet. */
+  bounce: number;
+  /** Share of punches aimed at the body. */
+  bodyLove: number;
+  /** Faster or slower hands. */
+  handSpeed: number;
+  /** Typical combination length. */
+  comboLen: number;
+  /** Phases of the idle motion. */
+  phase: [number, number, number];
+}
+
+function hashStr(str: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function makeStyle(p: FighterParams, team: number): FightStyle {
+  const r = rng32(hashStr(`${p.name}|${team}|${p.height.toFixed(2)}|${p.weight.toFixed(0)}`));
+  const tech = p.skill;
+  return {
+    twist: 0.7 + 0.6 * r(),
+    headMove: (0.35 + 0.65 * r()) * (0.25 + 0.75 * tech),
+    bounce: (0.3 + 0.7 * r()) * tech,
+    bodyLove: 0.15 + 0.35 * r(),
+    handSpeed: 0.9 + 0.2 * r(),
+    comboLen: 1 + Math.round(r() * 2 + tech + p.aggression),
+    phase: [r() * 6.28, r() * 6.28, r() * 6.28],
+  };
 }
 
 export type FighterState = 'ok' | 'down' | 'ko';
@@ -96,6 +147,18 @@ export class Fighter {
   handledThreat = 0;
   moveDir = new THREE.Vector3();
   moveSpeed = 0;
+  /** Footwork intent: distance to hold, and how to circle. */
+  wantDist = 1;
+  circleDir = 1;
+  circleSpeed = 0.3;
+  nextCircleW = 0;
+  /** Go round behind the enemy instead of holding distance. */
+  flank = false;
+  /** Strikes left in the current combination. */
+  comboLeft = 0;
+  /** Own time, local seconds, drives the idle motion. */
+  clock = 0;
+  style: FightStyle;
   walkPhase = 0;
   groundSpeed = 0;
   combo: Move | null = null;
@@ -136,6 +199,7 @@ export class Fighter {
     this.radius = 0.22 * this.scale * this.girth;
     this.maxPoise = 28 * Math.sqrt(p.weight / 78);
     this.poise = this.maxPoise;
+    this.style = makeStyle(p, team);
   }
 
   get body(): number {
@@ -165,7 +229,7 @@ export class Fighter {
 
   /** Length of a move for this fighter in local seconds: poor technique telegraphs. */
   durOf(m: Move): number {
-    return m.duration * (1 + 0.35 * (1 - this.tech));
+    return (m.duration * (1 + 0.35 * (1 - this.tech))) / (m.path ? this.style.handSpeed : 1);
   }
 
   /** World seconds from starting a move until it can hit. */
@@ -234,6 +298,7 @@ export class Sim {
   readonly rng: () => number;
   winner: Fighter | null = null;
   private eq = new RAPIER.EventQueue(true);
+  private override: Partial<Record<string, THREE.Quaternion>> = {};
   private crateByCollider = new Map<number, Crate>();
   private partByCollider = new Map<number, { f: Fighter; part: Part }>();
 
@@ -340,10 +405,13 @@ export class Sim {
   startAction(
     f: Fighter,
     kind: ActionKind,
-    opts: { move?: Move; dur?: number; dir?: THREE.Vector3; pose?: Action['pose']; lunge?: number } = {},
+    opts: { move?: Move; dur?: number; dir?: THREE.Vector3; pose?: Action['pose']; lunge?: number; zone?: 'head' | 'body' | 'leg' } = {},
   ): Action {
     const m = opts.move;
-    const dur = m ? f.durOf(m) : opts.dur ?? 0.3;
+    // No two blows are quite the same: timing and aim vary a little, more without technique.
+    const dur = m ? f.durOf(m) * (0.9 + 0.2 * this.rng()) : opts.dur ?? 0.3;
+    const miss = 0.02 + 0.1 * (1 - f.tech);
+    const jitter = new THREE.Vector3(this.rng() - 0.5, this.rng() - 0.5, this.rng() - 0.5).multiplyScalar(2 * miss);
     let noise: Partial<Pose> | null = null;
     if (m && f.tech < 0.85) {
       const k = 1 - f.tech;
@@ -371,6 +439,9 @@ export class Sim {
       pose: opts.pose,
       lunge: opts.lunge ?? (m ? m.lunge * f.scale : 0),
       noise,
+      zone: opts.zone ?? 'head',
+      jitter,
+      handStart: null,
     };
     f.action = a;
     f.strikeValid = false;
@@ -429,10 +500,8 @@ export class Sim {
       this.runAction(f, dl);
 
       const a = f.action;
-      if (!a || a.kind === 'block') {
-        tmpA.copy(f.moveDir).multiplyScalar(f.moveSpeed * (a ? 0.35 : 1));
-        f.self.lerp(tmpA, Math.min(1, 14 * dl));
-      }
+      f.clock += dl;
+      if (!a || a.kind === 'block' || a.kind === 'parry') this.footwork(f, dl, a ? 0.4 : 1);
       // Stay off the edge unless something throws you over it.
       const r = Math.hypot(f.pos.x, f.pos.z);
       if (r > ARENA_R - 1.5) {
@@ -471,6 +540,8 @@ export class Sim {
     }
 
     targetPose(f, f.pose);
+    for (const k of Object.keys(this.override)) delete this.override[k];
+    const aimed = f.state === 'ok' && f.action?.kind === 'attack' && punchOverride(f, f.action, this.override);
     drive(
       f.rag,
       {
@@ -483,6 +554,7 @@ export class Sim {
         pose: f.pose,
         scale: f.scale,
         boost: f.action?.kind === 'dash' ? 8 : 1,
+        override: aimed ? this.override : undefined,
         partTone: {
           lUpper: f.broken.lArm ? 0.04 : 1,
           lFore: f.broken.lArm ? 0.04 : 1,
@@ -496,6 +568,43 @@ export class Sim {
       },
       h,
     );
+  }
+
+  /**
+   * Continuous footwork: ease toward the wanted distance, circle around the
+   * enemy, bounce on the feet. Speeds are proportional to how far off the
+   * fighter is, so there is no back-and-forth on a threshold.
+   */
+  private footwork(f: Fighter, dl: number, mul: number): void {
+    const e = f.enemy;
+    const d = tmpA.subVectors(e.pos, f.pos).setY(0);
+    const dist = Math.max(1e-4, d.length());
+    d.divideScalar(dist);
+    const side = tmpB.set(d.z, 0, -d.x);
+    const want = tmpC.set(0, 0, 0);
+    if (f.flank && e.state === 'ok') {
+      // Run round to the enemy's back.
+      const behind = e.forward(tmpP).multiplyScalar(-(e.radius + 0.6 * f.scale)).add(e.pos).sub(f.pos).setY(0);
+      want.copy(behind).normalize().multiplyScalar(f.stride * 1.1);
+    } else {
+      let target = f.wantDist;
+      if (this.t < f.exitUntilW) target += 0.2 * f.scale;
+      const err = dist - target;
+      // Small changes of distance are ignored: nobody steps back for every inch.
+      const dead = 0.12 * f.scale;
+      const radial = Math.abs(err) < dead ? 0 : THREE.MathUtils.clamp((err - Math.sign(err) * dead) * 1.8, -1, 1);
+      if (radial > 0) {
+        want.addScaledVector(d, radial * f.stride * 0.85);
+      } else if (radial < 0) {
+        // Too close: a trained fighter pivots out at an angle, an untrained one mostly holds ground.
+        want.addScaledVector(d, radial * f.stride * (0.15 + 0.35 * f.tech));
+        want.addScaledVector(side, f.circleDir * -radial * f.stride * (0.2 + 0.5 * f.tech));
+      }
+      want.addScaledVector(side, f.circleDir * f.circleSpeed * f.stride);
+      // Rhythm: a light in-and-out bounce of a trained fighter.
+      want.addScaledVector(d, Math.sin(f.clock * 2 * Math.PI * 1.4 + f.style.phase[0]) * 0.18 * f.style.bounce * f.stride);
+    }
+    f.self.lerp(want.multiplyScalar(mul), Math.min(1, 7 * dl));
   }
 
   private regenerate(f: Fighter, dl: number): void {
@@ -578,21 +687,48 @@ export class Sim {
       default:
         f.self.multiplyScalar(Math.max(0, 1 - 15 * dl));
     }
+    // Combinations flow: the next blow starts while the last one is coming back.
+    if (a.kind === 'attack' && u >= 0.72 && f.comboLeft > 0 && f.enemy.state === 'ok') {
+      const next = this.nextInCombo(f, a);
+      f.comboLeft--;
+      if (next) {
+        const zone = a.zone === 'body' ? (this.rng() < 0.75 ? 'head' : 'body') : this.rng() < f.style.bodyLove ? 'body' : 'head';
+        this.startAction(f, 'attack', { move: next, zone: next.path ? zone : 'body' });
+        f.say(`и ${next.name}${zone === 'body' && next.path ? ' в корпус' : ''}`);
+        return;
+      }
+      f.comboLeft = 0;
+    }
     if (a.t >= a.dur) {
       f.action = null;
-      if (a.kind === 'attack' && f.combo && f.enemy.state === 'ok' && f.canUse(f.combo)) {
-        const next = f.combo;
-        f.combo = null;
-        tmpA.subVectors(f.enemy.pos, f.pos).setY(0);
-        if (tmpA.length() <= this.attackRange(f, next) + next.lunge * f.scale) {
-          this.startAction(f, 'attack', { move: next });
-          f.say(`и ${next.name}`);
-          return;
+      // A trained fighter does not stay in the pocket after striking.
+      if (a.kind === 'attack' && f.tech > 0.45) {
+        f.exitUntilW = this.t + (0.25 + 0.35 * f.tech) / f.body;
+        if (this.rng() < f.tech * 0.6) {
+          // Step off the line at an angle rather than straight back.
+          f.circleDir = this.rng() < 0.5 ? -1 : 1;
+          f.circleSpeed = 0.6;
+          f.nextCircleW = this.t + 0.4 / f.mind;
         }
       }
-      // A trained fighter does not stay in the pocket after striking.
-      if (a.kind === 'attack' && f.tech > 0.45) f.exitUntilW = this.t + (0.2 + 0.3 * f.tech) / f.body;
     }
+  }
+
+  private nextInCombo(f: Fighter, a: Action): Move | null {
+    const opts = (FOLLOW[a.move!.id] ?? [])
+      .map(([id, w]) => [MOVE_BY_ID[id], w] as const)
+      .filter(([m]) => f.canUse(m) && (m.style === 'clean' ? f.tech > 0.3 : f.tech < 0.6));
+    if (!opts.length) return null;
+    const dist = tmpA.subVectors(f.enemy.pos, f.pos).setY(0).length();
+    const reach = opts.filter(([m]) => dist <= this.attackRange(f, m) + 0.4 * f.scale);
+    if (!reach.length) return null;
+    const total = reach.reduce((s2, [, w]) => s2 + w, 0);
+    let r = this.rng() * total;
+    for (const [m, w] of reach) {
+      r -= w;
+      if (r <= 0) return m;
+    }
+    return reach[0][0];
   }
 
   /** Did the striking fist or foot touch the enemy during the strike window? */
@@ -676,7 +812,7 @@ export class Sim {
 
     const blocked = def.action?.kind === 'block' && zone === 'arm' && facingAtt > 0;
     // Damage grows slower than the impulse, so a much faster fighter needs a few blows, not one.
-    let dmg = (13 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
+    let dmg = (8.5 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
     // A well placed blow lands on the point, a wild one spreads its force.
     dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
     if (fromBehind) dmg *= 1.3;

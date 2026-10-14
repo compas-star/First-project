@@ -132,6 +132,21 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
   f.say('не успеваю!');
 }
 
+/** Say something only when it changes, so the bubble does not flicker. */
+function intent(f: Fighter, text: string): void {
+  if (f.thought !== text) f.say(text);
+}
+
+function pickZone(f: Fighter, e: Fighter, sim: Sim, m: Move): 'head' | 'body' | 'leg' {
+  if (m.limb === 'rFoot') {
+    const r = sim.rng();
+    return r < 0.35 ? 'leg' : r < 0.8 ? 'body' : 'head';
+  }
+  // Go to the body more when the guard is up.
+  const guardUp = e.action?.kind === 'block' ? 0.35 : 0;
+  return sim.rng() < f.style.bodyLove + guardUp ? 'body' : 'head';
+}
+
 export function think(f: Fighter, e: Fighter, sim: Sim): void {
   if (sim.winner) return;
   if (f.action && f.action.kind !== 'block') return;
@@ -145,11 +160,17 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     f.action = null;
   }
 
+  // Circling direction and pace change now and then, not every decision.
+  if (sim.t >= f.nextCircleW) {
+    f.circleDir = sim.rng() < 0.5 ? -1 : 1;
+    f.circleSpeed = (0.15 + 0.35 * f.tech) * (0.4 + sim.rng());
+    f.nextCircleW = sim.t + (1 + 2.5 * sim.rng()) / f.mind;
+  }
+  f.flank = false;
+
   if (e.state !== 'ok') {
-    const keep = 1.6 * f.scale + e.radius;
-    f.moveDir.copy(d).multiplyScalar(dist < keep ? -1 : 0);
-    f.moveSpeed = f.stride * 0.6;
-    f.say(e.state === 'ko' ? 'победа' : 'жду, пока встанет');
+    f.wantDist = 1.6 * f.scale + e.radius;
+    intent(f, e.state === 'ko' ? 'победа' : 'жду, пока встанет');
     return;
   }
 
@@ -164,20 +185,17 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   // Technical fighters wait at the edge of the enemy's reach, brawlers want to be close.
   const outside = Math.max(enemyRange + 0.1 * f.scale, myRange + 0.05);
   const pref = THREE.MathUtils.lerp(myRange * 0.6, outside, tech);
-  const band = 0.15 * f.scale;
+  f.wantDist = pref;
 
   if (sim.ready(f, 'shockwave') && dist < sim.waveRadius(f) * 0.75 && sim.rng() < 0.45) {
     sim.use(f, 'shockwave');
     sim.startAction(f, 'slam', { dur: 0.75 });
-    f.moveDir.set(0, 0, 0);
     f.say('ударная волна');
     return;
   }
 
   if (sim.t < f.exitUntilW) {
-    f.moveDir.copy(d).negate();
-    f.moveSpeed = f.stride * 1.15;
-    f.say('выхожу из дистанции');
+    intent(f, 'выхожу под углом');
     return;
   }
 
@@ -190,15 +208,19 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   const punish = ea?.kind === 'attack' && ea.t > ea.dur * ea.move!.active[1];
   let eager = 0.15 + 0.7 * f.p.aggression + (behind ? 0.3 : 0) + (ratio > 2 ? 0.2 : 0) + (punish ? 0.5 * tech : 0);
   // A technician does not like trading while standing in the pocket.
-  if (tech > 0.5 && dist < pref - 2 * band) eager *= 0.5;
+  if (tech > 0.5 && dist < pref - 0.3 * f.scale) eager *= 0.5;
   if (options.length && sim.rng() < eager) {
     const m = pickStyled(f, sim, options);
     const r = sim.attackRange(f, m);
     const lunge = Math.max(m.lunge * f.scale, dist - r * 0.85 + 0.05);
-    sim.startAction(f, 'attack', { move: m, lunge });
+    const zone = pickZone(f, e, sim, m);
+    sim.startAction(f, 'attack', { move: m, lunge, zone });
     const stepIn = lunge > m.lunge * f.scale + 0.1;
-    f.say(behind ? `${m.name} в спину` : punish ? `наказываю: ${m.name}` : stepIn ? `выпад: ${m.name}` : m.name);
-    if (sim.rng() < f.p.aggression * 0.55) f.combo = pickStyled(f, sim, usable);
+    const where = zone === 'body' ? ' в корпус' : zone === 'leg' ? ' по ноге' : '';
+    f.say(behind ? `${m.name} в спину` : punish ? `наказываю: ${m.name}${where}` : stepIn ? `выпад: ${m.name}${where}` : `${m.name}${where}`);
+    // Longer combinations for aggressive fighters; each fighter has a habit.
+    const len = Math.round(f.style.comboLen * (0.5 + f.p.aggression) * (0.5 + sim.rng()));
+    f.comboLeft = Math.max(0, len - 1);
     return;
   }
 
@@ -213,42 +235,27 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   // Inside the enemy's reach a careful fighter sometimes keeps the guard up in advance.
   if (dist < enemyRange && e.body > f.body * 1.2 && sim.rng() < 0.25 + 0.4 * tech) {
     sim.startAction(f, 'block', { dur: 0.45 });
-    f.moveDir.copy(d).negate();
-    f.moveSpeed = f.stride * 0.5;
+    f.wantDist = pref + 0.3 * f.scale;
     f.say('держу защиту');
     return;
   }
-  if (f.hp < 30 && f.p.aggression < 0.5 && sim.rng() < 0.35) {
-    f.moveDir.copy(d).negate();
-    f.moveSpeed = f.stride * 0.8;
-    f.say('отступаю');
+  if (f.hp < 30 && f.p.aggression < 0.5) {
+    f.wantDist = pref + 1.2 * f.scale;
+    intent(f, 'отступаю');
     return;
   }
 
-  if (dist > pref + band) {
-    if (ratio >= 2.5 && f.p.aggression > 0.3) {
-      const target = e.pos.clone().addScaledVector(e.forward(fwd), -(e.radius + myRange * 0.7));
-      f.moveDir.subVectors(target, f.pos).setY(0).normalize();
-      f.moveSpeed = f.stride * 1.1;
-      f.say('захожу за спину');
-    } else {
-      f.moveDir.copy(d);
-      f.moveSpeed = f.stride * (tech > 0.5 ? 0.7 : 1);
-      f.say(tech > 0.5 ? 'подхожу на дистанцию' : 'лезу в драку');
-    }
-  } else if (dist < pref - band) {
-    f.moveDir.copy(d).negate();
-    f.moveSpeed = f.stride * 0.8;
-    f.say(tech > 0.5 ? 'держу дистанцию' : 'разрываю дистанцию');
-  } else if (tech > 0.6 && sim.rng() < 0.3) {
-    // Feint: a half step in to draw a reaction.
-    f.moveDir.copy(d);
-    f.moveSpeed = f.stride * 0.9;
-    f.say('финт');
-  } else {
-    const sign = sim.rng() < 0.5 ? 1 : -1;
-    f.moveDir.set(d.z * sign, 0, -d.x * sign);
-    f.moveSpeed = f.stride * (0.3 + 0.4 * tech);
-    f.say(tech > 0.5 ? 'кружу на дистанции' : 'ищу момент');
+  if (ratio >= 2.5 && f.p.aggression > 0.3 && !behind) {
+    f.flank = true;
+    intent(f, 'захожу за спину');
+    return;
   }
+  if (tech > 0.6 && Math.abs(dist - pref) < 0.2 * f.scale && sim.rng() < 0.15) {
+    // Feint: a short pressure step to draw a reaction.
+    f.wantDist = pref - 0.3 * f.scale;
+    intent(f, 'финт');
+    return;
+  }
+  if (dist > pref + 0.3 * f.scale) intent(f, tech > 0.5 ? 'подхожу на дистанцию' : 'лезу в драку');
+  else intent(f, tech > 0.5 ? 'работаю на дистанции' : 'ищу момент');
 }

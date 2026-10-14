@@ -21,6 +21,13 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
   Object.assign(out, STANCE);
   const a = f.action;
   if (!a || a.kind === 'block') {
+    // Never quite still: the head and torso keep moving, a trained fighter bounces.
+    const st = f.style;
+    const t = f.clock;
+    out.spineSide += st.headMove * 9 * (Math.sin(t * 1.9 + st.phase[0]) + 0.5 * Math.sin(t * 3.7 + st.phase[1]));
+    out.spineLean += st.headMove * 6 * Math.sin(t * 1.3 + st.phase[2]);
+    out.headPitch += st.headMove * 4 * Math.sin(t * 2.3 + st.phase[1]);
+    out.crouch += 0.03 * st.bounce * (1 + Math.sin(t * 2 * Math.PI * 2.8 + st.phase[0]));
     const amp = Math.min(1, f.groundSpeed / (f.stride * f.body * 0.6));
     const s = Math.sin(f.walkPhase);
     out.lHipF += 28 * s * amp;
@@ -34,9 +41,26 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
     const u = a.t / a.dur;
     switch (a.kind) {
       case 'attack': {
-        sampleMove(a.move!, u, out);
+        const m = a.move!;
+        sampleMove(m, u, out);
+        const st = f.style;
+        // Personal manner: how far the hips and shoulders turn into the blow.
+        out.spineTwist = STANCE.spineTwist + (out.spineTwist - STANCE.spineTwist) * st.twist;
+        out.pelvisTwist = STANCE.pelvisTwist + (out.pelvisTwist - STANCE.pelvisTwist) * st.twist;
+        const env = Math.sin(Math.PI * Math.min(1, u));
+        if (m.path && a.zone === 'body') {
+          // Dip the level to punch to the body.
+          out.crouch += 0.13 * env;
+          out.spineLean += 10 * env;
+        }
+        if (m.limb === 'rFoot') {
+          // Kick height follows the target: low kick to the thigh, body, or head.
+          const k = a.zone === 'leg' ? 0.55 : a.zone === 'head' ? 1.3 : 1;
+          out.rHipF = STANCE.rHipF + (out.rHipF - STANCE.rHipF) * k;
+          out.rHipS = STANCE.rHipS + (out.rHipS - STANCE.rHipS) * k;
+          out.spineLean += (1 - k) * 12 * env;
+        }
         if (a.noise) {
-          const env = Math.sin(Math.PI * Math.min(1, u));
           for (const k of POSE_KEYS) out[k] += (a.noise[k] ?? 0) * env;
         }
         break;

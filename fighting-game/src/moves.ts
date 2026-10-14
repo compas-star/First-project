@@ -31,6 +31,11 @@ export interface Move {
   weight: number;
   /** Clean technique, or a wild swing that needs no training. */
   style: 'clean' | 'wild';
+  /**
+   * Punches are aimed: the fist follows this path to the enemy's real head or
+   * body by IK, the keyframes only move the torso and legs.
+   */
+  path?: 'straight' | 'hook' | 'upper' | 'swing';
   keys: Keyframe[];
 }
 
@@ -52,6 +57,7 @@ export const MOVES: Move[] = [
     dodge: 'side',
     weight: 3,
     style: 'clean',
+    path: 'straight',
     keys: [
       { t: 0, pose: guard },
       { t: 0.25, pose: { lShF: 70, lEl: 80, spineTwist: -18 } },
@@ -75,6 +81,7 @@ export const MOVES: Move[] = [
     dodge: 'side',
     weight: 2,
     style: 'clean',
+    path: 'straight',
     keys: [
       { t: 0, pose: guard },
       { t: 0.28, pose: { rShF: 50, rEl: 110, spineTwist: -20, crouch: 0.09 } },
@@ -98,6 +105,7 @@ export const MOVES: Move[] = [
     dodge: 'back',
     weight: 1.5,
     style: 'clean',
+    path: 'hook',
     keys: [
       { t: 0, pose: guard },
       { t: 0.3, pose: { lShF: 45, lShS: 55, lEl: 85, spineTwist: -40, crouch: 0.1 } },
@@ -121,6 +129,7 @@ export const MOVES: Move[] = [
     dodge: 'back',
     weight: 1,
     style: 'clean',
+    path: 'upper',
     keys: [
       { t: 0, pose: guard },
       { t: 0.32, pose: { crouch: 0.22, rShF: 10, rEl: 100, spineLean: 24, spineTwist: 12, rShS: 10 } },
@@ -191,6 +200,7 @@ export const MOVES: Move[] = [
     dodge: 'back',
     weight: 1.6,
     style: 'wild',
+    path: 'swing',
     keys: [
       { t: 0, pose: guard },
       { t: 0.38, pose: { rShF: 35, rShS: 85, rEl: 45, spineTwist: -45, spineLean: -4, lShF: 40, lEl: 60 } },
@@ -226,6 +236,18 @@ export const MOVES: Move[] = [
 ];
 
 export const MOVE_BY_ID = Object.fromEntries(MOVES.map((m) => [m.id, m])) as Record<string, Move>;
+
+/** What tends to follow what in a combination, with weights. */
+export const FOLLOW: Record<string, [string, number][]> = {
+  jab: [['jab', 0.2], ['cross', 0.55], ['hook', 0.2], ['kick', 0.05]],
+  cross: [['hook', 0.5], ['uppercut', 0.2], ['jab', 0.15], ['roundhouse', 0.15]],
+  hook: [['cross', 0.45], ['uppercut', 0.3], ['roundhouse', 0.25]],
+  uppercut: [['hook', 0.55], ['cross', 0.45]],
+  kick: [['cross', 0.5], ['jab', 0.5]],
+  roundhouse: [['jab', 0.6], ['cross', 0.4]],
+  haymaker: [['haymaker', 0.4], ['flail', 0.6]],
+  flail: [['haymaker', 0.6], ['flail', 0.4]],
+};
 
 /** Poses for non-attack actions, merged over the stance. */
 export const POSES = {

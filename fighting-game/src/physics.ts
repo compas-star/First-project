@@ -269,6 +269,8 @@ export interface Drive {
   boost?: number;
   /** Per-part multiplier on muscle strength, e.g. a broken arm hangs limp. */
   partTone?: Partial<Record<PartName, number>>;
+  /** World orientations that replace the pose for some parts, e.g. an arm aimed by IK. */
+  override?: Partial<Record<PartName, THREE.Quaternion>>;
 }
 
 function rotErr(target: THREE.Quaternion, cur: THREE.Quaternion, out: THREE.Vector3): THREE.Vector3 {
@@ -334,7 +336,9 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
     const pt = d.partTone?.[p.name] ?? 1;
     alphaW.set(0, 0, 0);
     if (stand > 0) {
-      t[p.key].getWorldQuaternion(want);
+      const ov = d.override?.[p.name];
+      if (ov) want.copy(ov);
+      else t[p.key].getWorldQuaternion(want);
       rotErr(want, cur, alphaW).multiplyScalar(kp).addScaledVector(w, -kd).multiplyScalar(stand * pt);
     }
     let Ibar = inertiaTimes(p.body, alphaW, alphaW);
@@ -445,4 +449,61 @@ export function segSegDist(p1: THREE.Vector3, q1: THREE.Vector3, p2: THREE.Vecto
   const c1 = tw.copy(p1).addScaledVector(d1, sP);
   outOnSeg2.copy(p2).addScaledVector(d2, tP);
   return c1.distanceTo(outOnSeg2);
+}
+
+const ikS = new THREE.Vector3();
+const ikDir = new THREE.Vector3();
+const ikPole = new THREE.Vector3();
+const ikE = new THREE.Vector3();
+const ikU = new THREE.Vector3();
+const ikF = new THREE.Vector3();
+const ikX = new THREE.Vector3();
+const ikY = new THREE.Vector3();
+const ikZ = new THREE.Vector3();
+const ikM = new THREE.Matrix4();
+export const ARM_UPPER = 0.29;
+export const ARM_FORE = 0.29;
+
+/**
+ * Two-bone IK for an arm: world orientations of the upper arm and forearm that
+ * put the fist at `target`, with the elbow bending toward `pole`.
+ * Bones point along local -Y and the elbow hinges toward local +Z, as in the rig.
+ */
+export function solveArmIK(
+  r: Ragdoll,
+  side: 'l' | 'r',
+  target: THREE.Vector3,
+  pole: THREE.Vector3,
+  scale: number,
+  outUpper: THREE.Quaternion,
+  outFore: THREE.Quaternion,
+): void {
+  const L1 = ARM_UPPER * scale;
+  const L2 = ARM_FORE * scale;
+  v(r.byName[side === 'l' ? 'lUpper' : 'rUpper'].body.translation(), ikS);
+  ikDir.subVectors(target, ikS);
+  const dist = THREE.MathUtils.clamp(ikDir.length(), 0.08 * scale, (L1 + L2) * 0.999);
+  ikDir.normalize();
+  const cosA = THREE.MathUtils.clamp((L1 * L1 + dist * dist - L2 * L2) / (2 * L1 * dist), -1, 1);
+  const sinA = Math.sqrt(1 - cosA * cosA);
+  ikPole.copy(pole).addScaledVector(ikDir, -pole.dot(ikDir));
+  if (ikPole.lengthSq() < 1e-8) ikPole.set(0, -1, 0).addScaledVector(ikDir, ikDir.y);
+  ikPole.normalize();
+  ikE.copy(ikS).addScaledVector(ikDir, cosA * L1).addScaledVector(ikPole, sinA * L1);
+  ikU.subVectors(ikE, ikS).normalize();
+  ikF.copy(ikS).addScaledVector(ikDir, dist).sub(ikE).normalize();
+
+  // Upper arm: Y along the bone (pointing back to the shoulder), Z toward where the forearm bends.
+  ikY.copy(ikU).negate();
+  ikZ.copy(ikF).addScaledVector(ikU, -ikF.dot(ikU));
+  if (ikZ.lengthSq() < 1e-6) ikZ.copy(ikPole).negate();
+  ikZ.normalize();
+  ikX.crossVectors(ikY, ikZ).normalize();
+  ikZ.crossVectors(ikX, ikY);
+  outUpper.setFromRotationMatrix(ikM.makeBasis(ikX, ikY, ikZ));
+
+  // Forearm shares the elbow hinge axis.
+  ikY.copy(ikF).negate();
+  ikZ.crossVectors(ikX, ikY).normalize();
+  outFore.setFromRotationMatrix(ikM.makeBasis(ikX, ikY, ikZ));
 }

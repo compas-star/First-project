@@ -100,6 +100,10 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
         break;
     }
   }
+  // Losing balance: the arms go out to catch the fall.
+  if (f.stability < 0.75 && a?.kind !== 'getup') {
+    lerpPose(out, out, withStance(POSES.brace, base), smooth((0.75 - f.stability) / 0.5));
+  }
   // An untrained fighter carries the hands low and wide whatever he does.
   const sloppy = 1 - f.tech;
   if (sloppy > 0) {

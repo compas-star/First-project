@@ -2,7 +2,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import type { FighterParams } from './config';
 import { MOVES, MOVE_BY_ID, FOLLOW, type Move, type Striker } from './moves';
-import { makeFeet, resetFeet, updateFeet, legOverride, type Foot } from './feet';
+import { makeFeet, resetFeet, updateFeet, legOverride, anchorFeet, measureBalance, type Foot } from './feet';
 import { DISCIPLINE_BY_ID, type Discipline, type Stance } from './disciplines';
 import { punchOverride } from './strikes';
 import { POWER_BY_ID, type PowerId } from './powers';
@@ -171,6 +171,16 @@ export class Fighter {
   feet: [Foot, Foot] = makeFeet();
   /** Legs are placed by foot IK (standing), not by the pose. */
   legsIK = false;
+  /** Where the body is heading to come to rest (capture point) and how far it is off the feet. */
+  capture = new THREE.Vector3();
+  balanceErr = 0;
+  /** 0..1 how well balanced; low means the body can tip over. */
+  stability = 1;
+  /** Legs buckle (after a heavy blow) until this world time. */
+  wobbleUntilW = 0;
+  /** Rising from the floor: tilt of the body when the getup began and pelvis height. */
+  getupTilt = new THREE.Quaternion();
+  getupFromY = 0;
   walkPhase = 0;
   groundSpeed = 0;
   combo: Move | null = null;
@@ -311,6 +321,8 @@ const closest = new THREE.Vector3();
 const bestPoint = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const UP = new THREE.Vector3(0, 1, 0);
+const IDENTITY = new THREE.Quaternion();
+const tmpQ2 = new THREE.Quaternion();
 
 const ZONE_NAME: Record<string, string> = { head: 'в голову', body: 'в корпус', arm: 'в руку', leg: 'по ноге' };
 
@@ -496,6 +508,7 @@ export class Sim {
   }
 
   private knockDown(f: Fighter, why: string): void {
+    f.stability = 0;
     f.state = f.hp <= 0 ? 'ko' : 'down';
     f.action = null;
     f.combo = null;
@@ -562,10 +575,15 @@ export class Sim {
           f.state = 'ok';
           f.poise = f.maxPoise;
           f.tone = 0.3;
-          // Face the way the body is lying so it does not spin while standing up.
-          tmpA.set(0, 0, 1).applyQuaternion(q(f.rag.pelvis.body.rotation(), tmpQ));
+          // Rise from the way the body is lying: the target pose starts tilted like the body
+          // and turns upright, facing the enemy, while the hips come up.
+          tmpA.subVectors(f.enemy.pos, f.pos);
           f.facing = Math.atan2(tmpA.x, tmpA.z);
-          this.startAction(f, 'getup', { dur: 0.8 });
+          tmpQ.setFromAxisAngle(UP, f.facing).invert();
+          f.getupTilt.copy(q(f.rag.pelvis.body.rotation(), tmpQ2)).multiply(tmpQ);
+          f.getupFromY = f.rag.pelvis.body.translation().y;
+          f.stability = 1;
+          this.startAction(f, 'getup', { dur: 1.1 });
           f.say('встаю');
         }
       }
@@ -589,7 +607,17 @@ export class Sim {
         }
       }
       updateFeet(f, h * f.body);
-      legOverride(f, this.override);
+      legOverride(f, (PELVIS_Y - f.pose.crouch) * f.scale, this.override);
+      anchorFeet(f, h);
+    }
+    let rootTilt: THREE.Quaternion | undefined;
+    let pelvisY: number | undefined;
+    const ga = f.action;
+    if (f.state === 'ok' && ga?.kind === 'getup') {
+      const k = Math.min(1, ga.t / (ga.dur * 0.85));
+      const e = k * k * (3 - 2 * k);
+      rootTilt = tmpQ2.copy(f.getupTilt).slerp(IDENTITY, e);
+      pelvisY = THREE.MathUtils.lerp(f.getupFromY, (PELVIS_Y - f.pose.crouch) * f.scale, e);
     }
     drive(
       f.rag,
@@ -603,6 +631,12 @@ export class Sim {
         pose: f.pose,
         scale: f.scale,
         boost: f.action?.kind === 'dash' ? 8 : 1,
+        stability: f.state === 'ok' ? f.stability : 1,
+        stanceLegs: standing
+          ? (['lThigh', 'rThigh'] as const).filter((_, i) => !f.feet[i].free && f.feet[i].t < 0)
+          : undefined,
+        rootTilt,
+        pelvisY,
         override: aimed || standing ? this.override : undefined,
         partTone: {
           lUpper: f.broken.lArm ? 0.04 : 1,
@@ -692,6 +726,17 @@ export class Sim {
       return;
     }
 
+    if (f.state === 'ok' && f.action?.kind !== 'getup') {
+      // Balance over the feet: losing it lets the body tip over for real.
+      f.balanceErr = measureBalance(f);
+      const s = f.scale;
+      let want = 1 - THREE.MathUtils.smoothstep(f.balanceErr, 0.12 * s, 0.5 * s);
+      if (this.t < f.wobbleUntilW) want = Math.min(want, 0.12);
+      // A moment off balance (during a step) is nothing; staying off it tips you over.
+      const rate = (want < f.stability ? (this.t < f.wobbleUntilW ? 25 : 3) : 4) * h * f.body;
+      f.stability += THREE.MathUtils.clamp(want - f.stability, -rate, rate);
+      if (f.stability < 0.5 && f.thought !== 'теряю равновесие' && this.rng() < 0.02) f.say('теряю равновесие');
+    }
     if (f.state === 'ok' && f.action?.kind !== 'getup') {
       // Physical loss of balance: the pelvis tips over or sinks to the floor.
       const up = tmpA.copy(UP).applyQuaternion(q(pb.rotation(), tmpQ));
@@ -896,8 +941,15 @@ export class Sim {
 
     const sturdy = Math.sqrt(def.mass / 75) * (stone ? 1.6 : 1);
     const interrupted = !blocked && def.action?.kind === 'attack' && dmg > 3.5 * sturdy;
-    if (def.hp <= 0 || def.poise <= 0) {
+    if (def.hp <= 0) {
       this.knockDown(def, 'сбит с ног');
+    } else if (def.poise <= 0) {
+      // Legs buckle: for a moment he cannot hold himself up, the blow decides where he goes.
+      def.poise = def.maxPoise * 0.5;
+      def.wobbleUntilW = this.t + 0.45 / def.body;
+      def.combo = null;
+      def.action = null;
+      def.say('ноги подкосились');
     } else if (!blocked && dmg > 3.5 * sturdy) {
       def.combo = null;
       this.startAction(def, 'stagger', { dur: (0.2 + dmg / 50) / sturdy });

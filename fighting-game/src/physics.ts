@@ -276,7 +276,26 @@ export interface Drive {
   partTone?: Partial<Record<PartName, number>>;
   /** World orientations that replace the pose for some parts, e.g. an arm aimed by IK. */
   override?: Partial<Record<PartName, THREE.Quaternion>>;
+  /**
+   * 0..1 how well the fighter is balanced over the feet. Below 1 the trunk and
+   * legs stop being held upright in the world and the body can tip over as one
+   * piece; the arms keep working.
+   */
+  stability?: number;
+  /** Extra tilt of the whole target pose, used to rise from lying to standing. */
+  rootTilt?: THREE.Quaternion;
+  /** Pelvis height to hold instead of the pose height (getting up). */
+  pelvisY?: number;
+  /**
+   * Thighs of the legs standing on the floor. Muscles are internal: the torque
+   * that keeps the pelvis upright pushes against these legs, so nothing holds the
+   * body up from outside and it can only stay up with its weight over its feet.
+   */
+  stanceLegs?: PartName[];
 }
+
+const ARMS = new Set<PartName>(['lUpper', 'lFore', 'rUpper', 'rFore']);
+const UP = new THREE.Vector3(0, 1, 0);
 
 function rotErr(target: THREE.Quaternion, cur: THREE.Quaternion, out: THREE.Vector3): THREE.Vector3 {
   // Rotation that takes cur to target, as an axis * angle vector.
@@ -321,7 +340,8 @@ function capped(tau: THREE.Vector3, cap: number): THREE.Vector3 {
 export function drive(r: Ragdoll, d: Drive, h: number): void {
   const t = r.target;
   t.root.position.set(0, 0, 0);
-  t.root.rotation.set(0, d.facing, 0);
+  t.root.quaternion.setFromAxisAngle(UP, d.facing);
+  if (d.rootTilt) t.root.quaternion.premultiply(d.rootTilt);
   t.root.scale.setScalar(1);
   applyPose(t, d.pose);
   t.root.updateMatrixWorld(true);
@@ -333,12 +353,15 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
   const kpL = kp * 0.3 * d.tone;
   const kdL = 2 * w0 * Math.sqrt(0.3 * d.tone);
   const capK = kp * 1.2 * Math.sqrt(d.strength);
-  const stand = d.balance;
+  const balance = d.balance;
+  const stab = d.stability ?? 1;
 
   for (const p of r.parts) {
     const cur = q(p.body.rotation(), tq);
     const w = v(p.body.angvel(), tv);
     const pt = d.partTone?.[p.name] ?? 1;
+    // How much this part is held in the world (standing) versus only relative to its parent.
+    const stand = balance * (ARMS.has(p.name) ? 1 : stab);
     alphaW.set(0, 0, 0);
     if (stand > 0) {
       const ov = d.override?.[p.name];
@@ -362,26 +385,29 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
     p.body.applyTorqueImpulse({ x: alphaW.x, y: alphaW.y, z: alphaW.z }, true);
   }
 
+  const stand = balance * stab;
   if (stand <= 0) return;
 
   // Standing support: a spring that holds the pelvis at the pose height, and
   // walking: pushing toward the desired velocity. Both act on pelvis and chest.
+  // The legs push too (their IK aims for this height), the spring only helps.
   const pb = r.pelvis.body;
   const pos = pb.translation();
   const vel = pb.linvel();
-  const standY = t.pelvis.position.y * d.scale;
+  const standY = d.pelvisY ?? t.pelvis.position.y * d.scale;
   const M = r.totalMass;
   let fy = 0;
   if (pos.y < standY + 0.45 * d.scale) {
     const ws = 2 * Math.PI * 2.5 * s;
     fy = M * (9.81 + ws * ws * (standY - pos.y) - 2 * ws * vel.y);
-    fy = THREE.MathUtils.clamp(fy, 0, M * 9.81 * 2.5 * s * s) * stand;
+    fy = THREE.MathUtils.clamp(fy, 0, M * 9.81 * 2.5 * s * s) * stand * 0.7;
   }
   const boost = d.boost ?? 1;
   const kv = 10 * s * Math.sqrt(boost);
   let fx = M * kv * (d.move.x - vel.x);
   let fz = M * kv * (d.move.z - vel.z);
-  const capA = M * 16 * s * s * boost;
+  // Feet can only push so hard: about half of g, more during a dash.
+  const capA = M * 5 * s * s * boost;
   const fl = Math.hypot(fx, fz);
   if (fl > capA) {
     fx *= capA / fl;
@@ -392,6 +418,34 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
   for (const [b, k] of [[pb, share], [chest.body, 1 - share]] as const) {
     b.applyImpulse({ x: fx * h * stand * k, y: fy * h * k, z: fz * h * stand * k }, true);
   }
+}
+
+/** Holds a planted foot on its spot, like friction and the weight on it would. */
+export function anchorFoot(
+  r: Ragdoll,
+  side: 'l' | 'r',
+  spot: THREE.Vector3,
+  local: THREE.Vector3,
+  scale: number,
+  speed: number,
+  maxForce: number,
+  h: number,
+): void {
+  const shin = r.byName[side === 'l' ? 'lShin' : 'rShin'];
+  const p = partPoint(shin, tv.copy(local).multiplyScalar(scale), tv2);
+  const lv = shin.body.linvel();
+  const w = 2 * Math.PI * 5 * speed;
+  const m = shin.mass * 3;
+  let fx = m * (w * w * (spot.x - p.x) - 2 * w * lv.x);
+  let fz = m * (w * w * (spot.z - p.z) - 2 * w * lv.z);
+  const len = Math.hypot(fx, fz);
+  if (len > maxForce) {
+    fx *= maxForce / len;
+    fz *= maxForce / len;
+  }
+  // Only pull a lifted foot back down, never into the floor.
+  const fy = p.y > spot.y + 0.02 * scale ? -m * w * w * 0.3 * (p.y - spot.y) : 0;
+  shin.body.applyImpulseAtPoint({ x: fx * h, y: fy * h, z: fz * h }, { x: p.x, y: p.y, z: p.z }, true);
 }
 
 /** Copy body transforms onto a visual rig built with the same proportions. */

@@ -326,7 +326,10 @@ export const POSES = {
   dodgeR: { spineSide: 28, spineLean: 18, crouch: 0.2, headPitch: 5 },
   dodgeBack: { spineLean: -18, crouch: 0.12, headPitch: -5 },
   air: { lShF: 120, lShS: 60, lEl: 30, rShF: 110, rShS: 60, rEl: 30, lHipF: 30, rHipF: 10, lKn: 40, rKn: 20 },
-  down: { lShF: 160, lShS: 40, lEl: 20, rShF: 150, rShS: 40, rEl: 20, lHipF: 10, rHipF: -5, lKn: 30, rKn: 10, crouch: 0, headPitch: 0 },
+  /** Lying: loose arms, slightly bent legs. */
+  down: { lShF: 25, lShS: 35, lEl: 35, rShF: 20, rShS: 35, rEl: 30, lHipF: 15, rHipF: 5, lKn: 25, rKn: 15, crouch: 0, headPitch: 0, spineLean: 5 },
+  /** Losing balance: arms thrown out to catch the fall. */
+  brace: { lShF: 95, lShS: 45, lEl: 20, rShF: 95, rShS: 45, rEl: 20, headPitch: -10 },
   parry: { lShF: 95, lShS: 38, lEl: 45, spineTwist: -28, spineLean: 12, rShF: 55, rEl: 120, crouch: 0.1 },
   slamUp: { lShF: 172, rShF: 172, lShS: 18, rShS: 18, lEl: 20, rEl: 20, crouch: 0, spineLean: -12, headPitch: -15 },
   slamDown: { lShF: 75, rShF: 75, lShS: 10, rShS: 10, lEl: 10, rEl: 10, crouch: 0.4, spineLean: 42, headPitch: 20 },

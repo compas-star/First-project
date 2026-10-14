@@ -1,3 +1,5 @@
+import type { PowerId } from './powers';
+
 // Fighter parameters. Everything a fighter can do follows from these numbers:
 // there are no tiers or leagues, a god-like build simply has bigger values.
 
@@ -18,8 +20,12 @@ export interface FighterParams {
   linkMind: boolean;
   /** 0..1, how eager to attack. */
   aggression: number;
-  /** 0..1, how often the right defense is picked when there is time for it. */
+  /**
+   * 0..1 technique. High: keeps distance, steps in with a lunge and out again,
+   * clean punches with the body behind them, tight guard. Low: walks in and swings.
+   */
   skill: number;
+  powers: PowerId[];
 }
 
 export const RED = 0xf0533e;
@@ -37,6 +43,7 @@ export function defaultFighter(team: 0 | 1): FighterParams {
     linkMind: true,
     aggression: 0.6,
     skill: 0.6,
+    powers: [],
   };
 }
 
@@ -55,6 +62,13 @@ export const PRESETS: Preset[] = [
     desc: 'Одинаковые люди. Честная драка.',
     red: {},
     blue: { aggression: 0.5 },
+  },
+  {
+    id: 'technique',
+    name: 'Мастер и драчун',
+    desc: 'Красный: техничный, держит дистанцию. Синий: крупнее и злее, но без техники.',
+    red: { skill: 0.95, aggression: 0.55, weight: 72 },
+    blue: { skill: 0.1, aggression: 0.9, weight: 90, height: 1.86, strength: 1.2 },
   },
   {
     id: 'quick',
@@ -84,11 +98,18 @@ export const PRESETS: Preset[] = [
     red: { height: 4, weight: 700, strength: 8, bodySpeed: 0.7, mindSpeed: 0.7, aggression: 0.5 },
     blue: { height: 1.75, weight: 70, strength: 0.6, bodySpeed: 20, mindSpeed: 20, aggression: 0.75 },
   },
+  {
+    id: 'demigods',
+    name: 'Полубоги',
+    desc: 'Красный: сила ×6, каменная кожа, ударная волна. Синий: скорость ×3, рывок, парирование, регенерация.',
+    red: { strength: 6, weight: 120, height: 2, skill: 0.6, powers: ['stone', 'shockwave'] },
+    blue: { bodySpeed: 3, mindSpeed: 3, strength: 2, skill: 0.85, powers: ['dash', 'parry', 'regen'] },
+  },
 ];
 
 export function applyPreset(p: Preset): [FighterParams, FighterParams] {
   return [
-    { ...defaultFighter(0), ...p.red },
-    { ...defaultFighter(1), ...p.blue },
+    { ...defaultFighter(0), ...p.red, powers: [...(p.red.powers ?? [])] },
+    { ...defaultFighter(1), ...p.blue, powers: [...(p.blue.powers ?? [])] },
   ];
 }

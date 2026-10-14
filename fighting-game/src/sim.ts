@@ -1,7 +1,8 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import type { FighterParams } from './config';
-import type { Move } from './moves';
+import { MOVES, type Move } from './moves';
+import { POWER_BY_ID, type PowerId } from './powers';
 import { react, think } from './ai';
 import { clonePose, STANCE, PELVIS_Y, type Pose } from './rig';
 import { targetPose } from './pose';
@@ -25,7 +26,16 @@ export const G = 9.81;
 export const ARENA_R = 12;
 export const FLOOR_R = 13.5;
 
-export type ActionKind = 'attack' | 'dodge' | 'block' | 'stagger' | 'getup' | 'victory';
+export type ActionKind = 'attack' | 'dodge' | 'block' | 'stagger' | 'getup' | 'victory' | 'parry' | 'dash' | 'slam';
+
+export type Limb = 'lArm' | 'rArm' | 'lLeg' | 'rLeg';
+
+const LIMB_OF_PART: Partial<Record<string, Limb>> = {
+  lUpper: 'lArm', lFore: 'lArm', rUpper: 'rArm', rFore: 'rArm',
+  lThigh: 'lLeg', lShin: 'lLeg', rThigh: 'rLeg', rShin: 'rLeg',
+};
+const LIMB_OF_STRIKER: Record<Move['limb'], Limb> = { lHand: 'lArm', rHand: 'rArm', rFoot: 'rLeg' };
+export const LIMB_NAME: Record<Limb, string> = { lArm: 'левая рука', rArm: 'правая рука', lLeg: 'левая нога', rLeg: 'правая нога' };
 
 export interface Action {
   kind: ActionKind;
@@ -41,6 +51,10 @@ export interface Action {
   hitDone: boolean;
   dir: THREE.Vector3;
   pose?: 'dodgeL' | 'dodgeR' | 'dodgeBack';
+  /** How far an attack steps in during its wind-up, meters. */
+  lunge: number;
+  /** Sloppiness of an untrained fighter: random joint offsets for this swing. */
+  noise: Partial<Pose> | null;
 }
 
 export type FighterState = 'ok' | 'down' | 'ko';
@@ -94,6 +108,17 @@ export class Fighter {
   strikePrev = new THREE.Vector3();
   strikeValid = false;
   koReason = '';
+  /** Damage taken by each limb; past the limit the bone breaks. */
+  limbDmg: Record<Limb, number> = { lArm: 0, rArm: 0, lLeg: 0, rLeg: 0 };
+  broken: Record<Limb, boolean> = { lArm: false, rArm: false, lLeg: false, rLeg: false };
+  headDmg = 0;
+  /** Concussed: perception drops by half until this world time. */
+  dazedUntilW = 0;
+  dazed = false;
+  /** After a clean attack a technical fighter steps back out until this world time. */
+  exitUntilW = 0;
+  /** World time each active power is ready again. */
+  readyAt: Partial<Record<PowerId, number>> = {};
 
   /** Latest decision, shown above the head. */
   thought = '';
@@ -118,7 +143,34 @@ export class Fighter {
   }
 
   get mind(): number {
-    return this.p.linkMind ? this.p.bodySpeed : this.p.mindSpeed;
+    return (this.p.linkMind ? this.p.bodySpeed : this.p.mindSpeed) * (this.dazed ? 0.5 : 1);
+  }
+
+  get tech(): number {
+    return this.p.skill;
+  }
+
+  has(id: PowerId): boolean {
+    return this.p.powers.includes(id);
+  }
+
+  /** Damage a limb takes before the bone breaks. */
+  get limbLimit(): number {
+    return 45 * Math.sqrt(this.mass / 78) * (this.has('stone') ? 2.5 : 1);
+  }
+
+  canUse(m: Move): boolean {
+    return !this.broken[LIMB_OF_STRIKER[m.limb]];
+  }
+
+  /** Length of a move for this fighter in local seconds: poor technique telegraphs. */
+  durOf(m: Move): number {
+    return m.duration * (1 + 0.35 * (1 - this.tech));
+  }
+
+  /** World seconds from starting a move until it can hit. */
+  windupOf(m: Move): number {
+    return (this.durOf(m) * m.active[0]) / this.body;
   }
 
   /** World seconds between seeing an action start and becoming aware of it. */
@@ -132,7 +184,8 @@ export class Fighter {
 
   /** Walking speed in local m/s, longer legs take longer steps. */
   get stride(): number {
-    return 2.6 * Math.sqrt(this.scale);
+    const legs = (this.broken.lLeg ? 0.6 : 1) * (this.broken.rLeg ? 0.6 : 1);
+    return 2.6 * Math.sqrt(this.scale) * legs;
   }
 
   say(text: string): void {
@@ -152,9 +205,12 @@ export interface Crate {
 }
 
 export type SimEvent =
-  | { type: 'hit'; pos: THREE.Vector3; power: number; blocked: boolean; dmg: number; target: Fighter; fromBehind: boolean; zone: string }
+  | { type: 'hit'; pos: THREE.Vector3; power: number; blocked: boolean; dmg: number; target: Fighter; fromBehind: boolean; zone: string; stone: boolean }
   | { type: 'land'; pos: THREE.Vector3; power: number }
-  | { type: 'crash'; pos: THREE.Vector3; power: number };
+  | { type: 'crash'; pos: THREE.Vector3; power: number }
+  | { type: 'wave'; pos: THREE.Vector3; radius: number }
+  | { type: 'break'; pos: THREE.Vector3; target: Fighter; limb: Limb }
+  | { type: 'parry'; pos: THREE.Vector3; target: Fighter };
 
 const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
@@ -281,20 +337,40 @@ export class Sim {
     }
   }
 
-  startAction(f: Fighter, kind: ActionKind, opts: { move?: Move; dur?: number; dir?: THREE.Vector3; pose?: Action['pose'] } = {}): Action {
+  startAction(
+    f: Fighter,
+    kind: ActionKind,
+    opts: { move?: Move; dur?: number; dir?: THREE.Vector3; pose?: Action['pose']; lunge?: number } = {},
+  ): Action {
     const m = opts.move;
-    const dur = m ? m.duration : opts.dur ?? 0.3;
+    const dur = m ? f.durOf(m) : opts.dur ?? 0.3;
+    let noise: Partial<Pose> | null = null;
+    if (m && f.tech < 0.85) {
+      const k = 1 - f.tech;
+      const r = this.rng;
+      noise = {
+        lShS: (r() - 0.3) * 45 * k,
+        rShS: (r() - 0.3) * 45 * k,
+        lEl: r() * 40 * k,
+        rEl: r() * 40 * k,
+        spineTwist: (r() - 0.5) * 30 * k,
+        spineLean: (r() - 0.5) * 16 * k,
+        headPitch: -r() * 18 * k,
+      };
+    }
     const a: Action = {
       kind,
       id: actionSeq++,
       t: 0,
       dur,
       startW: this.t,
-      impactW: m ? this.t + (m.duration * m.active[0]) / f.body : this.t,
+      impactW: m ? this.t + (dur * m.active[0]) / f.body : kind === 'slam' ? this.t + (dur * 0.55) / f.body : this.t,
       move: m,
       hitDone: false,
       dir: opts.dir ? opts.dir.clone() : new THREE.Vector3(),
       pose: opts.pose,
+      lunge: opts.lunge ?? (m ? m.lunge * f.scale : 0),
+      noise,
     };
     f.action = a;
     f.strikeValid = false;
@@ -303,6 +379,22 @@ export class Sim {
 
   attackRange(f: Fighter, m: Move): number {
     return m.reach * f.scale + f.enemy.radius;
+  }
+
+  ready(f: Fighter, id: PowerId): boolean {
+    return f.has(id) && this.t >= (f.readyAt[id] ?? 0);
+  }
+
+  use(f: Fighter, id: PowerId): void {
+    f.readyAt[id] = this.t + POWER_BY_ID[id].cooldown / f.body;
+  }
+
+  waveRadius(f: Fighter): number {
+    return 3.2 * f.scale * (0.7 + 0.3 * Math.sqrt(f.p.strength));
+  }
+
+  usableMoves(f: Fighter): Move[] {
+    return MOVES.filter((m) => f.canUse(m));
   }
 
   private knockDown(f: Fighter, why: string): void {
@@ -318,11 +410,14 @@ export class Sim {
 
   private preStep(f: Fighter, h: number): void {
     const dl = h * f.body;
+    f.dazed = this.t < f.dazedUntilW;
+    if (f.has('regen') && f.state !== 'ko') this.regenerate(f, dl);
     if (f.state === 'ok') {
       const getup = f.action?.kind === 'getup';
       f.balance = Math.min(1, f.balance + dl / (getup ? 0.6 : 0.3));
       f.tone = Math.min(1, f.tone + dl / 0.4);
-      f.poise = Math.min(f.maxPoise, f.poise + 10 * dl);
+      const legs = (f.broken.lLeg ? 0.6 : 1) * (f.broken.rLeg ? 0.6 : 1);
+      f.poise = Math.min(f.maxPoise * legs, f.poise + 10 * dl);
       if (!this.winner) {
         react(f, f.enemy, this);
         if (this.t >= f.nextThinkW) {
@@ -345,7 +440,8 @@ export class Sim {
         const out = f.self.dot(tmpB);
         if (out > 0) f.self.addScaledVector(tmpB, -out * Math.min(1, (r - (ARENA_R - 1.5)) / 1.5));
       }
-      const lockTurn = a?.kind === 'attack' && a.t > a.dur * a.move!.active[0] * 0.5;
+      const lockTurn =
+        (a?.kind === 'attack' && a.t > a.dur * a.move!.active[0] * 0.5) || a?.kind === 'dash';
       if (!lockTurn && a?.kind !== 'victory') {
         tmpA.subVectors(f.enemy.pos, f.pos);
         const want = Math.atan2(tmpA.x, tmpA.z);
@@ -386,9 +482,31 @@ export class Sim {
         move: tmpC.copy(f.self).multiplyScalar(f.body),
         pose: f.pose,
         scale: f.scale,
+        boost: f.action?.kind === 'dash' ? 8 : 1,
+        partTone: {
+          lUpper: f.broken.lArm ? 0.04 : 1,
+          lFore: f.broken.lArm ? 0.04 : 1,
+          rUpper: f.broken.rArm ? 0.04 : 1,
+          rFore: f.broken.rArm ? 0.04 : 1,
+          lThigh: f.broken.lLeg ? 0.45 : 1,
+          lShin: f.broken.lLeg ? 0.3 : 1,
+          rThigh: f.broken.rLeg ? 0.45 : 1,
+          rShin: f.broken.rLeg ? 0.3 : 1,
+        },
       },
       h,
     );
+  }
+
+  private regenerate(f: Fighter, dl: number): void {
+    f.hp = Math.min(f.maxHp, f.hp + 1.2 * dl);
+    for (const l of Object.keys(f.limbDmg) as Limb[]) {
+      f.limbDmg[l] = Math.max(0, f.limbDmg[l] - 3 * dl);
+      if (f.broken[l] && f.limbDmg[l] < f.limbLimit * 0.4) {
+        f.broken[l] = false;
+        f.say(`${LIMB_NAME[l]} срослась`);
+      }
+    }
   }
 
   private postStep(f: Fighter, h: number): void {
@@ -436,10 +554,21 @@ export class Sim {
     switch (a.kind) {
       case 'attack': {
         const m = a.move!;
-        if (u < m.active[0]) f.self.copy(fwd).multiplyScalar((m.lunge * f.scale) / (m.duration * m.active[0]));
+        if (u < m.active[0]) f.self.copy(fwd).multiplyScalar(a.lunge / (a.dur * m.active[0]));
         else f.self.multiplyScalar(Math.max(0, 1 - 20 * dl));
         break;
       }
+      case 'dash':
+        if (u < 0.8) f.self.copy(a.dir).multiplyScalar(f.stride * 5);
+        else f.self.multiplyScalar(Math.max(0, 1 - 25 * dl));
+        break;
+      case 'slam':
+        f.self.multiplyScalar(Math.max(0, 1 - 15 * dl));
+        if (!a.hitDone && u >= 0.55) {
+          a.hitDone = true;
+          this.shockwave(f);
+        }
+        break;
       case 'dodge':
         if (u < 0.7) f.self.copy(a.dir).multiplyScalar(3.4 * Math.sqrt(f.scale));
         else f.self.multiplyScalar(Math.max(0, 1 - 20 * dl));
@@ -451,15 +580,18 @@ export class Sim {
     }
     if (a.t >= a.dur) {
       f.action = null;
-      if (a.kind === 'attack' && f.combo && f.enemy.state === 'ok') {
+      if (a.kind === 'attack' && f.combo && f.enemy.state === 'ok' && f.canUse(f.combo)) {
         const next = f.combo;
         f.combo = null;
         tmpA.subVectors(f.enemy.pos, f.pos).setY(0);
         if (tmpA.length() <= this.attackRange(f, next) + next.lunge * f.scale) {
           this.startAction(f, 'attack', { move: next });
           f.say(`и ${next.name}`);
+          return;
         }
       }
+      // A trained fighter does not stay in the pocket after striking.
+      if (a.kind === 'attack' && f.tech > 0.45) f.exitUntilW = this.t + (0.2 + 0.3 * f.tech) / f.body;
     }
   }
 
@@ -517,26 +649,66 @@ export class Sim {
     const facingAtt = -def.forward(tmpB).dot(dirH);
     const fromBehind = facingAtt < -0.3;
     const zone = part.def.zone;
-    const blocked = def.action?.kind === 'block' && zone === 'arm' && facingAtt > 0;
     const seen = def.handledThreat === actionId;
+    const stone = def.has('stone');
 
     // Impulse: the fist (with the arm and body behind it) at its closing speed, multiplied by muscle.
-    const mEff = 2.5 * (att.mass / 78) * (m.limb === 'rFoot' ? 1.6 : 1);
+    // A clean technique puts the body behind the blow; a wild swing is all arm either way.
+    const mEff =
+      2.5 * (att.mass / 78) * (m.limb === 'rFoot' ? 1.6 : 1) * (m.style === 'clean' ? 0.65 + 0.35 * att.tech : 0.85);
     const J = mEff * closing * (0.6 + 0.8 * att.p.strength);
-    // Damage grows slower than the impulse, so a much faster fighter needs a few blows, not one.
-    let dmg = (9 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
-    if (fromBehind) dmg *= 1.3;
-    if (blocked) dmg *= 0.4;
-    def.hp = Math.max(0, def.hp - dmg);
-    def.poise -= blocked ? dmg * 0.5 : dmg * (zone === 'head' ? 1.4 : 1);
-    att.hits++;
-
     const push = dir.clone().add(dirH).normalize();
     push.y += m.lift * 0.6;
     push.normalize().multiplyScalar(J);
+
+    // Parry: the blow is turned aside and the attacker is left open.
+    if (def.action?.kind === 'parry' && facingAtt > -0.2) {
+      const sp = att.rag.byName[STRIKERS[m.limb].part].body;
+      sp.applyImpulse({ x: -push.x * 0.5, y: Math.abs(push.y) * 0.3, z: -push.z * 0.5 }, true);
+      att.combo = null;
+      this.startAction(att, 'stagger', { dur: 0.55 });
+      def.action = null;
+      def.say('парировал!');
+      att.say('парировали!');
+      this.events.push({ type: 'parry', pos: at, target: def });
+      return;
+    }
+
+    const blocked = def.action?.kind === 'block' && zone === 'arm' && facingAtt > 0;
+    // Damage grows slower than the impulse, so a much faster fighter needs a few blows, not one.
+    let dmg = (13 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
+    // A well placed blow lands on the point, a wild one spreads its force.
+    dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
+    if (fromBehind) dmg *= 1.3;
+    if (blocked) dmg *= 0.4;
+    if (stone) {
+      dmg *= 0.45;
+      push.multiplyScalar(0.6);
+    }
+    def.hp = Math.max(0, def.hp - dmg);
+    def.poise -= blocked ? dmg * 0.5 : dmg * (zone === 'head' ? 1.4 : 1);
+    att.hits++;
     part.body.applyImpulseAtPoint({ x: push.x, y: push.y, z: push.z }, { x: at.x, y: at.y, z: at.z }, true);
 
-    const sturdy = Math.sqrt(def.mass / 75);
+    // Limbs take damage of their own and can break; the head can be concussed.
+    const limb = LIMB_OF_PART[part.name];
+    if (limb) {
+      def.limbDmg[limb] += (dmg / part.def.dmg) * 0.5;
+      if (!def.broken[limb] && def.limbDmg[limb] > def.limbLimit) {
+        def.broken[limb] = true;
+        this.events.push({ type: 'break', pos: at.clone(), target: def, limb });
+        if (def.action?.kind === 'attack' && !def.canUse(def.action.move!)) def.action = null;
+        if (def.combo && !def.canUse(def.combo)) def.combo = null;
+      }
+    } else if (zone === 'head' && !blocked) {
+      def.headDmg += dmg;
+      if (dmg > 10 || def.headDmg > 30) {
+        def.headDmg = 0;
+        def.dazedUntilW = this.t + (1.2 + dmg * 0.05) / def.body;
+      }
+    }
+
+    const sturdy = Math.sqrt(def.mass / 75) * (stone ? 1.6 : 1);
     const interrupted = !blocked && def.action?.kind === 'attack' && dmg > 3.5 * sturdy;
     if (def.hp <= 0 || def.poise <= 0) {
       this.knockDown(def, 'сбит с ног');
@@ -550,6 +722,10 @@ export class Sim {
       def.koReason = 'нокаут';
       def.say('нокаут');
       att.combo = null;
+    } else if (limb && def.broken[limb] && def.limbDmg[limb] - (dmg / part.def.dmg) * 0.5 <= def.limbLimit) {
+      def.say(`сломана ${LIMB_NAME[limb]}`);
+    } else if (this.t < def.dazedUntilW && zone === 'head') {
+      def.say('поплыл');
     } else if (blocked) {
       def.say('держу блок');
     } else if (interrupted) {
@@ -560,8 +736,48 @@ export class Sim {
 
     this.events.push({
       type: 'hit', pos: at, power: (J / def.mass) * 4, blocked, dmg, target: def, fromBehind,
-      zone: ZONE_NAME[zone],
+      zone: ZONE_NAME[zone], stone,
     });
+  }
+
+  /** Ground slam: throws everything around outward and up. */
+  private shockwave(f: Fighter): void {
+    const R = this.waveRadius(f);
+    const k = Math.sqrt(f.p.strength);
+    this.events.push({ type: 'wave', pos: f.pos.clone(), radius: R });
+    const e = f.enemy;
+    const dist = Math.hypot(e.pos.x - f.pos.x, e.pos.z - f.pos.z);
+    if (dist < R && e.state !== 'ko') {
+      const fall = 1 - dist / R;
+      const stone = e.has('stone');
+      const dv = (2.5 + 2.5 * k) * fall * (stone ? 0.6 : 1);
+      const out = tmpA.subVectors(e.pos, f.pos).setY(0).normalize();
+      for (const p of e.rag.parts) {
+        p.body.applyImpulse({ x: out.x * p.mass * dv * 0.8, y: p.mass * dv * 0.6, z: out.z * p.mass * dv * 0.8 }, true);
+      }
+      const dmg = 7 * k * fall * (stone ? 0.45 : 1);
+      e.hp = Math.max(0, e.hp - dmg);
+      this.events.push({
+        type: 'hit', pos: e.pos.clone().setY(1), power: dv * 2, blocked: false, dmg, target: e,
+        fromBehind: false, zone: 'волной', stone,
+      });
+      if (e.hp <= 0 && !this.winner) {
+        this.winner = f;
+        e.koReason = 'нокаут';
+      }
+      if (dv > 3 || e.hp <= 0) this.knockDown(e, 'сбит волной');
+    }
+    for (const c of this.crates) {
+      if (c.gone) continue;
+      const cp = c.body.translation();
+      const cd = Math.hypot(cp.x - f.pos.x, cp.z - f.pos.z);
+      if (cd > R * 1.3) continue;
+      const fall = 1 - cd / (R * 1.3);
+      const dv = (3 + 3 * k) * fall;
+      const m = c.body.mass();
+      c.body.applyImpulse({ x: ((cp.x - f.pos.x) / Math.max(cd, 0.1)) * m * dv, y: m * dv * 0.7, z: ((cp.z - f.pos.z) / Math.max(cd, 0.1)) * m * dv }, true);
+      c.body.applyTorqueImpulse({ x: (this.rng() - 0.5) * m * dv * 0.3, y: 0, z: (this.rng() - 0.5) * m * dv * 0.3 }, true);
+    }
   }
 
   private onContact(h1: number, h2: number): void {

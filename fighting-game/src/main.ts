@@ -1,7 +1,8 @@
 import './style.css';
 import { PRESETS, applyPreset, defaultFighter, type FighterParams } from './config';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { Sim } from './sim';
+import { Sim, LIMB_NAME, type Limb } from './sim';
+import { POWERS } from './powers';
 import { View } from './view';
 
 type Eyes = 'fastest' | 'red' | 'blue' | 'real';
@@ -22,8 +23,8 @@ function load(): [FighterParams, FighterParams] {
     if (raw) {
       const [a, b] = JSON.parse(raw) as [Partial<FighterParams>, Partial<FighterParams>];
       return [
-        { ...defaultFighter(0), ...a },
-        { ...defaultFighter(1), ...b },
+        { ...defaultFighter(0), ...a, powers: [...(a.powers ?? [])] },
+        { ...defaultFighter(1), ...b, powers: [...(b.powers ?? [])] },
       ];
     }
   } catch {
@@ -93,10 +94,17 @@ function updateHud(): void {
     $(`hpn${i}`).textContent = Math.ceil(f.hp).toString();
     $(`n${i}`).textContent = f.p.name;
     $(`s${i}`).innerHTML =
-      `тело <b>×${fmt(f.body)}</b> ум <b>×${fmt(f.mind)}</b><br>на экране <b>×${fmt(f.body * viewScale)}</b>`;
+      `тело <b>×${fmt(f.body)}</b> ум <b>×${fmt(f.mind)}</b><br>на экране <b>×${fmt(f.body * viewScale)}</b>` +
+      injuries(f);
   });
   $('clock').textContent = `×${viewScale >= 0.1 ? viewScale.toFixed(2) : viewScale.toFixed(3)}`;
   $('eyesLabel').textContent = eyesCaption();
+}
+
+function injuries(f: Sim['fighters'][number]): string {
+  const list = (Object.keys(f.broken) as Limb[]).filter((l) => f.broken[l]).map((l) => `перелом: ${LIMB_NAME[l]}`);
+  if (f.dazed) list.unshift('поплыл');
+  return list.length ? `<br><span class="hurt">${list.join('<br>')}</span>` : '';
 }
 
 function showKo(): void {
@@ -169,7 +177,7 @@ const SLIDERS: SliderDef[] = [
   { key: 'bodySpeed', label: 'Скорость тела', hint: 'Как быстро двигаются руки, ноги и всё тело.', min: 0.3, max: 50, log: true, unit: (v) => `×${fmt(v)}`, live: true },
   { key: 'mindSpeed', label: 'Скорость восприятия', hint: 'Как рано замечает замах и как часто думает.', min: 0.3, max: 50, log: true, unit: (v) => `×${fmt(v)}`, live: true },
   { key: 'aggression', label: 'Агрессия', hint: 'Атаковать или ждать момента.', min: 0, max: 1, step: 0.01, unit: (v) => `${Math.round(v * 100)}%`, live: true },
-  { key: 'skill', label: 'Техника', hint: 'Насколько верно выбирает защиту.', min: 0, max: 1, step: 0.01, unit: (v) => `${Math.round(v * 100)}%`, live: true },
+  { key: 'skill', label: 'Техника', hint: 'Высокая: держит дистанцию, входит выпадом и выходит, бьёт чисто. Низкая: лезет вплотную и машет.', min: 0, max: 1, step: 0.01, unit: (v) => `${Math.round(v * 100)}%`, live: true },
 ];
 
 let tab: 0 | 1 = 0;
@@ -230,6 +238,26 @@ function renderForm(): void {
       save();
     });
   }
+
+  addTitle('Сверхсилы · меняются сразу');
+  const chips = document.createElement('div');
+  chips.className = 'powers';
+  for (const pw of POWERS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `power${p.powers.includes(pw.id) ? ' on' : ''}`;
+    b.setAttribute('aria-pressed', String(p.powers.includes(pw.id)));
+    b.innerHTML = `<b>${pw.name}</b><span>${pw.desc}</span>`;
+    b.addEventListener('click', () => {
+      const i = p.powers.indexOf(pw.id);
+      if (i >= 0) p.powers.splice(i, 1);
+      else p.powers.push(pw.id);
+      save();
+      renderForm();
+    });
+    chips.appendChild(b);
+  }
+  form.appendChild(chips);
 }
 
 function renderPresets(): void {

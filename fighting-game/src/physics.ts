@@ -59,7 +59,7 @@ const PARTS: PartDef[] = [
   {
     name: 'lUpper', key: 'lSh', parent: 'chest', share: 0.03,
     shapes: [{ kind: 'capsule', r: 0.055, hh: 0.09, at: [0, -0.145, 0], share: 1 }],
-    hit: { a: [0, 0, 0], b: [0, -0.29, 0], r: 0.06 }, dmg: 0.35, zone: 'arm',
+    hit: { a: [0, 0, 0], b: [0, -0.29, 0], r: 0.06 }, dmg: 0.45, zone: 'arm',
   },
   {
     name: 'lFore', key: 'lEl', parent: 'lUpper', share: 0.025,
@@ -67,12 +67,12 @@ const PARTS: PartDef[] = [
       { kind: 'capsule', r: 0.045, hh: 0.08, at: [0, -0.125, 0], share: 0.7 },
       { kind: 'ball', r: 0.062, at: [0, -0.29, 0], share: 0.3 },
     ],
-    hit: { a: [0, 0, 0], b: [0, -0.29, 0], r: 0.06 }, dmg: 0.3, zone: 'arm',
+    hit: { a: [0, 0, 0], b: [0, -0.29, 0], r: 0.06 }, dmg: 0.4, zone: 'arm',
   },
   {
     name: 'rUpper', key: 'rSh', parent: 'chest', share: 0.03,
     shapes: [{ kind: 'capsule', r: 0.055, hh: 0.09, at: [0, -0.145, 0], share: 1 }],
-    hit: { a: [0, 0, 0], b: [0, -0.29, 0], r: 0.06 }, dmg: 0.35, zone: 'arm',
+    hit: { a: [0, 0, 0], b: [0, -0.29, 0], r: 0.06 }, dmg: 0.45, zone: 'arm',
   },
   {
     name: 'rFore', key: 'rEl', parent: 'rUpper', share: 0.025,
@@ -80,7 +80,7 @@ const PARTS: PartDef[] = [
       { kind: 'capsule', r: 0.045, hh: 0.08, at: [0, -0.125, 0], share: 0.7 },
       { kind: 'ball', r: 0.062, at: [0, -0.29, 0], share: 0.3 },
     ],
-    hit: { a: [0, 0, 0], b: [0, -0.29, 0], r: 0.06 }, dmg: 0.3, zone: 'arm',
+    hit: { a: [0, 0, 0], b: [0, -0.29, 0], r: 0.06 }, dmg: 0.4, zone: 'arm',
   },
   {
     name: 'lThigh', key: 'lHip', parent: 'pelvis', share: 0.11,
@@ -265,6 +265,10 @@ export interface Drive {
   move: THREE.Vector3;
   pose: Pose;
   scale: number;
+  /** Multiplier on how hard the legs can push (a dash). */
+  boost?: number;
+  /** Per-part multiplier on muscle strength, e.g. a broken arm hangs limp. */
+  partTone?: Partial<Record<PartName, number>>;
 }
 
 function rotErr(target: THREE.Quaternion, cur: THREE.Quaternion, out: THREE.Vector3): THREE.Vector3 {
@@ -327,10 +331,11 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
   for (const p of r.parts) {
     const cur = q(p.body.rotation(), tq);
     const w = v(p.body.angvel(), tv);
+    const pt = d.partTone?.[p.name] ?? 1;
     alphaW.set(0, 0, 0);
     if (stand > 0) {
       t[p.key].getWorldQuaternion(want);
-      rotErr(want, cur, alphaW).multiplyScalar(kp).addScaledVector(w, -kd).multiplyScalar(stand);
+      rotErr(want, cur, alphaW).multiplyScalar(kp).addScaledVector(w, -kd).multiplyScalar(stand * pt);
     }
     let Ibar = inertiaTimes(p.body, alphaW, alphaW);
     capped(alphaW, Ibar * capK);
@@ -338,7 +343,7 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
       const pq = q(p.parent.body.rotation(), tq2);
       want.copy(pq).multiply(t[p.key].quaternion);
       const wp = v(p.parent.body.angvel(), tv2);
-      rotErr(want, cur, alphaR).multiplyScalar(kpL).addScaledVector(w.sub(wp), -kdL).multiplyScalar(1 - stand);
+      rotErr(want, cur, alphaR).multiplyScalar(kpL).addScaledVector(w.sub(wp), -kdL).multiplyScalar((1 - stand) * pt);
       Ibar = inertiaTimes(p.body, alphaR, alphaR);
       capped(alphaR, Ibar * capK).multiplyScalar(h);
       p.parent.body.applyTorqueImpulse({ x: -alphaR.x, y: -alphaR.y, z: -alphaR.z }, true);
@@ -363,10 +368,11 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
     fy = M * (9.81 + ws * ws * (standY - pos.y) - 2 * ws * vel.y);
     fy = THREE.MathUtils.clamp(fy, 0, M * 9.81 * 2.5 * s * s) * stand;
   }
-  const kv = 10 * s;
+  const boost = d.boost ?? 1;
+  const kv = 10 * s * Math.sqrt(boost);
   let fx = M * kv * (d.move.x - vel.x);
   let fz = M * kv * (d.move.z - vel.z);
-  const capA = M * 16 * s * s;
+  const capA = M * 16 * s * s * boost;
   const fl = Math.hypot(fx, fz);
   if (fl > capA) {
     fx *= capA / fl;

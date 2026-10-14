@@ -29,6 +29,8 @@ export interface Move {
   /** How the target should dodge it. */
   dodge: 'side' | 'back';
   weight: number;
+  /** Clean technique, or a wild swing that needs no training. */
+  style: 'clean' | 'wild';
   keys: Keyframe[];
 }
 
@@ -49,6 +51,7 @@ export const MOVES: Move[] = [
     limb: 'lHand',
     dodge: 'side',
     weight: 3,
+    style: 'clean',
     keys: [
       { t: 0, pose: guard },
       { t: 0.25, pose: { lShF: 70, lEl: 80, spineTwist: -18 } },
@@ -71,6 +74,7 @@ export const MOVES: Move[] = [
     limb: 'rHand',
     dodge: 'side',
     weight: 2,
+    style: 'clean',
     keys: [
       { t: 0, pose: guard },
       { t: 0.28, pose: { rShF: 50, rEl: 110, spineTwist: -20, crouch: 0.09 } },
@@ -93,6 +97,7 @@ export const MOVES: Move[] = [
     limb: 'lHand',
     dodge: 'back',
     weight: 1.5,
+    style: 'clean',
     keys: [
       { t: 0, pose: guard },
       { t: 0.3, pose: { lShF: 45, lShS: 55, lEl: 85, spineTwist: -40, crouch: 0.1 } },
@@ -115,6 +120,7 @@ export const MOVES: Move[] = [
     limb: 'rHand',
     dodge: 'back',
     weight: 1,
+    style: 'clean',
     keys: [
       { t: 0, pose: guard },
       { t: 0.32, pose: { crouch: 0.22, rShF: 10, rEl: 100, spineLean: 24, spineTwist: 12, rShS: 10 } },
@@ -137,6 +143,7 @@ export const MOVES: Move[] = [
     limb: 'rFoot',
     dodge: 'side',
     weight: 1.2,
+    style: 'clean',
     keys: [
       { t: 0, pose: guard },
       { t: 0.3, pose: { rHipF: 85, rKn: 105, spineLean: -4, lKn: 16, crouch: 0.04 } },
@@ -160,11 +167,59 @@ export const MOVES: Move[] = [
     limb: 'rFoot',
     dodge: 'back',
     weight: 0.8,
+    style: 'clean',
     keys: [
       { t: 0, pose: guard },
       { t: 0.3, pose: { rHipF: 55, rHipS: 45, rKn: 115, pelvisTwist: 40, spineSide: 12, spineTwist: -10 } },
       { t: 0.55, pose: { rHipF: 60, rHipS: 75, rKn: 8, pelvisTwist: 80, spineSide: 28, spineTwist: -40, lShS: 40, rShS: 50 } },
       { t: 0.7, pose: { rHipF: 55, rHipS: 70, rKn: 15, pelvisTwist: 85, spineSide: 26, spineTwist: -40 } },
+      { t: 1, pose: guard },
+    ],
+  },
+  {
+    id: 'haymaker',
+    name: 'размашистый',
+    duration: 0.8,
+    active: [0.5, 0.7],
+    reach: 0.5,
+    arc: 70,
+    lunge: 0.15,
+    power: 2.4,
+    knock: 2,
+    lift: 0.1,
+    limb: 'rHand',
+    dodge: 'back',
+    weight: 1.6,
+    style: 'wild',
+    keys: [
+      { t: 0, pose: guard },
+      { t: 0.38, pose: { rShF: 35, rShS: 85, rEl: 45, spineTwist: -45, spineLean: -4, lShF: 40, lEl: 60 } },
+      { t: 0.6, pose: { rShF: 88, rShS: 35, rEl: 35, spineTwist: 48, spineLean: 18, pelvisTwist: 15, lShF: 30, lEl: 40 } },
+      { t: 0.75, pose: { rShF: 80, rShS: 10, rEl: 40, spineTwist: 55, spineLean: 20, pelvisTwist: 18 } },
+      { t: 1, pose: guard },
+    ],
+  },
+  {
+    id: 'flail',
+    name: 'машет руками',
+    duration: 0.62,
+    active: [0.3, 0.85],
+    reach: 0.48,
+    arc: 60,
+    lunge: 0.25,
+    power: 1.1,
+    knock: 1,
+    lift: 0,
+    limb: 'lHand',
+    dodge: 'back',
+    weight: 1.4,
+    style: 'wild',
+    keys: [
+      { t: 0, pose: guard },
+      { t: 0.22, pose: { lShF: 155, lShS: 20, lEl: 40, rShF: 60, rEl: 50, spineLean: 6 } },
+      { t: 0.42, pose: { lShF: 55, lShS: 10, lEl: 25, rShF: 155, rShS: 20, rEl: 40, spineLean: 18, spineTwist: 15 } },
+      { t: 0.62, pose: { lShF: 150, lShS: 20, lEl: 40, rShF: 55, rEl: 25, spineLean: 18, spineTwist: -15 } },
+      { t: 0.8, pose: { lShF: 60, lEl: 25, rShF: 140, rEl: 40, spineLean: 14 } },
       { t: 1, pose: guard },
     ],
   },
@@ -181,6 +236,12 @@ export const POSES = {
   dodgeBack: { spineLean: -18, crouch: 0.12, headPitch: -5 },
   air: { lShF: 120, lShS: 60, lEl: 30, rShF: 110, rShS: 60, rEl: 30, lHipF: 30, rHipF: 10, lKn: 40, rKn: 20 },
   down: { lShF: 160, lShS: 40, lEl: 20, rShF: 150, rShS: 40, rEl: 20, lHipF: 10, rHipF: -5, lKn: 30, rKn: 10, crouch: 0, headPitch: 0 },
+  parry: { lShF: 95, lShS: 38, lEl: 45, spineTwist: -28, spineLean: 12, rShF: 55, rEl: 120, crouch: 0.1 },
+  slamUp: { lShF: 172, rShF: 172, lShS: 18, rShS: 18, lEl: 20, rEl: 20, crouch: 0, spineLean: -12, headPitch: -15 },
+  slamDown: { lShF: 75, rShF: 75, lShS: 10, rShS: 10, lEl: 10, rEl: 10, crouch: 0.4, spineLean: 42, headPitch: 20 },
+  dash: { spineLean: 32, crouch: 0.18, lShF: 20, rShF: 20, lShS: 25, rShS: 25, lEl: 40, rEl: 40 },
+  /** Guard of someone who never trained: hands low and wide, chin up. */
+  sloppy: { lShF: 32, lShS: 26, lEl: 70, rShF: 28, rShS: 26, rEl: 80, spineLean: 3, crouch: 0.02, pelvisTwist: -4, spineTwist: -3, headPitch: 2 },
   victory: { lShF: 170, lShS: 22, lEl: 12, rShF: 170, rShS: 22, rEl: 12, crouch: 0, spineLean: -8, headPitch: -12, pelvisTwist: 0, spineTwist: 0 },
 } satisfies Record<string, Partial<Pose>>;
 

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildRig, rigNodes, type Rig } from './rig';
 import { syncRig, v, q } from './physics';
-import { ARENA_R, FLOOR_R, type Fighter, type Sim } from './sim';
+import { ARENA_R, FLOOR_R, LIMB_NAME, type Fighter, type Limb, type Sim } from './sim';
 
 // Rendering: the arena, fighters and effects. Effects run partly on real time
 // (afterimages, labels) and partly on world time (sparks), so a slowed-down
@@ -64,6 +64,8 @@ class FighterView {
   lastThink = 0;
   bubble: HTMLDivElement;
   bubbleAge = 9;
+  private shownBroken: Record<Limb, boolean> = { lArm: false, rArm: false, lLeg: false, rLeg: false };
+  private hurtMat: THREE.MeshStandardMaterial;
   lastThought = -1;
 
   constructor(
@@ -72,6 +74,10 @@ class FighterView {
     labels: HTMLElement,
   ) {
     this.rig = buildRig(f.p.color, f.girth);
+    this.hurtMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(f.p.color).multiplyScalar(0.35).lerp(new THREE.Color(0x5a2a6a), 0.5),
+      roughness: 0.8,
+    });
     this.nodes = rigNodes(this.rig);
     scene.add(this.rig.root);
 
@@ -113,12 +119,14 @@ class FighterView {
     const f = this.f;
     const r = this.rig.root;
     syncRig(f.rag, this.rig, f.scale);
+    this.showInjuries();
     r.updateMatrixWorld(true);
 
     // Afterimages appear when the fighter looks faster than a normal person.
-    const moving = f.groundSpeed > 1 || f.action?.kind === 'attack' || f.action?.kind === 'dodge';
+    const kind = f.action?.kind;
+    const moving = f.groundSpeed > 1 || kind === 'attack' || kind === 'dodge';
     this.ghostTimer -= realDt;
-    if (apparent > 1.8 && moving && this.ghostTimer <= 0) {
+    if (((apparent > 1.8 && moving) || kind === 'dash') && this.ghostTimer <= 0) {
       this.ghostTimer = 0.03;
       const g = this.ghosts.reduce((a, b) => (b.age > a.age ? b : a));
       for (let i = 0; i < this.nodes.length; i++) {
@@ -154,6 +162,26 @@ class FighterView {
       this.bubbleAge = 0;
     }
     this.bubbleAge += realDt;
+  }
+
+  /** A broken limb turns dark, so it is clear why it hangs. */
+  private showInjuries(): void {
+    const groups: Record<Limb, THREE.Object3D> = {
+      lArm: this.rig.lSh, rArm: this.rig.rSh, lLeg: this.rig.lHip, rLeg: this.rig.rHip,
+    };
+    for (const l of Object.keys(groups) as Limb[]) {
+      if (this.f.broken[l] === this.shownBroken[l]) continue;
+      this.shownBroken[l] = this.f.broken[l];
+      groups[l].traverse((o) => {
+        if (!(o instanceof THREE.Mesh)) return;
+        if (this.f.broken[l]) {
+          o.userData.mat ??= o.material;
+          o.material = this.hurtMat;
+        } else if (o.userData.mat) {
+          o.material = o.userData.mat;
+        }
+      });
+    }
   }
 
   headPoint(out: THREE.Vector3): THREE.Vector3 {
@@ -329,7 +357,7 @@ export class View {
     for (const ev of sim.events) {
       if (ev.type === 'hit') {
         const n = Math.min(70, Math.round(8 + ev.power * 5));
-        const col = ev.blocked ? new THREE.Color(0x9fc4ff) : new THREE.Color(0xffd27a);
+        const col = new THREE.Color(ev.stone ? 0xb9b4aa : ev.blocked ? 0x9fc4ff : 0xffd27a);
         this.burst(ev.pos, n, 1.5 + ev.power * 0.7, col, 0.35);
         if (ev.power > 3.5) this.wave(ev.target.pos, Math.min(9, ev.power * 0.5));
         this.shake = Math.max(this.shake, Math.min(0.35, ev.power * 0.025));
@@ -338,8 +366,20 @@ export class View {
         this.burst(ev.pos.clone().setY(0.1), Math.min(60, 10 + ev.power * 3), 1 + ev.power * 0.25, new THREE.Color(0x8b93a6), 0.6);
         if (ev.power > 6) this.wave(ev.pos, Math.min(8, ev.power * 0.35));
         this.shake = Math.max(this.shake, Math.min(0.3, ev.power * 0.02));
-      } else {
+      } else if (ev.type === 'crash') {
         this.burst(ev.pos, Math.min(50, 8 + ev.power * 2), 1 + ev.power * 0.3, new THREE.Color(0xc79a62), 0.6);
+      } else if (ev.type === 'wave') {
+        this.wave(ev.pos, ev.radius);
+        this.wave(ev.pos, ev.radius * 0.6);
+        this.burst(ev.pos.clone().setY(0.15), 70, 4 + ev.radius, new THREE.Color(0xd9c8a0), 0.7);
+        this.shake = Math.max(this.shake, 0.4);
+      } else if (ev.type === 'break') {
+        this.burst(ev.pos, 30, 3, new THREE.Color(0xff5a4a), 0.5);
+        this.pop(ev.pos.clone().setY(ev.pos.y + 0.3), `перелом: ${LIMB_NAME[ev.limb]}`, ev.target.team);
+        this.shake = Math.max(this.shake, 0.2);
+      } else {
+        this.burst(ev.pos, 26, 2.5, new THREE.Color(0x7ff0ff), 0.35);
+        this.pop(ev.pos, 'парирование', ev.target.team);
       }
     }
     sim.events.length = 0;

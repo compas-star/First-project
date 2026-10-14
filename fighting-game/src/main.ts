@@ -1,5 +1,6 @@
 import './style.css';
 import { PRESETS, applyPreset, defaultFighter, type FighterParams } from './config';
+import RAPIER from '@dimforge/rapier3d-compat';
 import { Sim } from './sim';
 import { View } from './view';
 
@@ -51,6 +52,7 @@ const view = new View($('scene'), $('labels'));
 
 function startFight(): void {
   // Fighters keep a reference to these objects, so speed and strength sliders act live.
+  sim?.dispose();
   sim = new Sim(params[0], params[1], (Math.random() * 1e9) | 0);
   view.setSim(sim);
   koShownAt = -1;
@@ -103,9 +105,11 @@ function showKo(): void {
   $('koTitle').textContent = `Нокаут. Победил ${w.p.name}`;
   $('koStats').innerHTML = [
     `Бой длился <b>${sim.t.toFixed(2)} с</b> реального времени`,
+    l.koReason === 'вылетел с арены' ? `${l.p.name} вылетел с арены` : '',
     `Попаданий: ${w.p.name} <b>${w.hits}</b>, ${l.p.name} <b>${l.hits}</b>`,
     `У победителя осталось <b>${Math.ceil(w.hp)}</b> здоровья`,
   ]
+    .filter(Boolean)
     .map((s) => `<div>${s}</div>`)
     .join('');
   $('ko').hidden = false;
@@ -123,8 +127,8 @@ function frame(now: number): void {
 
   let worldDt = 0;
   if (!paused) {
-    worldDt = realDt * viewScale;
-    sim.advance(worldDt);
+    // On a slow phone the physics may not keep up; then time simply runs slower.
+    worldDt = sim.advance(realDt * viewScale);
   }
 
   if (sim.winner && koShownAt < 0) {
@@ -290,6 +294,9 @@ window.addEventListener('resize', resize);
 new ResizeObserver(resize).observe($('scene'));
 
 renderPresets();
-startFight();
-resize();
-requestAnimationFrame(frame);
+RAPIER.init().then(() => {
+  startFight();
+  resize();
+  last = performance.now();
+  requestAnimationFrame(frame);
+});

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { buildRig, applyPose, rigNodes, clonePose, lerpPose, STANCE, type Pose, type Rig } from './rig';
-import { POSES, sampleMove, withStance } from './moves';
+import { buildRig, rigNodes, type Rig } from './rig';
+import { syncRig, v, q } from './physics';
 import { ARENA_R, FLOOR_R, type Fighter, type Sim } from './sim';
 
 // Rendering: the arena, fighters and effects. Effects run partly on real time
@@ -57,8 +57,6 @@ function floorTexture(): THREE.CanvasTexture {
 class FighterView {
   rig: Rig;
   nodes: THREE.Object3D[];
-  pose: Pose = clonePose(STANCE);
-  tmpPose: Pose = clonePose(STANCE);
   ghosts: { root: THREE.Object3D; nodes: THREE.Object3D[]; mat: THREE.MeshBasicMaterial; age: number }[] = [];
   ghostTimer = 0;
   ring: THREE.Mesh;
@@ -111,71 +109,14 @@ class FighterView {
     labels.appendChild(this.bubble);
   }
 
-  computePose(): Pose {
-    const f = this.f;
-    const out = this.pose;
-    const a = f.action;
-    if (f.state === 'air') {
-      lerpPose(out, STANCE, withStance(POSES.air), smooth(f.airT * 6));
-      out.bodyTilt = Math.min(85, f.airT * 280);
-      out.crouch = 0;
-      return out;
-    }
-    if (f.state === 'down' || f.state === 'ko') {
-      Object.assign(out, withStance(POSES.down));
-      out.bodyTilt = 90;
-      return out;
-    }
-    Object.assign(out, STANCE);
-    if (!a || a.kind === 'block') {
-      const amp = Math.min(1, f.self.length() / (f.stride * 0.6));
-      const s = Math.sin(f.walkPhase);
-      out.lHipF += 26 * s * amp;
-      out.rHipF -= 26 * s * amp;
-      out.lKn += Math.max(0, -s) * 45 * amp;
-      out.rKn += Math.max(0, s) * 45 * amp;
-      out.lShF -= 8 * s * amp;
-      out.rShF += 8 * s * amp;
-    }
-    if (!a) return out;
-    const u = a.t / a.dur;
-    switch (a.kind) {
-      case 'attack':
-        sampleMove(a.move!, u, out);
-        break;
-      case 'block':
-        lerpPose(out, out, withStance(POSES.block), smooth(u * 8));
-        break;
-      case 'dodge':
-        lerpPose(out, out, withStance(POSES[a.pose ?? 'dodgeBack']), smooth(Math.min(u * 5, (1 - u) * 3)));
-        break;
-      case 'stagger':
-        lerpPose(out, out, withStance(POSES.stagger), smooth(Math.min(u * 6, (1 - u) * 2.5)));
-        break;
-      case 'getup': {
-        const down = withStance(POSES.down);
-        down.bodyTilt = 90;
-        lerpPose(out, down, STANCE, smooth(u));
-        break;
-      }
-      case 'victory':
-        lerpPose(out, out, withStance(POSES.victory), smooth(u * 3));
-        break;
-    }
-    return out;
-  }
-
   update(realDt: number, apparent: number): void {
     const f = this.f;
     const r = this.rig.root;
-    r.position.copy(f.pos);
-    r.rotation.y = f.facing;
-    r.scale.setScalar(f.scale);
-    applyPose(this.rig, this.computePose());
+    syncRig(f.rag, this.rig, f.scale);
     r.updateMatrixWorld(true);
 
     // Afterimages appear when the fighter looks faster than a normal person.
-    const moving = f.self.length() * f.body > 1 || f.action?.kind === 'attack' || f.action?.kind === 'dodge';
+    const moving = f.groundSpeed > 1 || f.action?.kind === 'attack' || f.action?.kind === 'dodge';
     this.ghostTimer -= realDt;
     if (apparent > 1.8 && moving && this.ghostTimer <= 0) {
       this.ghostTimer = 0.03;
@@ -392,7 +333,7 @@ export class View {
         this.burst(ev.pos, n, 1.5 + ev.power * 0.7, col, 0.35);
         if (ev.power > 3.5) this.wave(ev.target.pos, Math.min(9, ev.power * 0.5));
         this.shake = Math.max(this.shake, Math.min(0.35, ev.power * 0.025));
-        this.pop(ev.pos, ev.blocked ? `блок −${ev.dmg.toFixed(1)}` : `−${ev.dmg.toFixed(1)}${ev.fromBehind ? ' в спину' : ''}`, ev.target.team);
+        this.pop(ev.pos, ev.blocked ? `блок −${ev.dmg.toFixed(1)}` : `−${ev.dmg.toFixed(1)} ${ev.fromBehind ? 'в спину' : ev.zone}`, ev.target.team);
       } else if (ev.type === 'land') {
         this.burst(ev.pos.clone().setY(0.1), Math.min(60, 10 + ev.power * 3), 1 + ev.power * 0.25, new THREE.Color(0x8b93a6), 0.6);
         if (ev.power > 6) this.wave(ev.pos, Math.min(8, ev.power * 0.35));
@@ -448,8 +389,8 @@ export class View {
     sim.crates.forEach((c, i) => {
       const m = this.crateMeshes[i];
       m.visible = !c.gone;
-      m.position.copy(c.pos);
-      m.quaternion.copy(c.quat);
+      v(c.body.translation(), m.position);
+      q(c.body.rotation(), m.quaternion);
     });
 
     // Sparks follow world time, but never take longer than a few real seconds to fade.
@@ -481,7 +422,7 @@ export class View {
     // Camera follows the middle of the fight.
     const [a, b] = sim.fighters;
     const mid = this.tmp.addVectors(a.pos, b.pos).multiplyScalar(0.5);
-    mid.y = Math.max(a.scale, b.scale) * 1.1 + Math.max(0, Math.min(a.pos.y, b.pos.y)) * 0.5;
+    mid.y = Math.max(a.scale, b.scale) * 1.1;
     const before = this.follow.clone();
     this.follow.lerp(mid, 1 - Math.exp(-realDt * 4));
     const delta = this.follow.clone().sub(before);
@@ -492,7 +433,7 @@ export class View {
     const big = Math.max(a.scale, b.scale);
     const vHalf = THREE.MathUtils.degToRad(this.camera.fov / 2);
     const hHalf = Math.atan(Math.tan(vHalf) * this.camera.aspect);
-    const lying = a.state !== 'ok' || b.state !== 'ok' ? 1.6 * big : 0;
+    const lying = a.state !== 'ok' || b.state !== 'ok' ? 1.0 * big : 0;
     const needW = (sep / 2 + 0.9 * big + lying) / Math.tan(hHalf);
     const needH = (1.3 * big) / Math.tan(vHalf);
     const want = Math.min(45, Math.max(3.5, needW, needH) * 1.08);

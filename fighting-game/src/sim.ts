@@ -1,17 +1,27 @@
+import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import type { FighterParams } from './config';
-import { MOVES, type Move } from './moves';
+import type { Move } from './moves';
 import { react, think } from './ai';
+import { clonePose, STANCE, PELVIS_Y, type Pose } from './rig';
+import { targetPose } from './pose';
+import {
+  createRagdoll, drive, partPoint, segSegDist, collisionGroups, q, v,
+  GROUP_ENV, STRIKERS, type Part, type Ragdoll,
+} from './physics';
 
 // The fight simulation. Time model:
-//  - The world runs on world seconds (gravity, flying bodies, crates).
-//  - Each fighter's own actions run on local seconds = world seconds × bodySpeed.
-//    A fighter with body ×10 punches, steps and recovers ten times faster.
+//  - The world runs on world seconds (gravity, falling bodies, crates).
+//  - Each fighter's own actions run on local seconds = world seconds × bodySpeed,
+//    and its muscles are stiffer by the same factor, so a body ×10 swings ten
+//    times faster for real: its fists carry ten times the speed.
 //  - Perception: a fighter notices an enemy's action 0.17 / mindSpeed world
 //    seconds after it starts and plans every ~0.2 / mindSpeed world seconds.
-//    A faster mind sees a punch coming early and has time to answer it.
+//
+// Bodies are Rapier rigid bodies. A hit is a real contact between the striking
+// fist or foot and a body part; damage comes from the impact speed and the part hit.
 
-export const G = 9.8;
+export const G = 9.81;
 export const ARENA_R = 12;
 export const FLOOR_R = 13.5;
 
@@ -25,7 +35,7 @@ export interface Action {
   /** Length in local time. */
   dur: number;
   startW: number;
-  /** World time when an attack becomes able to hit. */
+  /** World time when an attack's strike window opens. */
   impactW: number;
   move?: Move;
   hitDone: boolean;
@@ -33,7 +43,7 @@ export interface Action {
   pose?: 'dodgeL' | 'dodgeR' | 'dodgeBack';
 }
 
-export type FighterState = 'ok' | 'air' | 'down' | 'ko';
+export type FighterState = 'ok' | 'down' | 'ko';
 
 export function rng32(seed: number): () => number {
   let a = seed >>> 0;
@@ -55,26 +65,35 @@ export class Fighter {
   readonly radius: number;
   readonly maxHp = 100;
   readonly maxPoise: number;
+  rag!: Ragdoll;
 
+  /** Pelvis position projected on the floor. */
   pos = new THREE.Vector3();
-  /** External velocity in world m/s: knockback, flight. */
-  ext = new THREE.Vector3();
-  /** Self-driven velocity in local m/s: walking, lunges, dodges. */
+  /** Desired walking velocity in local m/s; physics tries to reach it. */
   self = new THREE.Vector3();
+  /** Direction the fighter wants to face (yaw). */
   facing = 0;
   hp = 100;
   poise: number;
   state: FighterState = 'ok';
   action: Action | null = null;
   downLeft = 0;
-  airT = 0;
   nextThinkW = 0;
   handledThreat = 0;
   moveDir = new THREE.Vector3();
   moveSpeed = 0;
   walkPhase = 0;
+  groundSpeed = 0;
   combo: Move | null = null;
   enemy!: Fighter;
+  balance = 1;
+  tone = 1;
+  pose: Pose = clonePose(STANCE);
+  topple = 0;
+  prevVy = 0;
+  strikePrev = new THREE.Vector3();
+  strikeValid = false;
+  koReason = '';
 
   /** Latest decision, shown above the head. */
   thought = '';
@@ -127,107 +146,139 @@ export class Fighter {
 }
 
 export interface Crate {
-  pos: THREE.Vector3;
-  vel: THREE.Vector3;
-  quat: THREE.Quaternion;
-  ang: THREE.Vector3;
+  body: RAPIER.RigidBody;
   half: number;
-  mass: number;
   gone: boolean;
 }
 
 export type SimEvent =
-  | { type: 'hit'; pos: THREE.Vector3; power: number; blocked: boolean; dmg: number; target: Fighter; fromBehind: boolean }
+  | { type: 'hit'; pos: THREE.Vector3; power: number; blocked: boolean; dmg: number; target: Fighter; fromBehind: boolean; zone: string }
   | { type: 'land'; pos: THREE.Vector3; power: number }
   | { type: 'crash'; pos: THREE.Vector3; power: number };
 
 const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
+const tmpC = new THREE.Vector3();
+const tmpP = new THREE.Vector3();
+const segA = new THREE.Vector3();
+const segB = new THREE.Vector3();
+const closest = new THREE.Vector3();
+const bestPoint = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
-const tmpE = new THREE.Euler();
+const UP = new THREE.Vector3(0, 1, 0);
+
+const ZONE_NAME: Record<string, string> = { head: 'в голову', body: 'в корпус', arm: 'в руку', leg: 'по ноге' };
 
 export class Sim {
   t = 0;
+  readonly world: RAPIER.World;
   readonly fighters: [Fighter, Fighter];
   readonly crates: Crate[] = [];
   readonly events: SimEvent[] = [];
   readonly rng: () => number;
   winner: Fighter | null = null;
+  private eq = new RAPIER.EventQueue(true);
+  private crateByCollider = new Map<number, Crate>();
+  private partByCollider = new Map<number, { f: Fighter; part: Part }>();
 
+  /** RAPIER.init() must have finished before a Sim is created. */
   constructor(red: FighterParams, blue: FighterParams, seed = 7) {
     this.rng = rng32(seed);
+    this.world = new RAPIER.World({ x: 0, y: -G, z: 0 });
+
+    const floor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0));
+    this.world.createCollider(
+      RAPIER.ColliderDesc.cylinder(0.5, FLOOR_R).setFriction(0.9).setCollisionGroups(collisionGroups(GROUP_ENV, 0xffff)),
+      floor,
+    );
+
     const a = new Fighter(red, 0);
     const b = new Fighter(blue, 1);
     a.enemy = b;
     b.enemy = a;
     const gap = 2.2 + (a.scale + b.scale) * 0.6;
-    a.pos.set(0, 0, -gap / 2);
-    b.pos.set(0, 0, gap / 2);
     a.facing = 0;
     b.facing = Math.PI;
-    a.nextThinkW = 0.3 / a.mind;
-    b.nextThinkW = 0.3 / b.mind;
     this.fighters = [a, b];
+    for (const f of this.fighters) {
+      const z = f.team === 0 ? -gap / 2 : gap / 2;
+      f.rag = createRagdoll(this.world, {
+        scale: f.scale, girth: f.girth, weight: f.mass,
+        spawn: new THREE.Vector3(0, 0, z), facing: f.facing, team: f.team,
+      });
+      for (const [h, part] of f.rag.colliders) this.partByCollider.set(h, { f, part });
+      f.pos.set(0, 0, z);
+      f.nextThinkW = 0.3 / f.mind;
+    }
     this.layCrates();
+  }
+
+  dispose(): void {
+    this.world.free();
+    this.eq.free();
+  }
+
+  private addCrate(x: number, y: number, z: number, half: number, yaw: number): void {
+    const body = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(x, y, z)
+        .setRotation(new THREE.Quaternion().setFromAxisAngle(UP, yaw))
+        .setCcdEnabled(true),
+    );
+    const c = this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(half, half, half)
+        .setMass(220 * (half * 2) ** 3)
+        .setFriction(0.7)
+        .setCollisionGroups(collisionGroups(GROUP_ENV, 0xffff))
+        .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
+      body,
+    );
+    const crate = { body, half, gone: false };
+    this.crates.push(crate);
+    this.crateByCollider.set(c.handle, crate);
   }
 
   private layCrates(): void {
     const spots: [number, number, number][] = [
-      [6.5, 2.5, 0.45], [7.2, 3.4, 0.35], [6.9, 2.9, 0.3],
-      [-7, -1.5, 0.5], [-7.6, -0.5, 0.35],
-      [2, 8, 0.4], [1.2, 8.6, 0.3], [-3, -8.2, 0.45], [-2.1, -8.7, 0.3],
-      [9, -5, 0.55], [-8.5, 5.5, 0.4], [-9.2, 6.2, 0.3],
+      [6.5, 2.5, 0.45], [7.4, 3.4, 0.35], [6.6, 3.5, 0.3],
+      [-7, -1.5, 0.5], [-7.8, -0.5, 0.35],
+      [2, 8, 0.4], [1.1, 8.6, 0.3], [-3, -8.2, 0.45], [-2.0, -8.8, 0.3],
+      [9, -5, 0.55], [-8.5, 5.5, 0.4], [-9.3, 6.2, 0.3],
     ];
-    for (const [x, z, half] of spots) {
-      this.crates.push({
-        pos: new THREE.Vector3(x, half, z),
-        vel: new THREE.Vector3(),
-        quat: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.rng() * Math.PI),
-        ang: new THREE.Vector3(),
-        half,
-        mass: 220 * (half * 2) ** 3,
-        gone: false,
-      });
-    }
-    // Stack a second crate on two of the piles.
-    this.crates.push({
-      pos: new THREE.Vector3(6.5, 0.9 + 0.3, 2.5),
-      vel: new THREE.Vector3(),
-      quat: new THREE.Quaternion(),
-      ang: new THREE.Vector3(),
-      half: 0.3,
-      mass: 220 * 0.6 ** 3,
-      gone: false,
-    });
-    this.crates.push({
-      pos: new THREE.Vector3(-7, 1.0 + 0.32, -1.5),
-      vel: new THREE.Vector3(),
-      quat: new THREE.Quaternion(),
-      ang: new THREE.Vector3(),
-      half: 0.32,
-      mass: 220 * 0.64 ** 3,
-      gone: false,
-    });
+    for (const [x, z, half] of spots) this.addCrate(x, half, z, half, this.rng() * Math.PI);
+    this.addCrate(6.5, 0.9 + 0.3, 2.5, 0.3, 0.3);
+    this.addCrate(-7, 1.0 + 0.32, -1.5, 0.32, 0.7);
   }
 
   /** Finest motion in the scene decides the physics step. */
   stepSize(): number {
     const fastest = Math.max(...this.fighters.map((f) => Math.max(f.body, f.mind)));
-    return 1 / (240 * fastest);
+    return Math.max(1 / 10000, 1 / (200 * fastest));
   }
 
-  advance(worldDt: number): void {
+  /** Simulates up to worldDt seconds; returns how much was actually simulated. */
+  advance(worldDt: number, maxSteps = 160): number {
     const h = this.stepSize();
-    const n = Math.min(800, Math.ceil(worldDt / h));
-    const step = worldDt / Math.max(1, n);
-    for (let i = 0; i < n; i++) this.step(step);
+    const n = Math.min(maxSteps, Math.ceil(worldDt / h - 1e-9));
+    for (let i = 0; i < n; i++) this.step(h);
+    return n * h;
   }
 
   step(h: number): void {
     this.t += h;
-    for (const f of this.fighters) this.updateFighter(f, h);
-    this.separate();
-    this.updateCrates(h);
+    for (const f of this.fighters) this.preStep(f, h);
+    this.world.timestep = h;
+    this.world.step(this.eq);
+    this.eq.drainCollisionEvents((h1, h2, started) => {
+      if (started) this.onContact(h1, h2);
+    });
+    for (const f of this.fighters) this.postStep(f, h);
+    for (const c of this.crates) {
+      if (!c.gone && c.body.translation().y < -30) {
+        c.gone = true;
+        c.body.setEnabled(false);
+      }
+    }
   }
 
   startAction(f: Fighter, kind: ActionKind, opts: { move?: Move; dur?: number; dir?: THREE.Vector3; pose?: Action['pose'] } = {}): Action {
@@ -246,6 +297,7 @@ export class Sim {
       pose: opts.pose,
     };
     f.action = a;
+    f.strikeValid = false;
     return a;
   }
 
@@ -253,35 +305,23 @@ export class Sim {
     return m.reach * f.scale + f.enemy.radius;
   }
 
-  private updateFighter(f: Fighter, h: number): void {
+  private knockDown(f: Fighter, why: string): void {
+    f.state = f.hp <= 0 ? 'ko' : 'down';
+    f.action = null;
+    f.combo = null;
+    f.balance = 0;
+    f.self.set(0, 0, 0);
+    f.downLeft = 0.8 + this.rng() * 0.5;
+    f.topple = 0;
+    if (f.state === 'down') f.say(why);
+  }
+
+  private preStep(f: Fighter, h: number): void {
     const dl = h * f.body;
-    if (f.state === 'air') {
-      f.airT += h;
-      f.ext.y -= G * h;
-      f.pos.addScaledVector(f.ext, h);
-      if (f.pos.y <= 0 && f.ext.y < 0) {
-        const impact = -f.ext.y;
-        f.pos.y = 0;
-        f.ext.y = 0;
-        f.ext.x *= 0.45;
-        f.ext.z *= 0.45;
-        f.state = f.hp <= 0 ? 'ko' : 'down';
-        f.downLeft = 0.7 + Math.min(1.2, impact * 0.08);
-        this.events.push({ type: 'land', pos: f.pos.clone(), power: impact * f.scale });
-      }
-    } else if (f.state === 'down' || f.state === 'ko') {
-      this.friction(f, h);
-      f.pos.addScaledVector(f.ext, h);
-      if (f.state === 'down') {
-        f.downLeft -= dl;
-        if (f.downLeft <= 0) {
-          f.state = 'ok';
-          f.poise = f.maxPoise;
-          this.startAction(f, 'getup', { dur: 0.55 });
-          f.say('встаю');
-        }
-      }
-    } else {
+    if (f.state === 'ok') {
+      const getup = f.action?.kind === 'getup';
+      f.balance = Math.min(1, f.balance + dl / (getup ? 0.6 : 0.3));
+      f.tone = Math.min(1, f.tone + dl / 0.4);
       f.poise = Math.min(f.maxPoise, f.poise + 10 * dl);
       if (!this.winner) {
         react(f, f.enemy, this);
@@ -296,8 +336,14 @@ export class Sim {
       const a = f.action;
       if (!a || a.kind === 'block') {
         tmpA.copy(f.moveDir).multiplyScalar(f.moveSpeed * (a ? 0.35 : 1));
-        const k = Math.min(1, 14 * dl);
-        f.self.lerp(tmpA, k);
+        f.self.lerp(tmpA, Math.min(1, 14 * dl));
+      }
+      // Stay off the edge unless something throws you over it.
+      const r = Math.hypot(f.pos.x, f.pos.z);
+      if (r > ARENA_R - 1.5) {
+        tmpB.set(f.pos.x / r, 0, f.pos.z / r);
+        const out = f.self.dot(tmpB);
+        if (out > 0) f.self.addScaledVector(tmpB, -out * Math.min(1, (r - (ARENA_R - 1.5)) / 1.5));
       }
       const lockTurn = a?.kind === 'attack' && a.t > a.dur * a.move!.active[0] * 0.5;
       if (!lockTurn && a?.kind !== 'victory') {
@@ -308,33 +354,77 @@ export class Sim {
         const maxTurn = 11 * dl;
         f.facing += THREE.MathUtils.clamp(diff, -maxTurn, maxTurn);
       }
-      f.walkPhase += f.self.length() * dl * (3.2 / f.scale);
-      f.pos.addScaledVector(f.self, f.body * h);
-      this.friction(f, h);
-      f.pos.addScaledVector(f.ext, h);
-      f.pos.y = 0;
-    }
-
-    const r = Math.hypot(f.pos.x, f.pos.z);
-    if (r > ARENA_R && f.pos.y <= 0.01) {
-      f.pos.x *= ARENA_R / r;
-      f.pos.z *= ARENA_R / r;
-      const nx = f.pos.x / r;
-      const nz = f.pos.z / r;
-      const out = f.ext.x * nx + f.ext.z * nz;
-      if (out > 0) {
-        f.ext.x -= 1.4 * out * nx;
-        f.ext.z -= 1.4 * out * nz;
+    } else {
+      f.balance = 0;
+      f.tone = f.state === 'ko' ? 0.06 : 0.15;
+      f.self.set(0, 0, 0);
+      if (f.state === 'down') {
+        const lv = f.rag.pelvis.body.linvel();
+        if (Math.hypot(lv.x, lv.y, lv.z) < 1.5 * Math.max(1, f.body)) f.downLeft -= dl;
+        if (f.downLeft <= 0) {
+          f.state = 'ok';
+          f.poise = f.maxPoise;
+          f.tone = 0.3;
+          // Face the way the body is lying so it does not spin while standing up.
+          tmpA.set(0, 0, 1).applyQuaternion(q(f.rag.pelvis.body.rotation(), tmpQ));
+          f.facing = Math.atan2(tmpA.x, tmpA.z);
+          this.startAction(f, 'getup', { dur: 0.8 });
+          f.say('встаю');
+        }
       }
     }
+
+    targetPose(f, f.pose);
+    drive(
+      f.rag,
+      {
+        speed: f.body,
+        tone: f.tone,
+        balance: f.balance,
+        strength: f.p.strength,
+        facing: f.facing,
+        move: tmpC.copy(f.self).multiplyScalar(f.body),
+        pose: f.pose,
+        scale: f.scale,
+      },
+      h,
+    );
   }
 
-  private friction(f: Fighter, h: number): void {
-    const sp = Math.hypot(f.ext.x, f.ext.z);
-    if (sp === 0) return;
-    const k = Math.max(0, sp - 10 * h) / sp;
-    f.ext.x *= k;
-    f.ext.z *= k;
+  private postStep(f: Fighter, h: number): void {
+    const pb = f.rag.pelvis.body;
+    const p = pb.translation();
+    const vel = pb.linvel();
+    f.pos.set(p.x, 0, p.z);
+    f.groundSpeed = Math.hypot(vel.x, vel.z);
+    f.walkPhase += f.groundSpeed * h * (3.2 / f.scale);
+
+    if (f.state !== 'ok' && f.prevVy < -4 && vel.y > f.prevVy + 3) {
+      this.events.push({ type: 'land', pos: f.pos.clone(), power: -f.prevVy * f.scale });
+    }
+    f.prevVy = vel.y;
+
+    if (p.y < -2 && f.hp > 0) {
+      f.hp = 0;
+      this.knockDown(f, '');
+      if (!this.winner) {
+        this.winner = f.enemy;
+        f.koReason = 'вылетел с арены';
+        f.say('вылетел с арены');
+      }
+      return;
+    }
+
+    if (f.state === 'ok' && f.action?.kind !== 'getup') {
+      // Physical loss of balance: the pelvis tips over or sinks to the floor.
+      const up = tmpA.copy(UP).applyQuaternion(q(pb.rotation(), tmpQ));
+      const low = p.y < PELVIS_Y * f.scale * 0.45;
+      if (up.y < 0.45 || low) f.topple += h * f.body;
+      else f.topple = Math.max(0, f.topple - h * f.body);
+      if (f.topple > 0.12) this.knockDown(f, 'потерял равновесие');
+    }
+
+    this.checkStrike(f, h);
   }
 
   private runAction(f: Fighter, dl: number): void {
@@ -346,12 +436,8 @@ export class Sim {
     switch (a.kind) {
       case 'attack': {
         const m = a.move!;
-        if (u < m.active[0]) {
-          f.self.copy(fwd).multiplyScalar((m.lunge * f.scale) / (m.duration * m.active[0]));
-        } else {
-          f.self.multiplyScalar(Math.max(0, 1 - 20 * dl));
-        }
-        if (!a.hitDone && u >= m.active[0] && u <= m.active[1]) this.tryHit(f, a);
+        if (u < m.active[0]) f.self.copy(fwd).multiplyScalar((m.lunge * f.scale) / (m.duration * m.active[0]));
+        else f.self.multiplyScalar(Math.max(0, 1 - 20 * dl));
         break;
       }
       case 'dodge':
@@ -377,180 +463,114 @@ export class Sim {
     }
   }
 
-  private tryHit(f: Fighter, a: Action): void {
+  /** Did the striking fist or foot touch the enemy during the strike window? */
+  private checkStrike(f: Fighter, h: number): void {
+    const a = f.action;
+    if (!a || a.kind !== 'attack' || a.hitDone || f.state !== 'ok') {
+      f.strikeValid = false;
+      return;
+    }
+    const m = a.move!;
+    const st = STRIKERS[m.limb];
+    const sp = f.rag.byName[st.part];
+    const P = partPoint(sp, st.at, tmpP).clone();
+    if (!f.strikeValid) {
+      f.strikePrev.copy(P);
+      f.strikeValid = true;
+      return;
+    }
+    const u = a.t / a.dur;
+    const prev = f.strikePrev.clone();
+    f.strikePrev.copy(P);
+    if (u < m.active[0] - 0.1 || u > m.active[1] + 0.06) return;
     const e = f.enemy;
     if (e.state !== 'ok') return;
-    const m = a.move!;
-    const dir = tmpA.subVectors(e.pos, f.pos).setY(0);
-    const dist = dir.length();
-    if (dist > this.attackRange(f, m)) return;
-    dir.divideScalar(Math.max(1e-6, dist));
-    const fwd = f.forward(tmpB);
-    const ang = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(fwd.dot(dir), -1, 1)));
-    if (ang > m.arc) return;
+
+    const sr = st.r * f.scale * Math.sqrt(f.girth);
+    let best: Part | null = null;
+    let bestGap = 0.03 * f.scale;
+    for (const ep of e.rag.parts) {
+      partPoint(ep, ep.hitA, segA);
+      partPoint(ep, ep.hitB, segB);
+      const d = segSegDist(prev, P, segA, segB, closest) - (sr + ep.hitR);
+      if (d < bestGap) {
+        bestGap = d;
+        best = ep;
+        bestPoint.copy(closest);
+      }
+    }
+    if (!best) return;
+
+    const vStrike = tmpA.subVectors(P, prev).divideScalar(h);
+    const rel = vStrike.sub(v(best.body.linvel(), tmpB));
+    const n = tmpB.subVectors(bestPoint, P);
+    if (n.lengthSq() < 1e-8) n.copy(rel);
+    n.normalize();
+    const closing = rel.dot(n);
+    if (closing < 1) return;
     a.hitDone = true;
-    this.resolveHit(f, e, m, dir.clone(), a.id);
+    this.resolveHit(f, e, m, best, closing, rel.clone().normalize(), bestPoint.clone(), a.id);
   }
 
-  private resolveHit(att: Fighter, def: Fighter, m: Move, dir: THREE.Vector3, actionId: number): void {
-    const facingAtt = -def.forward(tmpB).dot(dir);
+  private resolveHit(att: Fighter, def: Fighter, m: Move, part: Part, closing: number, dir: THREE.Vector3, at: THREE.Vector3, actionId: number): void {
+    const dirH = tmpC.subVectors(def.pos, att.pos).setY(0).normalize();
+    const facingAtt = -def.forward(tmpB).dot(dirH);
     const fromBehind = facingAtt < -0.3;
-    const blocked = def.action?.kind === 'block' && facingAtt > 0.25;
+    const zone = part.def.zone;
+    const blocked = def.action?.kind === 'block' && zone === 'arm' && facingAtt > 0;
     const seen = def.handledThreat === actionId;
 
-    const power = m.power * att.p.strength * Math.sqrt(att.body) * Math.pow(att.mass / 75, 0.35);
-    let dmg = (7 * power) / Math.pow(def.mass / 75, 0.4);
-    let knock = m.knock * att.p.strength * Math.pow(att.body, 0.6) * Math.pow(att.mass / def.mass, 0.7);
+    // Impulse: the fist (with the arm and body behind it) at its closing speed, multiplied by muscle.
+    const mEff = 2.5 * (att.mass / 78) * (m.limb === 'rFoot' ? 1.6 : 1);
+    const J = mEff * closing * (0.6 + 0.8 * att.p.strength);
+    // Damage grows slower than the impulse, so a much faster fighter needs a few blows, not one.
+    let dmg = (9 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
     if (fromBehind) dmg *= 1.3;
-    if (blocked) {
-      dmg *= 0.15;
-      knock *= 0.4;
-    }
+    if (blocked) dmg *= 0.4;
     def.hp = Math.max(0, def.hp - dmg);
-    def.poise -= blocked ? dmg * 0.5 : dmg;
+    def.poise -= blocked ? dmg * 0.5 : dmg * (zone === 'head' ? 1.4 : 1);
     att.hits++;
 
-    const interrupted = !blocked && def.action?.kind === 'attack' && dmg > 3.5 * Math.sqrt(def.mass / 75);
-    const knockedDown = !blocked && (knock > 5.5 || def.poise <= 0 || def.hp <= 0);
+    const push = dir.clone().add(dirH).normalize();
+    push.y += m.lift * 0.6;
+    push.normalize().multiplyScalar(J);
+    part.body.applyImpulseAtPoint({ x: push.x, y: push.y, z: push.z }, { x: at.x, y: at.y, z: at.z }, true);
 
-    if (knockedDown) {
-      const k = Math.max(knock, 2.5);
-      def.state = 'air';
-      def.action = null;
+    const sturdy = Math.sqrt(def.mass / 75);
+    const interrupted = !blocked && def.action?.kind === 'attack' && dmg > 3.5 * sturdy;
+    if (def.hp <= 0 || def.poise <= 0) {
+      this.knockDown(def, 'сбит с ног');
+    } else if (!blocked && dmg > 3.5 * sturdy) {
       def.combo = null;
-      def.airT = 0;
-      def.self.set(0, 0, 0);
-      def.ext.set(dir.x * k, 1.6 + k * (0.18 + m.lift), dir.z * k);
-      def.pos.y = 0.01;
-      def.facing = Math.atan2(-dir.x, -dir.z);
-    } else {
-      def.ext.addScaledVector(dir, knock);
-      // Heavy bodies shrug off light blows and keep attacking: that is how mass trades with speed.
-      const sturdy = Math.sqrt(def.mass / 75);
-      if (!blocked && dmg > 3.5 * sturdy) {
-        def.combo = null;
-        this.startAction(def, 'stagger', { dur: (0.2 + dmg / 50) / sturdy });
-      }
+      this.startAction(def, 'stagger', { dur: (0.2 + dmg / 50) / sturdy });
     }
 
     if (def.hp <= 0 && !this.winner) {
       this.winner = att;
+      def.koReason = 'нокаут';
       def.say('нокаут');
       att.combo = null;
     } else if (blocked) {
       def.say('держу блок');
     } else if (interrupted) {
       def.say('прервали!');
-    } else if (!seen) {
+    } else if (!seen && def.state === 'ok') {
       def.say('?! не увидел');
     }
 
-    const at = def.pos.clone().addScaledVector(dir, -def.radius);
-    at.y = (m.limb === 'rFoot' ? 1.05 : 1.45) * def.scale;
-    this.events.push({ type: 'hit', pos: at, power: knock, blocked, dmg, target: def, fromBehind });
+    this.events.push({
+      type: 'hit', pos: at, power: (J / def.mass) * 4, blocked, dmg, target: def, fromBehind,
+      zone: ZONE_NAME[zone],
+    });
   }
 
-  private separate(): void {
-    const [a, b] = this.fighters;
-    if (a.state === 'air' || b.state === 'air') return;
-    tmpA.subVectors(b.pos, a.pos).setY(0);
-    const d = tmpA.length();
-    const min = a.radius + b.radius;
-    if (d >= min || d === 0) return;
-    tmpA.divideScalar(d);
-    const push = min - d;
-    const wa = b.mass / (a.mass + b.mass);
-    a.pos.addScaledVector(tmpA, -push * wa);
-    b.pos.addScaledVector(tmpA, push * (1 - wa));
-  }
-
-  private updateCrates(h: number): void {
-    for (const c of this.crates) {
-      if (c.gone) continue;
-      c.vel.y -= G * h;
-      c.pos.addScaledVector(c.vel, h);
-      const onFloor = Math.hypot(c.pos.x, c.pos.z) < FLOOR_R;
-      if (onFloor && c.pos.y < c.half) {
-        c.pos.y = c.half;
-        if (c.vel.y < 0) c.vel.y *= -0.25;
-        const sp = Math.hypot(c.vel.x, c.vel.z);
-        if (sp > 0) {
-          const k = Math.max(0, sp - 7 * h) / sp;
-          c.vel.x *= k;
-          c.vel.z *= k;
-        }
-        c.ang.multiplyScalar(Math.max(0, 1 - 5 * h));
-        if (sp < 1.2 && c.ang.length() < 1.5) {
-          // Settle flat on a face.
-          tmpE.setFromQuaternion(c.quat, 'YXZ');
-          const snap = (v: number) => Math.round(v / (Math.PI / 2)) * (Math.PI / 2);
-          tmpE.x += (snap(tmpE.x) - tmpE.x) * Math.min(1, 8 * h);
-          tmpE.z += (snap(tmpE.z) - tmpE.z) * Math.min(1, 8 * h);
-          c.quat.setFromEuler(tmpE);
-        }
-      }
-      if (c.pos.y < -40) c.gone = true;
-      const w = c.ang.length();
-      if (w > 1e-4) {
-        tmpQ.setFromAxisAngle(tmpA.copy(c.ang).divideScalar(w), w * h);
-        c.quat.premultiply(tmpQ);
-      }
-    }
-
-    // Crate against crate: push apart, trade some velocity.
-    for (let i = 0; i < this.crates.length; i++) {
-      const a = this.crates[i];
-      if (a.gone) continue;
-      for (let j = i + 1; j < this.crates.length; j++) {
-        const b = this.crates[j];
-        if (b.gone) continue;
-        tmpA.subVectors(b.pos, a.pos);
-        const d = tmpA.length();
-        const min = (a.half + b.half) * 0.98;
-        if (d >= min || d === 0) continue;
-        tmpA.divideScalar(d);
-        const wa = b.mass / (a.mass + b.mass);
-        a.pos.addScaledVector(tmpA, -(min - d) * wa);
-        b.pos.addScaledVector(tmpA, (min - d) * (1 - wa));
-        const rel = tmpB.subVectors(a.vel, b.vel).dot(tmpA);
-        if (rel > 0) {
-          const j2 = (1.3 * rel) / (1 / a.mass + 1 / b.mass);
-          a.vel.addScaledVector(tmpA, -j2 / a.mass);
-          b.vel.addScaledVector(tmpA, j2 / b.mass);
-        }
-      }
-    }
-
-    // Fighters against crates.
-    for (const f of this.fighters) {
-      const top = f.pos.y + 1.8 * f.scale;
-      for (const c of this.crates) {
-        if (c.gone) continue;
-        if (c.pos.y - c.half > top || c.pos.y + c.half < f.pos.y) continue;
-        tmpA.subVectors(c.pos, f.pos).setY(0);
-        const d = tmpA.length();
-        const min = f.radius + c.half * 1.1;
-        if (d >= min || d === 0) continue;
-        tmpA.divideScalar(d);
-        const fv = tmpB.copy(f.self).multiplyScalar(f.body).add(f.ext);
-        const into = fv.dot(tmpA) - c.vel.dot(tmpA);
-        if (into > 2.5) {
-          const ratio = THREE.MathUtils.clamp(f.mass / c.mass, 0.3, 8);
-          c.vel.addScaledVector(tmpA, into * ratio * 0.75);
-          c.vel.y += into * 0.35;
-          c.ang.set((this.rng() - 0.5) * into * 2, (this.rng() - 0.5) * into, (this.rng() - 0.5) * into * 2);
-          const keep = Math.max(0.2, 1 - 0.4 * (c.mass / f.mass));
-          f.ext.multiplyScalar(keep);
-          // Slamming into a crate hurts but never finishes a fighter on its own.
-          if (f.state === 'air' && f.hp > 1) f.hp = Math.max(1, f.hp - Math.min(4, into * 0.3));
-          this.events.push({ type: 'crash', pos: c.pos.clone(), power: into });
-        }
-        const wf = c.mass / (f.mass + c.mass);
-        f.pos.addScaledVector(tmpA, -(min - d) * wf);
-        c.pos.addScaledVector(tmpA, (min - d) * (1 - wf));
-      }
-    }
+  private onContact(h1: number, h2: number): void {
+    const crate = this.crateByCollider.get(h1) ?? this.crateByCollider.get(h2);
+    const fp = this.partByCollider.get(h1) ?? this.partByCollider.get(h2);
+    if (!crate || !fp) return;
+    const rel = v(crate.body.linvel(), tmpA).sub(v(fp.part.body.linvel(), tmpB)).length();
+    if (rel < 3) return;
+    this.events.push({ type: 'crash', pos: v(crate.body.translation()), power: rel });
+    if (fp.f.state === 'down' && fp.f.hp > 1) fp.f.hp = Math.max(1, fp.f.hp - Math.min(4, rel * 0.3));
   }
 }
-
-export const MOVES_BY_SPEED = [...MOVES].sort((a, b) => a.duration * a.active[0] - b.duration * b.active[0]);

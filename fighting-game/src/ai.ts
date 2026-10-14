@@ -118,7 +118,9 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   const ratio = f.body / e.body;
   const behind = e.forward(fwd).dot(d) > 0.3;
 
-  const inReach = MOVES.filter((m) => dist <= sim.attackRange(f, m) + m.lunge * f.scale * 0.8);
+  const inReach = MOVES.filter(
+    (m) => dist <= sim.attackRange(f, m) + m.lunge * f.scale * 0.8 && dist >= sim.attackRange(f, m) * 0.55,
+  );
   const eager = 0.2 + 0.7 * f.p.aggression + (behind ? 0.3 : 0) + (ratio > 2 ? 0.2 : 0);
   if (inReach.length && sim.rng() < eager) {
     const m = pickWeighted(sim, inReach);
@@ -156,9 +158,10 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
       f.moveSpeed = f.stride;
       f.say('сближаюсь');
     }
-  } else if (dist < (f.radius + e.radius) * 1.3) {
+  } else if (dist < close * 0.75) {
+    // Too close to swing: step back to striking distance.
     f.moveDir.copy(d).negate();
-    f.moveSpeed = f.stride * 0.6;
+    f.moveSpeed = f.stride * 0.8;
     f.say('разрываю дистанцию');
   } else {
     const sign = sim.rng() < 0.5 ? 1 : -1;

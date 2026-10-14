@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Арена скорости</title>
+    <meta name="claude:viewport-fit-sides" content="cover" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@500;700&family=Russo+One&display=swap"
+    />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene"></canvas>
+      <div id="labels"></div>
+
+      <header class="hud">
+        <div class="side team0">
+          <div class="nm"><span id="n0">Красный</span><span class="hpnum" id="hpn0">100</span></div>
+          <div class="hp"><i id="hp0"></i></div>
+          <div class="st" id="s0"></div>
+        </div>
+        <div class="clock" id="clockBox">
+          <b id="clock">×1</b>
+          <span id="eyesLabel">реальное время</span>
+        </div>
+        <div class="side team1">
+          <div class="nm"><span class="hpnum" id="hpn1">100</span><span id="n1">Синий</span></div>
+          <div class="hp"><i id="hp1"></i></div>
+          <div class="st" id="s1"></div>
+        </div>
+      </header>
+
+      <nav class="dock">
+        <button id="btnPause" type="button">Пауза</button>
+        <button id="btnEyes" type="button">Глаза: быстрейший</button>
+        <button id="btnRestart" type="button">Заново</button>
+        <button id="btnSetup" type="button" class="primary">Бойцы</button>
+      </nav>
+
+      <section id="sheet" hidden>
+        <div class="sheet-head">
+          <h2>Настройка бойцов</h2>
+          <button id="btnClose" type="button">Закрыть</button>
+        </div>
+        <div class="presets" id="presets"></div>
+        <div class="tabs" role="tablist">
+          <button type="button" data-tab="0" class="on team0">Красный</button>
+          <button type="button" data-tab="1" class="team1">Синий</button>
+        </div>
+        <div id="form"></div>
+        <p class="note">
+          <b>Скорость тела</b> ускоряет удары, шаги и восстановление. <b>Скорость восприятия</b> решает, как рано
+          боец замечает чужой замах и как часто принимает решения. Скорость, сила, агрессия и техника меняются
+          прямо в бою, рост и вес вступают в силу с нового боя.
+        </p>
+        <button id="btnFight" type="button" class="primary wide">В бой</button>
+      </section>
+
+      <div id="ko" hidden>
+        <div class="ko-card">
+          <div class="ko-title" id="koTitle">Нокаут</div>
+          <div class="ko-stats" id="koStats"></div>
+          <div class="row">
+            <button id="koAgain" type="button" class="primary">Ещё раз</button>
+            <button id="koSetup" type="button">Настроить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

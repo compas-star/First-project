@@ -1,7 +1,9 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import type { FighterParams } from './config';
-import { MOVES, MOVE_BY_ID, FOLLOW, type Move } from './moves';
+import { MOVES, MOVE_BY_ID, FOLLOW, type Move, type Striker } from './moves';
+import { makeFeet, resetFeet, updateFeet, legOverride, type Foot } from './feet';
+import { DISCIPLINE_BY_ID, type Discipline, type Stance } from './disciplines';
 import { punchOverride } from './strikes';
 import { POWER_BY_ID, type PowerId } from './powers';
 import { react, think } from './ai';
@@ -35,7 +37,12 @@ const LIMB_OF_PART: Partial<Record<string, Limb>> = {
   lUpper: 'lArm', lFore: 'lArm', rUpper: 'rArm', rFore: 'rArm',
   lThigh: 'lLeg', lShin: 'lLeg', rThigh: 'rLeg', rShin: 'rLeg',
 };
-const LIMB_OF_STRIKER: Record<Move['limb'], Limb> = { lHand: 'lArm', rHand: 'rArm', rFoot: 'rLeg' };
+const LIMB_OF_STRIKER: Record<Striker, Limb> = {
+  lHand: 'lArm', rHand: 'rArm', lElbow: 'lArm', rElbow: 'rArm',
+  lFoot: 'lLeg', rFoot: 'rLeg', lKnee: 'lLeg', rKnee: 'rLeg',
+};
+/** Which foot a strike takes off the floor. */
+const FOOT_OF_STRIKER: Partial<Record<Striker, 0 | 1>> = { lFoot: 0, lKnee: 0, rFoot: 1, rKnee: 1 };
 export const LIMB_NAME: Record<Limb, string> = { lArm: 'левая рука', rArm: 'правая рука', lLeg: 'левая нога', rLeg: 'правая нога' };
 
 export interface Action {
@@ -52,6 +59,8 @@ export interface Action {
   hitDone: boolean;
   dir: THREE.Vector3;
   pose?: 'dodgeL' | 'dodgeR' | 'dodgeBack';
+  /** Facing when the action started; spinning techniques turn from here. */
+  baseFacing: number;
   /** How far an attack steps in during its wind-up, meters. */
   lunge: number;
   /** Sloppiness of an untrained fighter: random joint offsets for this swing. */
@@ -159,6 +168,9 @@ export class Fighter {
   /** Own time, local seconds, drives the idle motion. */
   clock = 0;
   style: FightStyle;
+  feet: [Foot, Foot] = makeFeet();
+  /** Legs are placed by foot IK (standing), not by the pose. */
+  legsIK = false;
   walkPhase = 0;
   groundSpeed = 0;
   combo: Move | null = null;
@@ -221,6 +233,19 @@ export class Fighter {
   /** Damage a limb takes before the bone breaks. */
   get limbLimit(): number {
     return 45 * Math.sqrt(this.mass / 78) * (this.has('stone') ? 2.5 : 1);
+  }
+
+  get disc(): Discipline {
+    return DISCIPLINE_BY_ID[this.p.discipline] ?? DISCIPLINE_BY_ID.mma;
+  }
+
+  get stance(): Stance {
+    return this.disc.stance;
+  }
+
+  /** How much this fighter's style likes a strike; 0 = never used. */
+  weightOf(m: Move): number {
+    return this.disc.weights[m.id] ?? 0;
   }
 
   canUse(m: Move): boolean {
@@ -330,6 +355,7 @@ export class Sim {
       for (const [h, part] of f.rag.colliders) this.partByCollider.set(h, { f, part });
       f.pos.set(0, 0, z);
       f.nextThinkW = 0.3 / f.mind;
+      resetFeet(f);
     }
     this.layCrates();
   }
@@ -437,9 +463,10 @@ export class Sim {
       hitDone: false,
       dir: opts.dir ? opts.dir.clone() : new THREE.Vector3(),
       pose: opts.pose,
+      baseFacing: f.facing,
       lunge: opts.lunge ?? (m ? m.lunge * f.scale : 0),
       noise,
-      zone: opts.zone ?? 'head',
+      zone: opts.zone ?? (m ? m.zones[0] : 'head'),
       jitter,
       handStart: null,
     };
@@ -465,7 +492,7 @@ export class Sim {
   }
 
   usableMoves(f: Fighter): Move[] {
-    return MOVES.filter((m) => f.canUse(m));
+    return MOVES.filter((m) => f.canUse(m) && f.weightOf(m) > 0);
   }
 
   private knockDown(f: Fighter, why: string): void {
@@ -510,7 +537,12 @@ export class Sim {
         if (out > 0) f.self.addScaledVector(tmpB, -out * Math.min(1, (r - (ARENA_R - 1.5)) / 1.5));
       }
       const lockTurn =
-        (a?.kind === 'attack' && a.t > a.dur * a.move!.active[0] * 0.5) || a?.kind === 'dash';
+        (a?.kind === 'attack' && (a.t > a.dur * a.move!.active[0] * 0.5 || !!a.move!.spin)) || a?.kind === 'dash';
+      if (a?.kind === 'attack' && a.move!.spin) {
+        // Spinning technique: the whole body turns round through the strike.
+        const u = Math.min(1, a.t / a.dur);
+        f.facing = a.baseFacing + a.move!.spin * u * u * (3 - 2 * u);
+      }
       if (!lockTurn && a?.kind !== 'victory') {
         tmpA.subVectors(f.enemy.pos, f.pos);
         const want = Math.atan2(tmpA.x, tmpA.z);
@@ -542,6 +574,23 @@ export class Sim {
     targetPose(f, f.pose);
     for (const k of Object.keys(this.override)) delete this.override[k];
     const aimed = f.state === 'ok' && f.action?.kind === 'attack' && punchOverride(f, f.action, this.override);
+    const standing = f.state === 'ok' && !(f.action?.kind === 'getup' && f.action.t < f.action.dur * 0.8);
+    if (standing && !f.legsIK) resetFeet(f);
+    f.legsIK = standing;
+    if (standing) {
+      // A kick or knee takes its foot off the floor; the other one stays planted.
+      const kickFoot = f.action?.kind === 'attack' ? FOOT_OF_STRIKER[f.action.move!.limb] : undefined;
+      for (const i of [0, 1] as const) {
+        const busy = kickFoot === i;
+        if (busy) f.feet[i].free = true;
+        else if (f.feet[i].free) {
+          f.feet[i].free = false;
+          resetFeet(f, i);
+        }
+      }
+      updateFeet(f, h * f.body);
+      legOverride(f, this.override);
+    }
     drive(
       f.rag,
       {
@@ -554,7 +603,7 @@ export class Sim {
         pose: f.pose,
         scale: f.scale,
         boost: f.action?.kind === 'dash' ? 8 : 1,
-        override: aimed ? this.override : undefined,
+        override: aimed || standing ? this.override : undefined,
         partTone: {
           lUpper: f.broken.lArm ? 0.04 : 1,
           lFore: f.broken.lArm ? 0.04 : 1,
@@ -589,6 +638,7 @@ export class Sim {
     } else {
       let target = f.wantDist;
       if (this.t < f.exitUntilW) target += 0.2 * f.scale;
+      target = Math.max(target, f.radius + e.radius + 0.3 * Math.max(f.scale, e.scale));
       const err = dist - target;
       // Small changes of distance are ignored: nobody steps back for every inch.
       const dead = 0.12 * f.scale;
@@ -717,7 +767,7 @@ export class Sim {
   private nextInCombo(f: Fighter, a: Action): Move | null {
     const opts = (FOLLOW[a.move!.id] ?? [])
       .map(([id, w]) => [MOVE_BY_ID[id], w] as const)
-      .filter(([m]) => f.canUse(m) && (m.style === 'clean' ? f.tech > 0.3 : f.tech < 0.6));
+      .filter(([m]) => f.canUse(m) && f.weightOf(m) > 0);
     if (!opts.length) return null;
     const dist = tmpA.subVectors(f.enemy.pos, f.pos).setY(0).length();
     const reach = opts.filter(([m]) => dist <= this.attackRange(f, m) + 0.4 * f.scale);
@@ -812,7 +862,7 @@ export class Sim {
 
     const blocked = def.action?.kind === 'block' && zone === 'arm' && facingAtt > 0;
     // Damage grows slower than the impulse, so a much faster fighter needs a few blows, not one.
-    let dmg = (8.5 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
+    let dmg = (6.5 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
     // A well placed blow lands on the point, a wild one spreads its force.
     dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
     if (fromBehind) dmg *= 1.3;

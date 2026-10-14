@@ -114,7 +114,12 @@ const PARTS: PartDef[] = [
 export const STRIKERS = {
   lHand: { part: 'lFore' as PartName, at: new THREE.Vector3(0, -0.29, 0), r: 0.065 },
   rHand: { part: 'rFore' as PartName, at: new THREE.Vector3(0, -0.29, 0), r: 0.065 },
+  lFoot: { part: 'lShin' as PartName, at: new THREE.Vector3(0, -0.45, 0.08), r: 0.075 },
   rFoot: { part: 'rShin' as PartName, at: new THREE.Vector3(0, -0.45, 0.08), r: 0.075 },
+  lKnee: { part: 'lThigh' as PartName, at: new THREE.Vector3(0, -0.44, 0.03), r: 0.08 },
+  rKnee: { part: 'rThigh' as PartName, at: new THREE.Vector3(0, -0.44, 0.03), r: 0.08 },
+  lElbow: { part: 'lUpper' as PartName, at: new THREE.Vector3(0, -0.29, 0), r: 0.065 },
+  rElbow: { part: 'rUpper' as PartName, at: new THREE.Vector3(0, -0.29, 0), r: 0.065 },
 };
 
 export interface Part {
@@ -463,26 +468,28 @@ const ikZ = new THREE.Vector3();
 const ikM = new THREE.Matrix4();
 export const ARM_UPPER = 0.29;
 export const ARM_FORE = 0.29;
+export const LEG_THIGH = 0.44;
+export const LEG_SHIN = 0.46;
 
 /**
- * Two-bone IK for an arm: world orientations of the upper arm and forearm that
- * put the fist at `target`, with the elbow bending toward `pole`.
- * Bones point along local -Y and the elbow hinges toward local +Z, as in the rig.
+ * Two-bone IK: world orientations of an upper and a lower bone that put the end
+ * at `target`, with the middle joint pushed toward `pole`. Bones point along
+ * local -Y. `bend` is the local Z direction the lower bone folds toward:
+ * +1 for elbows (forearm folds forward), -1 for knees (shin folds back).
  */
-export function solveArmIK(
-  r: Ragdoll,
-  side: 'l' | 'r',
+export function solveTwoBone(
+  root: THREE.Vector3,
   target: THREE.Vector3,
   pole: THREE.Vector3,
-  scale: number,
+  L1: number,
+  L2: number,
+  bend: 1 | -1,
   outUpper: THREE.Quaternion,
-  outFore: THREE.Quaternion,
+  outLower: THREE.Quaternion,
 ): void {
-  const L1 = ARM_UPPER * scale;
-  const L2 = ARM_FORE * scale;
-  v(r.byName[side === 'l' ? 'lUpper' : 'rUpper'].body.translation(), ikS);
+  ikS.copy(root);
   ikDir.subVectors(target, ikS);
-  const dist = THREE.MathUtils.clamp(ikDir.length(), 0.08 * scale, (L1 + L2) * 0.999);
+  const dist = THREE.MathUtils.clamp(ikDir.length(), Math.abs(L1 - L2) + 0.05 * (L1 + L2), (L1 + L2) * 0.999);
   ikDir.normalize();
   const cosA = THREE.MathUtils.clamp((L1 * L1 + dist * dist - L2 * L2) / (2 * L1 * dist), -1, 1);
   const sinA = Math.sqrt(1 - cosA * cosA);
@@ -493,17 +500,47 @@ export function solveArmIK(
   ikU.subVectors(ikE, ikS).normalize();
   ikF.copy(ikS).addScaledVector(ikDir, dist).sub(ikE).normalize();
 
-  // Upper arm: Y along the bone (pointing back to the shoulder), Z toward where the forearm bends.
+  // Upper bone: Y back along the bone, Z toward (elbow) or away from (knee) the fold.
   ikY.copy(ikU).negate();
   ikZ.copy(ikF).addScaledVector(ikU, -ikF.dot(ikU));
   if (ikZ.lengthSq() < 1e-6) ikZ.copy(ikPole).negate();
-  ikZ.normalize();
+  ikZ.normalize().multiplyScalar(bend);
   ikX.crossVectors(ikY, ikZ).normalize();
   ikZ.crossVectors(ikX, ikY);
   outUpper.setFromRotationMatrix(ikM.makeBasis(ikX, ikY, ikZ));
 
-  // Forearm shares the elbow hinge axis.
+  // Lower bone shares the hinge axis.
   ikY.copy(ikF).negate();
   ikZ.crossVectors(ikX, ikY).normalize();
-  outFore.setFromRotationMatrix(ikM.makeBasis(ikX, ikY, ikZ));
+  outLower.setFromRotationMatrix(ikM.makeBasis(ikX, ikY, ikZ));
+}
+
+const ikRoot = new THREE.Vector3();
+
+/** Arm IK: fist at `target`, elbow toward `pole`. */
+export function solveArmIK(
+  r: Ragdoll,
+  side: 'l' | 'r',
+  target: THREE.Vector3,
+  pole: THREE.Vector3,
+  scale: number,
+  outUpper: THREE.Quaternion,
+  outFore: THREE.Quaternion,
+): void {
+  v(r.byName[side === 'l' ? 'lUpper' : 'rUpper'].body.translation(), ikRoot);
+  solveTwoBone(ikRoot, target, pole, ARM_UPPER * scale, ARM_FORE * scale, 1, outUpper, outFore);
+}
+
+/** Leg IK: ankle at `target`, knee toward `pole`. */
+export function solveLegIK(
+  r: Ragdoll,
+  side: 'l' | 'r',
+  target: THREE.Vector3,
+  pole: THREE.Vector3,
+  scale: number,
+  outThigh: THREE.Quaternion,
+  outShin: THREE.Quaternion,
+): void {
+  v(r.byName[side === 'l' ? 'lThigh' : 'rThigh'].body.translation(), ikRoot);
+  solveTwoBone(ikRoot, target, pole, LEG_THIGH * scale, LEG_SHIN * scale, -1, outThigh, outShin);
 }

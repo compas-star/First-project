@@ -1,4 +1,5 @@
 import type { PowerId } from './powers';
+import type { DisciplineId } from './disciplines';
 
 // Fighter parameters. Everything a fighter can do follows from these numbers:
 // there are no tiers or leagues, a god-like build simply has bigger values.
@@ -25,6 +26,8 @@ export interface FighterParams {
    * clean punches with the body behind them, tight guard. Low: walks in and swings.
    */
   skill: number;
+  /** Fighting style: which strikes, what stance, what range. */
+  discipline: DisciplineId;
   powers: PowerId[];
 }
 
@@ -43,6 +46,7 @@ export function defaultFighter(team: 0 | 1): FighterParams {
     linkMind: true,
     aggression: 0.6,
     skill: 0.6,
+    discipline: 'mma',
     powers: [],
   };
 }
@@ -67,8 +71,22 @@ export const PRESETS: Preset[] = [
     id: 'technique',
     name: 'Мастер и драчун',
     desc: 'Красный: техничный, держит дистанцию. Синий: крупнее и злее, но без техники.',
-    red: { skill: 0.95, aggression: 0.55, weight: 72 },
-    blue: { skill: 0.1, aggression: 0.9, weight: 90, height: 1.86, strength: 1.2 },
+    red: { skill: 0.95, aggression: 0.55, weight: 72, discipline: 'mma' },
+    blue: { skill: 0.1, aggression: 0.9, weight: 90, height: 1.86, strength: 1.2, discipline: 'street' },
+  },
+  {
+    id: 'box-vs-thai',
+    name: 'Боксёр и таец',
+    desc: 'Красный: бокс, руки и работа головой. Синий: тайский бокс, ноги, локти, колени.',
+    red: { discipline: 'boxing', skill: 0.85, aggression: 0.65 },
+    blue: { discipline: 'muaythai', skill: 0.85, aggression: 0.6 },
+  },
+  {
+    id: 'karate-vs-kick',
+    name: 'Каратэ и кикбоксинг',
+    desc: 'Красный: каратэ на длинной дистанции, вертушки. Синий: кикбоксер с сериями.',
+    red: { discipline: 'karate', skill: 0.9, aggression: 0.55, weight: 70 },
+    blue: { discipline: 'kickboxing', skill: 0.8, aggression: 0.7 },
   },
   {
     id: 'quick',

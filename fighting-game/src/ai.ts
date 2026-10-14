@@ -18,7 +18,7 @@ const fwd = new THREE.Vector3();
 /** Weight of a move for this fighter: clean moves need technique, wild ones do not. */
 function styleWeight(f: Fighter, m: Move): number {
   const k = m.style === 'clean' ? 0.25 + f.tech : Math.max(0.03, 1.2 - 1.8 * f.tech);
-  return m.weight * k;
+  return f.weightOf(m) * k;
 }
 
 function pickStyled(f: Fighter, sim: Sim, list: Move[]): Move {
@@ -138,13 +138,19 @@ function intent(f: Fighter, text: string): void {
 }
 
 function pickZone(f: Fighter, e: Fighter, sim: Sim, m: Move): 'head' | 'body' | 'leg' {
-  if (m.limb === 'rFoot') {
-    const r = sim.rng();
-    return r < 0.35 ? 'leg' : r < 0.8 ? 'body' : 'head';
+  const z = m.zones;
+  if (z.length === 1) return z[0];
+  if (z.includes('head') && z.includes('body')) {
+    // Go to the body more when the guard is up.
+    const guardUp = e.action?.kind === 'block' ? 0.35 : 0;
+    return sim.rng() < f.style.bodyLove + guardUp ? 'body' : 'head';
   }
-  // Go to the body more when the guard is up.
-  const guardUp = e.action?.kind === 'block' ? 0.35 : 0;
-  return sim.rng() < f.style.bodyLove + guardUp ? 'body' : 'head';
+  return z[Math.floor(sim.rng() * z.length)];
+}
+
+/** Closest the two bodies should come: legs and hips must not run into each other. */
+export function minGap(f: Fighter, e: Fighter): number {
+  return f.radius + e.radius + 0.3 * Math.max(f.scale, e.scale);
 }
 
 export function think(f: Fighter, e: Fighter, sim: Sim): void {
@@ -184,7 +190,8 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   const lungeMax = (0.15 + 0.6 * tech) * f.scale;
   // Technical fighters wait at the edge of the enemy's reach, brawlers want to be close.
   const outside = Math.max(enemyRange + 0.1 * f.scale, myRange + 0.05);
-  const pref = THREE.MathUtils.lerp(myRange * 0.6, outside, tech);
+  const gap = minGap(f, e);
+  const pref = Math.max(gap + 0.1 * f.scale, THREE.MathUtils.lerp(myRange * 0.6, outside, tech) * f.disc.range);
   f.wantDist = pref;
 
   if (sim.ready(f, 'shockwave') && dist < sim.waveRadius(f) * 0.75 && sim.rng() < 0.45) {
@@ -212,7 +219,8 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   if (options.length && sim.rng() < eager) {
     const m = pickStyled(f, sim, options);
     const r = sim.attackRange(f, m);
-    const lunge = Math.max(m.lunge * f.scale, dist - r * 0.85 + 0.05);
+    // Step in far enough to land, never so far as to walk into the enemy.
+    const lunge = Math.min(Math.max(m.lunge * f.scale, dist - r * 0.85 + 0.05), Math.max(0, dist - gap));
     const zone = pickZone(f, e, sim, m);
     sim.startAction(f, 'attack', { move: m, lunge, zone });
     const stepIn = lunge > m.lunge * f.scale + 0.1;

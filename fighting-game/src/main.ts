@@ -3,6 +3,9 @@ import { PRESETS, applyPreset, defaultFighter, type FighterParams } from './conf
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Sim, LIMB_NAME, type Limb } from './sim';
 import { POWERS } from './powers';
+import { DISCIPLINES } from './disciplines';
+
+const DISCIPLINE_IDS: string[] = DISCIPLINES.map((d) => d.id);
 import { View } from './view';
 
 type Eyes = 'fastest' | 'red' | 'blue' | 'real';
@@ -25,6 +28,9 @@ function load(): [FighterParams, FighterParams] {
       return [
         { ...defaultFighter(0), ...a, powers: [...(a.powers ?? [])] },
         { ...defaultFighter(1), ...b, powers: [...(b.powers ?? [])] },
+      ].map((f) => ({ ...f, discipline: DISCIPLINE_IDS.includes(f.discipline) ? f.discipline : 'mma' })) as [
+        FighterParams,
+        FighterParams,
       ];
     }
   } catch {
@@ -238,6 +244,25 @@ function renderForm(): void {
       save();
     });
   }
+
+  addTitle('Стиль боя · меняется сразу');
+  const styles = document.createElement('div');
+  styles.className = 'powers';
+  for (const d of DISCIPLINES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    const on = p.discipline === d.id;
+    b.className = `power${on ? ' on' : ''}`;
+    b.setAttribute('aria-pressed', String(on));
+    b.innerHTML = `<b>${d.name}</b><span>${d.desc}</span>`;
+    b.addEventListener('click', () => {
+      p.discipline = d.id;
+      save();
+      renderForm();
+    });
+    styles.appendChild(b);
+  }
+  form.appendChild(styles);
 
   addTitle('Сверхсилы · меняются сразу');
   const chips = document.createElement('div');

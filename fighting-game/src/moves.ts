@@ -280,6 +280,37 @@ export const MOVES: Move[] = [
     ],
   }),
   move({
+    id: 'lhaymaker', name: 'левый размашистый', duration: 0.78, active: [0.5, 0.7], reach: 0.48, lunge: 0.15, power: 2.1, lift: 0.1,
+    limb: 'lHand', path: 'swing', zones: ['head'], dodge: 'back', style: 'wild',
+    keys: [
+      { t: 0, pose: G },
+      { t: 0.38, pose: { spineTwist: 30, spineLean: -4, rShF: 40, rEl: 60 } },
+      { t: 0.6, pose: { spineTwist: -40, spineLean: 16, pelvisTwist: -25, rShF: 30, rEl: 40 } },
+      { t: 0.75, pose: { spineTwist: -45, spineLean: 18, pelvisTwist: -28 } },
+      { t: 1, pose: G },
+    ],
+  }),
+  move({
+    id: 'wildupper', name: 'снизу с размаху', duration: 0.74, active: [0.5, 0.7], reach: 0.45, lunge: 0.15, power: 2.2, lift: 0.3,
+    limb: 'rHand', path: 'upper', zones: ['head', 'body'], style: 'wild',
+    keys: [
+      { t: 0, pose: G },
+      { t: 0.4, pose: { spineTwist: -20, spineLean: 22, crouch: 0.2, spineSide: 10 } },
+      { t: 0.62, pose: { spineTwist: 35, spineLean: -6, crouch: 0.02, pelvisTwist: 12 } },
+      { t: 1, pose: G },
+    ],
+  }),
+  move({
+    id: 'shove', name: 'толчок', duration: 0.6, active: [0.42, 0.66], reach: 0.5, lunge: 0.25, power: 1.2,
+    limb: 'rHand', zones: ['body'], dodge: 'back', style: 'wild',
+    keys: [
+      { t: 0, pose: G },
+      { t: 0.3, pose: { lShF: 50, lEl: 110, rShF: 50, rEl: 110, lShS: 10, rShS: 10, crouch: 0.12, spineLean: 8 } },
+      { t: 0.55, pose: { lShF: 88, lEl: 10, rShF: 88, rEl: 10, lShS: 8, rShS: 8, spineLean: 22, crouch: 0.08 } },
+      { t: 1, pose: G },
+    ],
+  }),
+  move({
     id: 'stomp', name: 'пинок', duration: 0.6, active: [0.45, 0.66], reach: 0.72, lunge: 0.1, power: 1.5,
     limb: 'rFoot', path: 'teep', zones: ['body', 'leg'], style: 'wild',
     keys: [
@@ -313,9 +344,12 @@ export const FOLLOW: Record<string, [string, number][]> = {
   headkick: [['jab', 1]],
   leadkick: [['cross', 0.6], ['headkick', 0.4]],
   spinkick: [['jab', 1]],
-  haymaker: [['haymaker', 0.4], ['flail', 0.4], ['stomp', 0.2]],
-  flail: [['haymaker', 0.6], ['flail', 0.4]],
-  stomp: [['haymaker', 1]],
+  haymaker: [['lhaymaker', 0.4], ['haymaker', 0.1], ['wildupper', 0.2], ['flail', 0.15], ['stomp', 0.15]],
+  lhaymaker: [['haymaker', 0.5], ['wildupper', 0.25], ['rknee', 0.25]],
+  wildupper: [['lhaymaker', 0.5], ['haymaker', 0.3], ['shove', 0.2]],
+  flail: [['haymaker', 0.4], ['lhaymaker', 0.4], ['shove', 0.2]],
+  shove: [['haymaker', 0.5], ['stomp', 0.5]],
+  stomp: [['haymaker', 0.5], ['lhaymaker', 0.5]],
 };
 
 /** Poses for non-attack actions, merged over the stance. */

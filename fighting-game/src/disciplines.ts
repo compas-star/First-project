@@ -105,7 +105,7 @@ export const DISCIPLINES: Discipline[] = [
     id: 'street',
     name: 'Уличная драка',
     desc: 'Размашистые удары, пинки и колени, без системы.',
-    weights: { haymaker: 2, flail: 1.4, cross: 1, hook: 0.5, rhook: 1.2, overhand: 1, stomp: 0.8, rknee: 0.5 },
+    weights: { haymaker: 1.6, lhaymaker: 1.3, wildupper: 0.9, shove: 0.6, flail: 0.8, jab: 0.5, cross: 1, hook: 0.7, rhook: 1, overhand: 1, stomp: 0.35, rknee: 0.6 },
     stance: { footFwd: 0.12, footBack: 0.14, footWidth: 0.15, pose: { crouch: 0.03 } },
     range: 0.7,
     headMove: 0.3,

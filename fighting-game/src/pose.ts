@@ -100,6 +100,14 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
     const s = Math.sin(f.walkPhase);
     out.lShF -= 6 * s * amp;
     out.rShF += 6 * s * amp;
+    // Not under attack, the guard is relaxed; it comes up fully only in a block.
+    if (!a) {
+      const relax = 8 + 14 * (1 - f.tech);
+      out.lShF -= relax;
+      out.rShF -= relax * 0.8;
+      out.lEl -= relax * 0.6;
+      out.rEl -= relax * 0.5;
+    }
     // Tired: the hands sink, the chin comes up, the chest heaves.
     const tired = f.fatigue;
     if (tired > 0) {
@@ -128,6 +136,17 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
         out.spineTwist = chain.spineTwist;
         out.spineLean = chain.spineLean;
         out.spineSide = chain.spineSide;
+        // The hand that is not punching should stay at the chin; without training it drops.
+        if (m.path && m.limb.endsWith('Hand')) {
+          const drop = 30 * (1 - f.tech) * Math.sin(Math.PI * Math.min(1, u));
+          if (m.limb[0] === 'l') {
+            out.rShF -= drop;
+            out.rEl -= drop * 0.8;
+          } else {
+            out.lShF -= drop;
+            out.lEl -= drop * 0.8;
+          }
+        }
         const st = f.style;
         // Personal manner: how far the hips and shoulders turn into the blow.
         out.spineTwist = base.spineTwist + (out.spineTwist - base.spineTwist) * st.twist;

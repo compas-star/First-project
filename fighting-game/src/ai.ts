@@ -22,8 +22,11 @@ const fwd = new THREE.Vector3();
 
 /** Weight of a move for this fighter: clean moves need technique, wild ones do not. */
 function styleWeight(f: Fighter, m: Move): number {
-  const k = m.style === 'clean' ? 0.25 + f.tech : Math.max(0.03, 1.2 - 1.8 * f.tech);
-  return f.weightOf(m) * k * moveWeight(f, m);
+  const k = m.style === 'clean' ? 0.45 + 0.8 * f.tech : Math.max(0.03, 1.2 - 1.8 * f.tech);
+  // Nobody throws the same thing over and over: a strike just used is less likely again.
+  const recent = f.recentMoves;
+  const again = recent[recent.length - 1] === m.id ? 0.35 : recent.includes(m.id) ? 0.7 : 1;
+  return f.weightOf(m) * k * moveWeight(f, m) * again;
 }
 
 /** Picks a strike: style and habits, times how well it fits what he sees right now. */
@@ -301,6 +304,10 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   if (go === null && sim.t >= f.initiativeW) f.initiativeW = sim.t + waitTime(f, sim);
 
   if (go === 'punish' && ea) f.punishedId = ea.id;
+  // Going in from a distance where only a long kick reaches: usually step closer first,
+  // so the whole arsenal is in play, instead of always opening with the same long strike.
+  const few = options.length > 0 && options.length < usable.length * 0.4;
+  if (go === 'entry' && few && sim.rng() < 0.65) options.length = 0;
   if (go && options.length) {
     const read = readOpponent(f, e, sim.t);
     const { m, why } = pickStyled(f, sim, options, read);

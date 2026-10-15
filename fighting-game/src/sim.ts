@@ -49,6 +49,8 @@ const LIMB_OF_STRIKER: Record<Striker, Limb> = {
 const LIMB_MASS: Partial<Record<Striker, number>> = { rFoot: 2.1, lFoot: 1.7, rKnee: 1.7, lKnee: 1.5, rElbow: 1.15, lElbow: 1.1 };
 
 const KICK_DRIVE = 2.2;
+/** The punching arm is driven harder too: it must not sag below its line. */
+const PUNCH_DRIVE = 1.8;
 /** Strikes of an ordinary human (body speed 1) take this much longer than the move data. */
 const STRIKE_TEMPO = 1.9;
 /** Points along the shin, shin frame for a 1.8 m fighter; the last is the foot itself. */
@@ -255,6 +257,8 @@ export class Fighter {
   /** Side whose hand is out or still coming back from a punch, open until this world time. */
   openSide: 'l' | 'r' = 'l';
   openUntilW = 0;
+  /** Last few strikes thrown, newest last. */
+  recentMoves: string[] = [];
   /** World time each active power is ready again. */
   readyAt: Partial<Record<PowerId, number>> = {};
 
@@ -537,6 +541,8 @@ export class Sim {
     if (m && kind === 'attack') f.stamina -= (opts.feint ? 0.4 : 1) * (0.006 + 0.008 * m.power);
     if (kind === 'dodge') f.stamina -= 0.02;
     if (m && kind === 'attack' && !opts.feint) {
+      f.recentMoves.push(m.id);
+      if (f.recentMoves.length > 3) f.recentMoves.shift();
       f.mem.tries[m.id] = (f.mem.tries[m.id] ?? 0) + 1;
       f.enemy.mem.oppMoves[m.id] = (f.enemy.mem.oppMoves[m.id] ?? 0) + 1;
       f.enemy.mem.oppAttackTimes.push(this.t);
@@ -731,6 +737,7 @@ export class Sim {
     }
     // The kicking leg is driven hard: a kick is the whole hip whipping the leg round.
     const kickLeg = f.state === 'ok' && f.action?.kind === 'attack' && f.action.move!.path ? FOOT_OF_STRIKER[f.action.move!.limb] : undefined;
+    const punchArm = f.state === 'ok' && f.action?.kind === 'attack' && f.action.move!.path && f.action.move!.limb.endsWith('Hand') ? f.action.move!.limb[0] : undefined;
     let rootTilt: THREE.Quaternion | undefined;
     let pelvisY: number | undefined;
     const ga = f.action;
@@ -762,10 +769,10 @@ export class Sim {
         partTone: {
           head: this.t < f.snapHeadW ? 0.06 : 1,
           chest: this.t < f.snapChestW ? 0.3 : 1,
-          lUpper: f.broken.lArm ? 0.04 : 1,
-          lFore: f.broken.lArm ? 0.04 : 1,
-          rUpper: f.broken.rArm ? 0.04 : 1,
-          rFore: f.broken.rArm ? 0.04 : 1,
+          lUpper: f.broken.lArm ? 0.04 : punchArm === 'l' ? PUNCH_DRIVE : 1,
+          lFore: f.broken.lArm ? 0.04 : punchArm === 'l' ? PUNCH_DRIVE : 1,
+          rUpper: f.broken.rArm ? 0.04 : punchArm === 'r' ? PUNCH_DRIVE : 1,
+          rFore: f.broken.rArm ? 0.04 : punchArm === 'r' ? PUNCH_DRIVE : 1,
           lThigh: f.broken.lLeg ? 0.45 : kickLeg === 0 ? KICK_DRIVE : 1,
           lShin: f.broken.lLeg ? 0.3 : kickLeg === 0 ? KICK_DRIVE : 1,
           rThigh: f.broken.rLeg ? 0.45 : kickLeg === 1 ? KICK_DRIVE : 1,
@@ -1183,6 +1190,11 @@ export class Sim {
     // A well placed blow lands on the point, a wild one spreads its force.
     dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
     if (fromBehind) dmg *= 1.3;
+    // A shove moves the man, it does not hurt him.
+    if (m.id === 'shove') {
+      dmg *= 0.2;
+      push.multiplyScalar(2.2);
+    }
     dmg *= 1 - 0.3 * att.fatigue;
     if (blocked) dmg *= 0.4;
     if (stone) {

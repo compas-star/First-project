@@ -86,6 +86,9 @@ function pathPoint(a: Action, shape: PathShape, start: THREE.Vector3, s: number,
   fromBasis(start, s, p0);
   if (straightLoad) fromBasis(start, s, p1).addScaledVector(fwd, (shape.chamber[0] - 0.2) * s).addScaledVector(up, shape.chamber[1] * s);
   else fromBasis(shape.chamber, s, p1);
+  // A punch to the head is loaded at the height of the target, so it travels level
+  // into the face instead of rising through the guard and the chest.
+  if (!(m.limb.endsWith('Foot')) && m.path !== 'upper' && aim.y > p1.y) p1.y = Math.max(p1.y, aim.y - 0.06 * s);
   if (u < loadEnd) {
     res.lerpVectors(p0, p1, ease(u / loadEnd));
   } else if (u < reachEnd) {

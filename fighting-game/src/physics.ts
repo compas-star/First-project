@@ -49,7 +49,7 @@ const PARTS: PartDef[] = [
   {
     name: 'chest', key: 'spine', parent: 'pelvis', share: 0.3,
     shapes: [{ kind: 'box', half: [0.17, 0.2, 0.11], at: [0, 0.27, 0], share: 1 }],
-    hit: { a: [0, 0.12, 0], b: [0, 0.42, 0], r: 0.16 }, dmg: 1, zone: 'body',
+    hit: { a: [0, 0.1, 0], b: [0, 0.3, 0], r: 0.15 }, dmg: 1, zone: 'body',
   },
   {
     name: 'head', key: 'head', parent: 'chest', share: 0.07,

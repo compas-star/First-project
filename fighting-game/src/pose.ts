@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { clonePose, lerpPose, POSE_KEYS, STANCE, type Pose } from './rig';
 import { POSES, sampleMove, withStance } from './moves';
 import type { Fighter } from './sim';
@@ -76,6 +77,8 @@ function downPose(f: Fighter, out: Pose): Pose {
   return out;
 }
 
+const chain = { ...STANCE } as Pose;
+
 export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
   if (f.state !== 'ok') return downPose(f, out);
   // The fighter's own stance comes from the fighting style.
@@ -104,6 +107,16 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
       case 'attack': {
         const m = a.move!;
         sampleMove(m, u, out, base);
+        // Kinetic chain: the hips turn first, the trunk follows, the arm comes last.
+        // The hips and trunk are sampled a little ahead of the arm's own timing.
+        const lead = 0.05 + 0.04 * f.tech;
+        sampleMove(m, Math.min(1, u + lead), chain, base);
+        out.pelvisTwist = chain.pelvisTwist;
+        out.crouch = chain.crouch;
+        sampleMove(m, Math.min(1, u + lead * 0.5), chain, base);
+        out.spineTwist = chain.spineTwist;
+        out.spineLean = chain.spineLean;
+        out.spineSide = chain.spineSide;
         const st = f.style;
         // Personal manner: how far the hips and shoulders turn into the blow.
         out.spineTwist = base.spineTwist + (out.spineTwist - base.spineTwist) * st.twist;
@@ -113,6 +126,19 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
           // Dip the level to punch to the body.
           out.crouch += 0.13 * env;
           out.spineLean += 10 * env;
+        }
+        // Weight behind the blow: the level drops a little as it lands.
+        const [a0, a1] = m.active;
+        const land = Math.max(0, Math.sin(Math.PI * THREE.MathUtils.clamp((u - a0 * 0.7) / (a1 - a0 * 0.7), 0, 1)));
+        out.crouch += 0.035 * land * Math.min(1.5, m.power / 1.6);
+        // Missed with everything behind it: the body keeps going past the target.
+        if (a.overcommit > 0) {
+          const k = a.overcommit * Math.sin(Math.PI * THREE.MathUtils.clamp((u - a1) / (1 - a1), 0, 1));
+          const dir = out.spineTwist >= base.spineTwist ? 1 : -1;
+          out.spineTwist += dir * 22 * k;
+          out.pelvisTwist += dir * 12 * k;
+          out.spineLean += 14 * k;
+          out.headPitch += 8 * k;
         }
         if (a.noise) {
           for (const k of POSE_KEYS) out[k] += (a.noise[k] ?? 0) * env;

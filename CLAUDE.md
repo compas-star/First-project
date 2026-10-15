@@ -100,8 +100,10 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
 ## Next steps (planned with the user)
 
 1. Done: training (genome/train/school), memory across fights.
-2. **Weight, step 2:** strikes driven from the legs and hips (kinetic chain), weight
-   transfer, follow-through and overcommitting on a miss, softer limb inertia.
+2. Done (first pass): kinetic chain (hips and trunk lead the arm in `pose.ts`), weight
+   carried into the blow, overcommit on a missed power shot (`Action.overcommit`, slow
+   recovery, punishable), arms/head at lower muscle frequency (`FREQ` in physics.ts).
+   Base damage 4.8 (fights ~20 s). Possible next: rear-foot pivot, recoil on a landed blow.
 3. **Stamina:** tired fighters slow down, drop the guard.
 4. **Lookahead where mind = depth:** faster perception simulates more options ahead.
 5. Known issues: rare support-shin velocity spike during cross/bodykick (IK flip?);

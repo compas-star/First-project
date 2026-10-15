@@ -358,6 +358,9 @@ function rotErr(target: THREE.Quaternion, cur: THREE.Quaternion, out: THREE.Vect
   return out.set(tq3.x, tq3.y, tq3.z).multiplyScalar(angle / sinHalf);
 }
 
+/** Muscle frequency per part relative to the base (lower = heavier, laggier). */
+const FREQ: Partial<Record<PartName, number>> = { lUpper: 0.8, rUpper: 0.8, lFore: 0.75, rFore: 0.75, head: 0.8 };
+
 const alphaW = new THREE.Vector3();
 const alphaR = new THREE.Vector3();
 const want = new THREE.Quaternion();
@@ -418,7 +421,9 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
       const ov = d.override?.[p.name];
       if (ov) want.copy(ov);
       else t[p.key].getWorldQuaternion(want);
-      rotErr(want, cur, alphaW).multiplyScalar(kp).addScaledVector(w, -kd).multiplyScalar(stand * pt);
+      // Limbs have their own inertia: arms and the head follow a little behind the trunk.
+      const fq = FREQ[p.name] ?? 1;
+      rotErr(want, cur, alphaW).multiplyScalar(kp * fq * fq).addScaledVector(w, -kd * fq).multiplyScalar(stand * pt);
     }
     let Ibar = inertiaTimes(p.body, alphaW, alphaW);
     // A part driven harder than usual (a kicking leg) also gets more muscle to do it.

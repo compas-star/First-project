@@ -83,6 +83,9 @@ export interface Action {
   handStart: THREE.Vector3 | null;
   /** A feint: shows the start of the strike and pulls out. */
   feint: boolean;
+  /** 0..1 how badly a missed blow carried the body past the target. */
+  overcommit: number;
+  missChecked: boolean;
 }
 
 /**
@@ -548,6 +551,8 @@ export class Sim {
       jitter,
       handStart: null,
       feint: !!opts.feint,
+      overcommit: 0,
+      missChecked: false,
     };
     f.action = a;
     f.strikeValid = false;
@@ -897,6 +902,32 @@ export class Sim {
         }
         if (u < m.active[0]) f.self.copy(fwd).multiplyScalar(a.lunge / (a.dur * m.active[0]));
         else f.self.multiplyScalar(Math.max(0, 1 - 20 * dl));
+        const [a0, a1] = m.active;
+        const heavy = Math.min(1.5, m.power / 1.6);
+        // Weight transfer: the body travels a little with the blow.
+        if (u >= a0 * 0.7 && u < a1) {
+          const want = 0.7 * heavy * Math.sqrt(f.scale) * Math.sin((Math.PI * (u - a0 * 0.7)) / (a1 - a0 * 0.7));
+          const along = f.self.dot(fwd);
+          if (along < want) f.self.addScaledVector(fwd, want - along);
+        }
+        // A miss with weight behind it carries the body past the target and is slow to recover.
+        if (u >= a1 && !a.missChecked && !a.feint) {
+          a.missChecked = true;
+          if (!a.hitDone) {
+            const k = THREE.MathUtils.clamp((m.power - 1.3) / 1.4, 0, 1) * (1.2 - 0.6 * f.tech) + (m.style === 'wild' ? 0.25 : 0);
+            if (k > 0.15) {
+              a.overcommit = Math.min(1, k);
+              f.stability = Math.min(f.stability, 1 - 0.45 * a.overcommit);
+              if (a.overcommit > 0.45) f.comboLeft = 0;
+              f.say(`провалился после промаха: ${m.name}`);
+            }
+          }
+        }
+        if (a.overcommit > 0 && u >= a1) {
+          a.t -= dl * (1 - 1 / (1 + 0.9 * a.overcommit));
+          const carry = 1 - (u - a1) / (1 - a1);
+          f.self.copy(fwd).multiplyScalar(0.9 * a.overcommit * Math.sqrt(f.scale) * Math.max(0, carry));
+        }
         // A kick reaches only as far as the leg from the hip: the kicker skips in on the
         // standing foot and turns the hip over until the target is within the leg's length.
         const kickSide = m.limb === 'lFoot' ? 'lThigh' : m.limb === 'rFoot' ? 'rThigh' : null;
@@ -1104,7 +1135,7 @@ export class Sim {
     }
     const blocked = def.action?.kind === 'block' && zone === 'arm' && facingAtt > 0;
     // Damage grows slower than the impulse, so a much faster fighter needs a few blows, not one.
-    let dmg = (7.5 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
+    let dmg = (4.8 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
     // A well placed blow lands on the point, a wild one spreads its force.
     dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
     if (fromBehind) dmg *= 1.3;

@@ -13,7 +13,7 @@ RAPIER.init().then(() => {
       const seqs=[0,0]; const seen=new Set<number>();
       while(!sim.winner && sim.t<60){ sim.step(sim.stepSize());
         const [A,B]=sim.fighters; if(A.state==='ok'&&B.state==='ok'){ distSum[0]+=A.pos.distanceTo(B.pos); distN++; }
-        sim.fighters.forEach((f,i)=>{ if(f.thoughtSeq!==seqs[i]){seqs[i]=f.thoughtSeq; const k=i+':'+(f.thought.startsWith('план')?f.thought:f.thought.split(':')[0]); if(/план|финт|ловлю/.test(f.thought)) stat[k]=(stat[k]??0)+1;}
+        sim.fighters.forEach((f,i)=>{ if(f.thoughtSeq!==seqs[i]){seqs[i]=f.thoughtSeq; const k=i+':'+(f.thought.startsWith('план')?f.thought:f.thought.split(':')[0]); if(/план|финт|ловлю|провалился|наказываю/.test(f.thought)) stat[k]=(stat[k]??0)+1;}
           if(f.action?.kind==='attack'&&!seen.has(f.action.id)){seen.add(f.action.id); const k=i+':'+f.action.move!.id; moves[k]=(moves[k]??0)+1;} });
         for(const e of sim.events) if(e.type==='hit'){ const k=(e.target.team?'R→B ':'B→R ')+(e.blocked?'блок':e.zone); stat[k]=(stat[k]??0)+1; } else if (e.type==='break'||e.type==='parry'||e.type==='wave'||e.type==='catch') { const k=e.type; stat[k]=(stat[k]??0)+1; }
         sim.events.length=0;

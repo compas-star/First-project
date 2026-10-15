@@ -3,6 +3,9 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildRig, rigNodes, type Rig } from './rig';
 import { syncRig, v, q } from './physics';
 import { ARENA_R, FLOOR_R, LIMB_NAME, type Fighter, type Limb, type Sim } from './sim';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { buildArena, type Arena } from './arena';
+import { dress, defaultSkin } from './skins';
 
 // Rendering: the arena, fighters and effects. Effects run partly on real time
 // (afterimages, labels) and partly on world time (sparks), so a slowed-down
@@ -60,6 +63,8 @@ class FighterView {
   ghosts: { root: THREE.Object3D; nodes: THREE.Object3D[]; mat: THREE.MeshBasicMaterial; age: number }[] = [];
   ghostTimer = 0;
   ring: THREE.Mesh;
+  /** A faint ring in the team colour always under the fighter. */
+  mark: THREE.Mesh;
   ringAge = 1;
   lastThink = 0;
   bubble: HTMLDivElement;
@@ -74,6 +79,9 @@ class FighterView {
     labels: HTMLElement,
   ) {
     this.rig = buildRig(f.p.color, f.girth);
+    let seed = 0;
+    for (const ch of f.p.name) seed = (seed * 31 + ch.charCodeAt(0)) | 0;
+    dress(this.rig, f.p.skin ?? defaultSkin(f.p.discipline), f.p.color, f.girth, seed);
     this.hurtMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(f.p.color).multiplyScalar(0.35).lerp(new THREE.Color(0x5a2a6a), 0.5),
       roughness: 0.8,
@@ -101,6 +109,13 @@ class FighterView {
       scene.add(root);
       this.ghosts.push({ root, nodes, mat, age: 9 });
     }
+
+    this.mark = new THREE.Mesh(
+      new THREE.RingGeometry(0.42, 0.5, 40),
+      new THREE.MeshBasicMaterial({ color: f.p.color, transparent: true, opacity: 0.35, depthWrite: false }),
+    );
+    this.mark.rotation.x = -Math.PI / 2;
+    scene.add(this.mark);
 
     this.ring = new THREE.Mesh(
       new THREE.RingGeometry(0.55, 0.62, 48),
@@ -155,6 +170,10 @@ class FighterView {
     const rs = f.scale * f.girth * (1 + this.ringAge * 1.5);
     this.ring.scale.set(rs, rs, rs);
     this.ring.position.set(f.pos.x, 0.02, f.pos.z);
+    const ms = f.scale * f.girth;
+    this.mark.scale.set(ms, ms, ms);
+    this.mark.position.set(f.pos.x, 0.012, f.pos.z);
+    this.mark.visible = f.state === 'ok';
 
     if (f.thoughtSeq !== this.lastThought) {
       this.lastThought = f.thoughtSeq;
@@ -191,7 +210,7 @@ class FighterView {
   }
 
   dispose(scene: THREE.Scene): void {
-    scene.remove(this.rig.root, this.ring);
+    scene.remove(this.rig.root, this.ring, this.mark);
     for (const g of this.ghosts) scene.remove(g.root);
     this.bubble.remove();
   }
@@ -219,6 +238,13 @@ export class View {
   private waves: { mesh: THREE.Mesh; age: number; size: number }[] = [];
   private pops: { el: HTMLDivElement; pos: THREE.Vector3; age: number }[] = [];
   private shake = 0;
+  private hemi: THREE.HemisphereLight;
+  private sun: THREE.DirectionalLight;
+  private arena: Arena | null = null;
+  private arenaId = '';
+  /** Crowd excitement 0..1: jumps on big blows and knockdowns, settles back. */
+  private excite = 0;
+  private clockT = 0;
   /** Real seconds the world stays frozen after a heavy blow (hit-stop). */
   hitStop = 0;
   private hitStopCool = 0;
@@ -261,8 +287,15 @@ export class View {
     });
     this.controls.maxPolarAngle = Math.PI * 0.49;
 
-    this.scene.add(new THREE.HemisphereLight(0xb8c6e6, 0x1a1410, 0.9));
+    // Soft reflections for metal and wet surfaces.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.3;
+
+    this.hemi = new THREE.HemisphereLight(0xb8c6e6, 0x1a1410, 0.9);
+    this.scene.add(this.hemi);
     const sun = new THREE.DirectionalLight(0xfff1dc, 2.2);
+    this.sun = sun;
     sun.position.set(8, 16, 6);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
@@ -275,19 +308,6 @@ export class View {
     rim.position.set(-10, 6, -8);
     this.scene.add(rim);
 
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(FLOOR_R, 96),
-      new THREE.MeshStandardMaterial({ map: floorTexture(), roughness: 0.9 }),
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    this.scene.add(floor);
-    const lip = new THREE.Mesh(
-      new THREE.CylinderGeometry(FLOOR_R, FLOOR_R * 0.92, 1.2, 96, 1, true),
-      new THREE.MeshStandardMaterial({ color: 0x10131a, roughness: 1, side: THREE.DoubleSide }),
-    );
-    lip.position.y = -0.6;
-    this.scene.add(lip);
 
     const max = 400;
     this.sparkPos = new Float32Array(max * 3);
@@ -326,9 +346,20 @@ export class View {
     this.pops = [];
     this.sparks = [];
     this.sim = sim;
+    if (this.arenaId !== sim.map.id) {
+      if (this.arena) this.scene.remove(this.arena.group);
+      this.arena = buildArena(sim.map, floorTexture);
+      this.arenaId = sim.map.id;
+      this.scene.add(this.arena.group);
+      this.scene.background = new THREE.Color(this.arena.background);
+      const [fc, near, far] = this.arena.fog;
+      this.scene.fog = new THREE.Fog(fc, near, far);
+      this.sun.intensity = this.arena.sun * 2.2;
+      this.hemi.intensity = this.arena.hemi;
+    }
     this.fighters = sim.fighters.map((f) => new FighterView(f, this.scene, this.labels));
 
-    const wood = new THREE.MeshStandardMaterial({ color: 0x8b6a45, roughness: 0.85 });
+    const wood = this.arena!.crate;
     const edge = new THREE.LineBasicMaterial({ color: 0x3b2a18 });
     this.crateMeshes = sim.crates.map((c) => {
       const geo = new THREE.BoxGeometry(c.half * 2, c.half * 2, c.half * 2);
@@ -368,6 +399,7 @@ export class View {
         this.burst(ev.pos, n, 1.5 + ev.power * 0.7, col, 0.35);
         if (ev.power > 3.5) this.wave(ev.target.pos, Math.min(9, ev.power * 0.5));
         this.shake = Math.max(this.shake, Math.min(0.35, ev.power * 0.025));
+        if (!ev.blocked) this.excite = Math.min(1, this.excite + ev.dmg * 0.03);
         // Hit-stop: a short freeze sells the weight of a blow; not again right away.
         if (!ev.blocked && ev.dmg > 4 && this.hitStopCool <= 0) {
           this.hitStop = Math.min(0.14, 0.035 + ev.dmg * 0.006);
@@ -393,6 +425,7 @@ export class View {
         this.shake = Math.max(this.shake, 0.2);
       } else if (ev.type === 'liver') {
         this.pop(ev.pos, 'печень!', ev.target.team);
+        this.excite = 1;
         this.shake = Math.max(this.shake, 0.15);
       } else if (ev.type === 'catch') {
         this.burst(ev.pos, 18, 1.5, new THREE.Color(0xffffff), 0.3);
@@ -445,6 +478,10 @@ export class View {
     if (!sim) return;
     this.hitStopCool -= realDt;
     this.consumeEvents();
+    this.clockT += realDt;
+    if (sim.fighters.some((f) => f.state !== 'ok')) this.excite = Math.max(this.excite, 0.8);
+    this.excite = Math.max(0, this.excite - realDt * 0.25);
+    this.arena?.update(this.clockT, this.excite);
 
     for (const fv of this.fighters) fv.update(realDt, fv.f.body * viewScale);
     sim.crates.forEach((c, i) => {

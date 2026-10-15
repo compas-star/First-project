@@ -11,6 +11,8 @@ import { schoolGenome, describeGenome, genesFor, type Genome } from './genome';
 
 const DISCIPLINE_IDS: string[] = DISCIPLINES.map((d) => d.id);
 import { View } from './view';
+import { MAPS, MAP_BY_ID, type MapId } from './maps';
+import { SKINS, defaultSkin } from './skins';
 
 type Eyes = 'fastest' | 'red' | 'blue' | 'real';
 const EYES: Eyes[] = ['fastest', 'red', 'blue', 'real'];
@@ -52,6 +54,22 @@ function save(): void {
 }
 
 const params = load();
+const MAP_KEY = 'arena-map-v1';
+let mapId: MapId = 'ring';
+try {
+  const m = localStorage.getItem(MAP_KEY) as MapId | null;
+  if (m && MAP_BY_ID[m]) mapId = m;
+} catch {
+  /* storage unavailable */
+}
+function setMap(id: MapId): void {
+  mapId = id;
+  try {
+    localStorage.setItem(MAP_KEY, id);
+  } catch {
+    /* storage unavailable */
+  }
+}
 let eyes: Eyes = 'fastest';
 let paused = false;
 let sim: Sim;
@@ -200,7 +218,7 @@ function startFight(): void {
   // Fighters keep a reference to these objects, so speed and strength sliders act live.
   remember();
   sim?.dispose();
-  sim = new Sim(params[0], params[1], (Math.random() * 1e9) | 0);
+  sim = new Sim(params[0], params[1], (Math.random() * 1e9) | 0, MAP_BY_ID[mapId]);
   remembered = false;
   recall();
   view.setSim(sim);
@@ -287,7 +305,6 @@ function showKo(): void {
   $('koTitle').textContent = `${l.koReason === 'нокаут' ? 'Нокаут' : 'Победа'}. Победил ${w.p.name}`;
   $('koStats').innerHTML = [
     `Бой длился <b>${sim.t.toFixed(2)} с</b> реального времени`,
-    l.koReason === 'вылетел с арены' ? `${l.p.name} вылетел с арены` : '',
     `Попаданий: ${w.p.name} <b>${w.hits}</b>, ${l.p.name} <b>${l.hits}</b>`,
     l.koReason && l.koReason !== 'нокаут' ? `Причина: <b>${l.koReason}</b>` : '',
     `Победитель: ${stateWord(w).text}${w.knockdowns ? `, нокдаунов ${w.knockdowns}` : ''}`,
@@ -440,6 +457,26 @@ function renderForm(): void {
   }
   form.appendChild(styles);
 
+  addTitle('Внешность · с нового боя');
+  const skins = document.createElement('div');
+  skins.className = 'powers';
+  const current = p.skin ?? defaultSkin(p.discipline);
+  for (const sk of SKINS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    const on = current === sk.id;
+    b.className = `power${on ? ' on' : ''}`;
+    b.setAttribute('aria-pressed', String(on));
+    b.innerHTML = `<b>${sk.name}</b><span>${sk.desc}</span>`;
+    b.addEventListener('click', () => {
+      p.skin = sk.id;
+      save();
+      renderForm();
+    });
+    skins.appendChild(b);
+  }
+  form.appendChild(skins);
+
   const disc = DISCIPLINE_BY_ID[p.discipline];
   addTitle(`Тренировка · ${disc.name}`);
   const skill = p.skills?.[p.discipline];
@@ -506,6 +543,7 @@ function renderPresets(): void {
       const [r, bl] = applyPreset(pr);
       Object.assign(params[0], r);
       Object.assign(params[1], bl);
+      setMap(pr.map);
       save();
       renderForm();
       $('sheet').hidden = true;
@@ -515,7 +553,25 @@ function renderPresets(): void {
   }
 }
 
+function renderMaps(): void {
+  const box = $('maps');
+  box.innerHTML = '';
+  for (const m of MAPS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `preset${m.id === mapId ? ' on' : ''}`;
+    b.setAttribute('aria-pressed', String(m.id === mapId));
+    b.innerHTML = `<b>${m.name}</b><span>${m.desc}</span>`;
+    b.addEventListener('click', () => {
+      setMap(m.id);
+      renderMaps();
+    });
+    box.appendChild(b);
+  }
+}
+
 function openSheet(): void {
+  renderMaps();
   renderForm();
   $('sheet').hidden = false;
 }

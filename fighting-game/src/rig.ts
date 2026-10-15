@@ -23,6 +23,8 @@ export interface Rig {
   rHand: THREE.Object3D;
   lFoot: THREE.Object3D;
   rFoot: THREE.Object3D;
+  /** The body meshes, so a skin can repaint them and hang things on them. */
+  mesh: Record<'hip' | 'torso' | 'head' | 'visor' | 'lUpper' | 'lFore' | 'rUpper' | 'rFore' | 'lThigh' | 'lShin' | 'rThigh' | 'rShin' | 'lHand' | 'rHand' | 'lFoot' | 'rFoot', THREE.Mesh>;
 }
 
 export const PELVIS_Y = 0.95;
@@ -142,12 +144,16 @@ export function buildRig(color: number, girth: number): Rig {
 
   const lSh = group(spine, 0.2 * girth, 0.42, 0);
   const rSh = group(spine, -0.2 * girth, 0.42, 0);
-  lSh.add(limb(0.055, 0.29, body, girth));
-  rSh.add(limb(0.055, 0.29, body, girth));
+  const lUpper = limb(0.055, 0.29, body, girth);
+  const rUpper = limb(0.055, 0.29, body, girth);
+  lSh.add(lUpper);
+  rSh.add(rUpper);
   const lEl = group(lSh, 0, -0.29, 0);
   const rEl = group(rSh, 0, -0.29, 0);
-  lEl.add(limb(0.045, 0.25, body, girth));
-  rEl.add(limb(0.045, 0.25, body, girth));
+  const lFore = limb(0.045, 0.25, body, girth);
+  const rFore = limb(0.045, 0.25, body, girth);
+  lEl.add(lFore);
+  rEl.add(rFore);
   const fistGeo = new THREE.SphereGeometry(0.062, 12, 8);
   const lHand = new THREE.Mesh(fistGeo, dark);
   const rHand = new THREE.Mesh(fistGeo, dark);
@@ -159,12 +165,16 @@ export function buildRig(color: number, girth: number): Rig {
 
   const lHip = group(pelvis, 0.1 * girth, -0.02, 0);
   const rHip = group(pelvis, -0.1 * girth, -0.02, 0);
-  lHip.add(limb(0.075, 0.44, body, girth));
-  rHip.add(limb(0.075, 0.44, body, girth));
+  const lThigh = limb(0.075, 0.44, body, girth);
+  const rThigh = limb(0.075, 0.44, body, girth);
+  lHip.add(lThigh);
+  rHip.add(rThigh);
   const lKn = group(lHip, 0, -0.44, 0);
   const rKn = group(rHip, 0, -0.44, 0);
-  lKn.add(limb(0.058, 0.44, body, girth));
-  rKn.add(limb(0.058, 0.44, body, girth));
+  const lShin = limb(0.058, 0.44, body, girth);
+  const rShin = limb(0.058, 0.44, body, girth);
+  lKn.add(lShin);
+  rKn.add(rShin);
   const footGeo = new THREE.BoxGeometry(0.11, 0.06, 0.24);
   footGeo.translate(0, 0, 0.05);
   const lFoot = new THREE.Mesh(footGeo, dark);
@@ -175,7 +185,13 @@ export function buildRig(color: number, girth: number): Rig {
   lKn.add(lFoot);
   rKn.add(rFoot);
 
-  return { root, tilt, pelvis, spine, head, lSh, lEl, rSh, rEl, lHip, lKn, rHip, rKn, lHand, rHand, lFoot, rFoot };
+  return {
+    root, tilt, pelvis, spine, head, lSh, lEl, rSh, rEl, lHip, lKn, rHip, rKn, lHand, rHand, lFoot, rFoot,
+    mesh: {
+      hip: hipMesh, torso, head: headMesh, visor, lUpper, lFore, rUpper, rFore, lThigh, lShin, rThigh, rShin,
+      lHand, rHand, lFoot, rFoot,
+    },
+  };
 }
 
 export function applyPose(r: Rig, p: Pose): void {

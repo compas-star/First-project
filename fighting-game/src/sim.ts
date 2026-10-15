@@ -7,6 +7,7 @@ import { DISCIPLINE_BY_ID, type Discipline, type Stance } from './disciplines';
 import { punchOverride, aimPointOf } from './strikes';
 import { makeMemory, type Memory, type PlanId } from './brain';
 import { schoolGenome, type Genome } from './genome';
+import { MAP_BY_ID, ALLEY_HALF, room, type MapDef } from './maps';
 import { readOpponent, fitOf } from './tactics';
 import { POWER_BY_ID, type PowerId } from './powers';
 import { react, think } from './ai';
@@ -472,21 +473,19 @@ export class Sim {
   private partByCollider = new Map<number, { f: Fighter; part: Part }>();
 
   /** RAPIER.init() must have finished before a Sim is created. */
-  constructor(red: FighterParams, blue: FighterParams, seed = 7) {
-    this.rng = rng32(seed);
-    this.world = new RAPIER.World({ x: 0, y: -G, z: 0 });
+  readonly map: MapDef;
 
-    const floor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0));
-    this.world.createCollider(
-      RAPIER.ColliderDesc.cylinder(0.5, FLOOR_R).setFriction(0.9).setCollisionGroups(collisionGroups(GROUP_ENV, 0xffff)),
-      floor,
-    );
+  constructor(red: FighterParams, blue: FighterParams, seed = 7, map: MapDef = MAP_BY_ID.void) {
+    this.rng = rng32(seed);
+    this.map = map;
+    this.world = new RAPIER.World({ x: 0, y: -G, z: 0 });
+    this.buildMap();
 
     const a = new Fighter(red, 0);
     const b = new Fighter(blue, 1);
     a.enemy = b;
     b.enemy = a;
-    const gap = 2.2 + (a.scale + b.scale) * 0.6;
+    const gap = map.start > 0 ? map.start * Math.max(1, (a.scale + b.scale) / 2) : 2.2 + (a.scale + b.scale) * 0.6;
     a.facing = 0;
     b.facing = Math.PI;
     this.fighters = [a, b];
@@ -501,7 +500,73 @@ export class Sim {
       f.nextThinkW = 0.3 / f.mind;
       resetFeet(f);
     }
-    this.layCrates();
+    if (map.crates) this.layCrates();
+  }
+
+  /** A fixed box collider: floors, walls, ropes. */
+  private fixedBox(x: number, y: number, z: number, hx: number, hy: number, hz: number, yaw = 0, bounce = 0.05, friction = 0.9): void {
+    const body = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed().setTranslation(x, y, z).setRotation(new THREE.Quaternion().setFromAxisAngle(UP, yaw)),
+    );
+    this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(hx, hy, hz).setFriction(friction).setRestitution(bounce).setCollisionGroups(collisionGroups(GROUP_ENV, 0xffff)),
+      body,
+    );
+  }
+
+  /** Floor and boundaries of the map. */
+  private buildMap(): void {
+    const m = this.map;
+    const S = m.size;
+    if (m.shape === 'circle') {
+      const floor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0));
+      this.world.createCollider(
+        RAPIER.ColliderDesc.cylinder(0.5, S).setFriction(0.9).setCollisionGroups(collisionGroups(GROUP_ENV, 0xffff)),
+        floor,
+      );
+    } else if (m.edge === 'alley') {
+      this.fixedBox(0, -0.5, 0, ALLEY_HALF + 0.6, 0.5, S + 5);
+    } else {
+      const half = m.shape === 'octagon' ? S + 1.5 : S + 0.3;
+      this.fixedBox(0, -0.5, 0, half, 0.5, half);
+    }
+    if (m.outside === 'ground') this.fixedBox(0, -1.6, 0, 30, 0.5, 30);
+    switch (m.edge) {
+      case 'ropes':
+        // Three ropes on each side: they give and throw a fighter back in.
+        for (const y of [0.5, 0.9, 1.3]) {
+          for (const sgn of [-1, 1]) {
+            this.fixedBox(0, y, sgn * S, S, 0.03, 0.03, 0, 0.6, 0.3);
+            this.fixedBox(sgn * S, y, 0, 0.03, 0.03, S, 0, 0.6, 0.3);
+          }
+        }
+        for (const [x, z] of [[S, S], [S, -S], [-S, S], [-S, -S]]) this.fixedBox(x, 0.75, z, 0.09, 0.75, 0.09);
+        break;
+      case 'fence': {
+        const apo = S * Math.cos(Math.PI / 8);
+        const len = S * Math.sin(Math.PI / 8);
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          this.fixedBox(Math.sin(a) * (apo + 0.05), 0.95, Math.cos(a) * (apo + 0.05), len, 0.95, 0.05, a, 0.2, 0.5);
+        }
+        break;
+      }
+      case 'walls':
+        for (const sgn of [-1, 1]) {
+          this.fixedBox(0, 1.25, sgn * (S + 0.1), S + 0.2, 1.25, 0.1);
+          this.fixedBox(sgn * (S + 0.1), 1.25, 0, 0.1, 1.25, S + 0.2);
+        }
+        break;
+      case 'alley':
+        for (const sgn of [-1, 1]) this.fixedBox(sgn * (ALLEY_HALF + 0.15), 2, 0, 0.15, 2, S + 5);
+        break;
+      case 'parapet':
+        for (const sgn of [-1, 1]) {
+          this.fixedBox(0, 0.22, sgn * (S + 0.1), S + 0.2, 0.22, 0.1);
+          this.fixedBox(sgn * (S + 0.1), 0.22, 0, 0.1, 0.22, S + 0.2);
+        }
+        break;
+    }
   }
 
   dispose(): void {
@@ -530,6 +595,19 @@ export class Sim {
   }
 
   private layCrates(): void {
+    if (this.map.id === 'alley') {
+      // Bins and boxes along the walls.
+      const spots: [number, number, number][] = [
+        [2.2, 3.5, 0.35], [2.25, 4.3, 0.3], [-2.2, -3.8, 0.4], [-2.25, 2.0, 0.3], [2.2, -5.0, 0.45], [-2.1, 5.5, 0.35],
+      ];
+      for (const [x, z, half] of spots) this.addCrate(x, half, z, half, this.rng() * 0.6);
+      return;
+    }
+    if (this.map.id === 'roof') {
+      const spots: [number, number, number][] = [[4.8, 4.5, 0.5], [-4.6, -4.2, 0.45], [4.5, -4.8, 0.35], [-4.9, 4.4, 0.4]];
+      for (const [x, z, half] of spots) this.addCrate(x, half, z, half, this.rng() * 0.6);
+      return;
+    }
     const spots: [number, number, number][] = [
       [6.5, 2.5, 0.45], [7.4, 3.4, 0.35], [6.6, 3.5, 0.3],
       [-7, -1.5, 0.5], [-7.8, -0.5, 0.35],
@@ -708,12 +786,14 @@ export class Sim {
         f.self.addScaledVector(tmpA, Math.sin(f.clock * 1.9) * 0.5 * f.stride * dl * 4);
         if (this.rng() < 0.25 * h * f.body) f.wobbleUntilW = this.t + 0.3 / f.body;
       }
-      // Stay off the edge unless something throws you over it.
-      const r = Math.hypot(f.pos.x, f.pos.z);
-      if (r > ARENA_R - 1.5) {
-        tmpB.set(f.pos.x / r, 0, f.pos.z / r);
+      // Stay off the ropes, the fence, the walls and the edge unless something throws you there.
+      const inward = { x: 0, z: 0 };
+      const left = room(this.map, f.pos.x, f.pos.z, inward);
+      const margin = 0.6 + 0.6 * f.scale;
+      if (left < margin) {
+        tmpB.set(-inward.x, 0, -inward.z);
         const out = f.self.dot(tmpB);
-        if (out > 0) f.self.addScaledVector(tmpB, -out * Math.min(1, (r - (ARENA_R - 1.5)) / 1.5));
+        if (out > 0) f.self.addScaledVector(tmpB, -out * Math.min(1, (margin - left) / margin));
       }
       const lockTurn =
         (a?.kind === 'attack' && (a.t > a.dur * a.move!.active[0] * 0.5 || !!a.move!.spin)) || a?.kind === 'dash';
@@ -870,6 +950,11 @@ export class Sim {
       // Rhythm: a light in-and-out bounce of a trained fighter.
       want.addScaledVector(d, Math.sin(f.clock * 2 * Math.PI * 1.4 + f.style.phase[0]) * 0.18 * f.style.bounce * f.bounceK * f.stride);
     }
+    // On the ropes or against the wall: circle out toward open floor.
+    const inward = { x: 0, z: 0 };
+    const left = room(this.map, f.pos.x, f.pos.z, inward);
+    const near = 1.5 * f.scale;
+    if (left < near) want.addScaledVector(tmpP.set(inward.x, 0, inward.z), ((near - left) / near) * f.stride * 0.9);
     f.self.lerp(want.multiplyScalar(mul), Math.min(1, 7 * dl));
   }
 
@@ -991,13 +1076,15 @@ export class Sim {
     }
     f.prevVy = vel.y;
 
-    if (p.y < -2 && !f.out) {
+    // Thrown out of a raised ring onto the floor below, or off a roof: the fight is over.
+    const fellOut = this.map.outside === 'ground' && p.y < this.map.floorY - 0.7 && room(this.map, p.x, p.z, { x: 0, z: 0 }) < -0.2;
+    if ((p.y < -2 || fellOut) && !f.out) {
       f.out = true;
       this.knockDown(f, '');
       if (!this.winner) {
         this.winner = f.enemy;
-        f.koReason = 'вылетел с арены';
-        f.say('вылетел с арены');
+        f.koReason = this.map.id === 'ring' ? 'вылетел с ринга' : this.map.id === 'roof' ? 'упал с крыши' : this.map.id === 'cage' ? 'вылетел из клетки' : 'вылетел с арены';
+        f.say(f.koReason);
       }
       return;
     }

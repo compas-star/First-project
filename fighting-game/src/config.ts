@@ -1,6 +1,8 @@
 import type { PowerId } from './powers';
 import type { DisciplineId } from './disciplines';
 import type { Genome } from './genome';
+import type { SkinId } from './skins';
+import type { MapId } from './maps';
 
 // Fighter parameters. Everything a fighter can do follows from these numbers:
 // there are no tiers or leagues, a god-like build simply has bigger values.
@@ -32,6 +34,8 @@ export interface FighterParams {
   powers: PowerId[];
   /** Habits learned in training, per style; missing = what the style's school teaches. */
   skills?: Partial<Record<DisciplineId, Skill>>;
+  /** Look; missing = what his style wears. */
+  skin?: SkinId;
   /** Overrides the habits outright (used while training). */
   genome?: Genome;
 }
@@ -70,11 +74,13 @@ export interface Preset {
   desc: string;
   red: Partial<FighterParams>;
   blue: Partial<FighterParams>;
+  map: MapId;
 }
 
 export const PRESETS: Preset[] = [
   {
     id: 'equal',
+    map: 'ring',
     name: 'Два обычных',
     desc: 'Одинаковые люди. Честная драка.',
     red: {},
@@ -82,13 +88,15 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'technique',
+    map: 'alley',
     name: 'Мастер и драчун',
     desc: 'Красный: техничный, держит дистанцию. Синий: крупнее и злее, но без техники.',
-    red: { skill: 0.95, aggression: 0.55, weight: 72, discipline: 'mma' },
-    blue: { skill: 0.1, aggression: 0.9, weight: 90, height: 1.86, strength: 1.2, discipline: 'street' },
+    red: { skill: 0.95, aggression: 0.55, weight: 72, discipline: 'mma', skin: 'ninja' },
+    blue: { skill: 0.1, aggression: 0.9, weight: 90, height: 1.86, strength: 1.2, discipline: 'street', skin: 'biker' },
   },
   {
     id: 'box-vs-thai',
+    map: 'ring',
     name: 'Боксёр и таец',
     desc: 'Красный: бокс, руки и работа головой. Синий: тайский бокс, ноги, локти, колени.',
     red: { discipline: 'boxing', skill: 0.85, aggression: 0.65 },
@@ -96,6 +104,7 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'karate-vs-kick',
+    map: 'dojo',
     name: 'Каратэ и кикбоксинг',
     desc: 'Красный: каратэ на длинной дистанции, вертушки. Синий: кикбоксер с сериями.',
     red: { discipline: 'karate', skill: 0.9, aggression: 0.55, weight: 70 },
@@ -103,44 +112,49 @@ export const PRESETS: Preset[] = [
   },
   {
     id: 'quick',
+    map: 'cage',
     name: 'Ртуть',
     desc: 'Красный в 12 раз быстрее и телом, и восприятием.',
-    red: { bodySpeed: 12, mindSpeed: 12, weight: 70, aggression: 0.8 },
+    red: { bodySpeed: 12, mindSpeed: 12, weight: 70, aggression: 0.8, skin: 'ninja' },
     blue: {},
   },
   {
     id: 'body-vs-mind',
+    map: 'cage',
     name: 'Тело против ума',
     desc: 'Красный: тело ×4, ум обычный. Синий: тело ×1.5, ум ×8.',
-    red: { bodySpeed: 4, mindSpeed: 1, linkMind: false },
-    blue: { bodySpeed: 1.5, mindSpeed: 8, linkMind: false, skill: 0.9 },
+    red: { bodySpeed: 4, mindSpeed: 1, linkMind: false, skin: 'luchador' },
+    blue: { bodySpeed: 1.5, mindSpeed: 8, linkMind: false, skill: 0.9, skin: 'robot' },
   },
   {
     id: 'heavy',
+    map: 'roof',
     name: 'Тяжеловес',
     desc: 'Красный: 2.1 м, 140 кг, сила ×2.5. Синий: лёгкий и на 20% быстрее.',
-    red: { height: 2.1, weight: 140, strength: 2.5, bodySpeed: 0.9, mindSpeed: 0.9 },
-    blue: { height: 1.7, weight: 64, bodySpeed: 1.2, mindSpeed: 1.2, aggression: 0.7 },
+    red: { height: 2.1, weight: 140, strength: 2.5, bodySpeed: 0.9, mindSpeed: 0.9, skin: 'sumo' },
+    blue: { height: 1.7, weight: 64, bodySpeed: 1.2, mindSpeed: 1.2, aggression: 0.7, skin: 'clerk' },
   },
   {
     id: 'giant',
+    map: 'void',
     name: 'Гигант и молния',
     desc: 'Красный: 4 м, сила ×8, медленный. Синий: скорость ×20, но слабый удар.',
-    red: { height: 4, weight: 700, strength: 8, bodySpeed: 0.7, mindSpeed: 0.7, aggression: 0.5 },
-    blue: { height: 1.75, weight: 70, strength: 0.6, bodySpeed: 20, mindSpeed: 20, aggression: 0.75 },
+    red: { height: 4, weight: 700, strength: 8, bodySpeed: 0.7, mindSpeed: 0.7, aggression: 0.5, skin: 'zombie' },
+    blue: { height: 1.75, weight: 70, strength: 0.6, bodySpeed: 20, mindSpeed: 20, aggression: 0.75, skin: 'ninja' },
   },
   {
     id: 'demigods',
+    map: 'void',
     name: 'Полубоги',
     desc: 'Красный: сила ×6, каменная кожа, ударная волна. Синий: скорость ×3, рывок, парирование, регенерация.',
-    red: { strength: 6, weight: 120, height: 2, skill: 0.6, powers: ['stone', 'shockwave'] },
-    blue: { bodySpeed: 3, mindSpeed: 3, strength: 2, skill: 0.85, powers: ['dash', 'parry', 'regen'] },
+    red: { strength: 6, weight: 120, height: 2, skill: 0.6, powers: ['stone', 'shockwave'], skin: 'gladiator' },
+    blue: { bodySpeed: 3, mindSpeed: 3, strength: 2, skill: 0.85, powers: ['dash', 'parry', 'regen'], skin: 'robot' },
   },
 ];
 
 export function applyPreset(p: Preset): [FighterParams, FighterParams] {
   return [
-    { ...defaultFighter(0), ...p.red, powers: [...(p.red.powers ?? [])] },
-    { ...defaultFighter(1), ...p.blue, powers: [...(p.blue.powers ?? [])] },
+    { ...defaultFighter(0), skin: undefined, ...p.red, powers: [...(p.red.powers ?? [])] },
+    { ...defaultFighter(1), skin: undefined, ...p.blue, powers: [...(p.blue.powers ?? [])] },
   ];
 }

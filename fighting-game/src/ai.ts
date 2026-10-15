@@ -124,7 +124,7 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
     return;
   }
 
-  if (tti > 0.1 / f.body && sim.rng() < 0.3 + 0.65 * f.tech) {
+  if (tti > 0.1 / f.body && sim.rng() < 0.3 + 0.65 * f.tech + f.gene('dodge')) {
     if (m.dodge === 'back') {
       noted(f, 'back');
       sim.startAction(f, 'dodge', { dur: 0.3, dir: d.clone().negate(), pose: 'dodgeBack' });
@@ -138,7 +138,7 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
     return;
   }
 
-  if (tti > 0.05 / f.body && sim.rng() < 0.4 + 0.6 * f.tech) {
+  if (tti > 0.05 / f.body && sim.rng() < 0.4 + 0.6 * f.tech + f.gene('block')) {
     sim.startAction(f, 'block', { dur: 0.5 });
     noted(f, 'block');
     f.say('блок');
@@ -209,7 +209,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   const myRange = sim.attackRange(f, jab);
   const enemyRange = sim.attackRange(e, jab) + jab.lunge * e.scale;
   // How far a lunge can carry the fighter into range.
-  const lungeMax = (0.15 + 0.6 * tech) * f.scale;
+  const lungeMax = (0.15 + 0.6 * tech) * f.scale * Math.exp(f.gene('lunge'));
   // Technical fighters wait at the edge of the enemy's reach, brawlers want to be close.
   const outside = Math.max(enemyRange + 0.1 * f.scale, myRange + 0.05);
   const gap = minGap(f, e);
@@ -262,7 +262,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
       bit ? `ловлю на финте: ${m.name}` : behind ? `${m.name} в спину` : punish ? `наказываю: ${m.name}${where}` : stepIn ? `выпад: ${m.name}${where}` : `${m.name}${where}`,
     );
     // Longer combinations for aggressive fighters; each fighter has a habit and the plan adds its own.
-    const len = Math.round(f.style.comboLen * (0.5 + f.p.aggression) * (0.5 + sim.rng())) + planComboBonus(f);
+    const len = Math.round(f.style.comboLen * (0.5 + f.p.aggression) * (0.5 + sim.rng()) + planComboBonus(f));
     f.comboLeft = Math.max(0, len - 1);
     return;
   }

@@ -1,5 +1,6 @@
 import type { PowerId } from './powers';
 import type { DisciplineId } from './disciplines';
+import type { Genome } from './genome';
 
 // Fighter parameters. Everything a fighter can do follows from these numbers:
 // there are no tiers or leagues, a god-like build simply has bigger values.
@@ -29,6 +30,18 @@ export interface FighterParams {
   /** Fighting style: which strikes, what stance, what range. */
   discipline: DisciplineId;
   powers: PowerId[];
+  /** Habits learned in training, per style; missing = what the style's school teaches. */
+  skills?: Partial<Record<DisciplineId, Skill>>;
+  /** Overrides the habits outright (used while training). */
+  genome?: Genome;
+}
+
+export interface Skill {
+  genome: Genome;
+  /** Sparring fights trained. */
+  fights: number;
+  /** Whom he trained against, last. */
+  vs?: string;
 }
 
 export const RED = 0xf0533e;

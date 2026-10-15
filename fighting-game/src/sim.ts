@@ -6,6 +6,7 @@ import { makeFeet, resetFeet, updateFeet, legOverride, anchorFeet, measureBalanc
 import { DISCIPLINE_BY_ID, type Discipline, type Stance } from './disciplines';
 import { punchOverride } from './strikes';
 import { makeMemory, type Memory, type PlanId } from './brain';
+import { schoolGenome, type Genome } from './genome';
 import { POWER_BY_ID, type PowerId } from './powers';
 import { react, think } from './ai';
 import { clonePose, STANCE, PELVIS_Y, type Pose } from './rig';
@@ -244,6 +245,22 @@ export class Fighter {
     this.maxPoise = 28 * Math.sqrt(p.weight / 78);
     this.poise = this.maxPoise;
     this.style = makeStyle(p, team);
+  }
+
+  /** Learned habits (see genome.ts). */
+  get g(): Genome {
+    const p = this.p;
+    if (this.genomeFor !== p.discipline) {
+      this.genomeFor = p.discipline;
+      this.genomeCache = p.genome ?? p.skills?.[p.discipline]?.genome ?? schoolGenome(p.discipline);
+    }
+    return this.genomeCache;
+  }
+  private genomeCache: Genome = {};
+  private genomeFor = '';
+
+  gene(key: string): number {
+    return this.g[key] ?? 0;
   }
 
   get body(): number {

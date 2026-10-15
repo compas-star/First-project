@@ -3,8 +3,11 @@ import { PRESETS, applyPreset, defaultFighter, type FighterParams } from './conf
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Sim, LIMB_NAME, type Limb } from './sim';
 import { POWERS } from './powers';
-import { PLAN_SHORT } from './brain';
-import { DISCIPLINES } from './disciplines';
+import { PLAN_SHORT, fadeMemory, bestStrike, type Memory } from './brain';
+import { MOVE_BY_ID } from './moves';
+import { DISCIPLINES, DISCIPLINE_BY_ID } from './disciplines';
+import { train, type TrainProgress } from './train';
+import { schoolGenome, describeGenome, genesFor, type Genome } from './genome';
 
 const DISCIPLINE_IDS: string[] = DISCIPLINES.map((d) => d.id);
 import { View } from './view';
@@ -59,10 +62,147 @@ let koReal = 0;
 
 const view = new View($('scene'), $('labels'));
 
+// ---------- Training ----------
+// Sparring runs headless in slices between frames; habits are saved after every round.
+
+const TRAIN = { pairs: 2, fights: 2, rounds: 10, maxT: 30, lr: 0.7 };
+const PER_ROUND = TRAIN.pairs * 2 * TRAIN.fights;
+let training: {
+  who: 0 | 1;
+  it: Generator<TrainProgress, Genome>;
+  last: TrainProgress | null;
+  rounds: number;
+  baseFights: number;
+  t0: number;
+} | null = null;
+
+function startTraining(who: 0 | 1): void {
+  const me = params[who];
+  const opp = params[1 - who];
+  const skill = me.skills?.[me.discipline];
+  const start = skill?.genome ?? schoolGenome(me.discipline);
+  training = {
+    who,
+    it: train({ ...me, genome: undefined }, [{ ...opp }], start, { ...TRAIN, seed: (Math.random() * 1e9) | 0, keys: genesFor(me.discipline) }),
+    last: null,
+    rounds: 0,
+    baseFights: skill?.fights ?? 0,
+    t0: performance.now(),
+  };
+  paused = true;
+  $('sheet').hidden = true;
+  $('ko').hidden = true;
+  $('train').hidden = false;
+  $('trainTitle').textContent = `${me.name}: спарринги с ${opp.name}`;
+  $('trainStop').textContent = 'Хватит';
+  showTraining();
+}
+
+function keepSkill(who: 0 | 1, g: Genome, fights: number): void {
+  const me = params[who];
+  me.skills = { ...(me.skills ?? {}), [me.discipline]: { genome: { ...g }, fights, vs: params[1 - who].name } };
+  save();
+}
+
+function showTraining(done = false): void {
+  const t = training!;
+  const p = t.last;
+  const fights = p ? p.fight : 0;
+  const total = p ? p.totalFights : TRAIN.rounds * PER_ROUND;
+  $('trainBar').style.width = `${(100 * fights) / total}%`;
+  const pct = (v: number | null) => (v === null ? '…' : `${Math.round(v * 100)}%`);
+  const me = params[t.who];
+  const habits = describeGenome(me.skills?.[me.discipline]?.genome ?? {}, schoolGenome(me.discipline), me.discipline);
+  $('trainStats').innerHTML = [
+    `Спарринг <b>${Math.min(total, fights + (done ? 0 : 1))}</b> из ${total}, круг <b>${t.rounds}</b> из ${TRAIN.rounds}` +
+      (!done && fights >= 2 ? `, осталось ~${Math.max(1, Math.round(((performance.now() - t.t0) / fights) * (total - fights) / 60000))} мин` : ''),
+    p?.winRate != null ? `Побед в круге: первом <b>${pct(firstWin)}</b>, последнем <b>${pct(p.winRate)}</b>` : 'Первый круг идёт…',
+    `Всего опыта: <b>${t.baseFights + t.rounds * PER_ROUND}</b> спаррингов`,
+    habits.length ? `Привычки: ${habits.join(', ')}` : '',
+    `<span>Каждый круг ${PER_ROUND} боёв: пробует изменить привычки в обе стороны и оставляет то, что работает лучше. Цифры по кругу шумные.</span>`,
+  ]
+    .filter(Boolean)
+    .map((x) => `<div>${x}</div>`)
+    .join('');
+}
+let firstWin: number | null = null;
+
+function stepTraining(): void {
+  const t = training!;
+  const until = performance.now() + 28;
+  while (performance.now() < until) {
+    const r = t.it.next();
+    if (r.done) {
+      keepSkill(t.who, r.value, t.baseFights + t.rounds * PER_ROUND);
+      finishTraining();
+      return;
+    }
+    const p = r.value;
+    if (p.round > t.rounds) {
+      t.rounds = p.round;
+      if (t.rounds === 1) firstWin = p.winRate;
+      keepSkill(t.who, p.mean, t.baseFights + t.rounds * PER_ROUND);
+    }
+    t.last = p;
+  }
+  showTraining();
+}
+
+function finishTraining(): void {
+  if (!training) return;
+  showTraining(true);
+  training = null;
+  firstWin = null;
+  $('trainStop').textContent = 'В бой';
+}
+
+// ---------- Memory across fights ----------
+// Each fighter remembers every opponent by name: what landed on him and how he
+// reacts. It fades a little with every new fight.
+
+const MEM_KEY = 'arena-memory-v1';
+type MemStore = Record<string, { fights: number; mem: Memory }>;
+let memStore: MemStore = {};
+try {
+  memStore = JSON.parse(localStorage.getItem(MEM_KEY) ?? '{}') as MemStore;
+} catch {
+  /* storage unavailable */
+}
+const memKey = (me: FighterParams, opp: FighterParams) => `${me.name}→${opp.name}`;
+let remembered = true;
+
+/** Stores what both fighters learned in the current fight (once per fight). */
+function remember(): void {
+  if (remembered || !sim || sim.t < 5) return;
+  remembered = true;
+  for (const f of sim.fighters) {
+    const k = memKey(f.p, f.enemy.p);
+    memStore[k] = { fights: (memStore[k]?.fights ?? 0) + 1, mem: fadeMemory(f.mem, 1) };
+  }
+  try {
+    localStorage.setItem(MEM_KEY, JSON.stringify(memStore));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function recall(): void {
+  for (const f of sim.fighters) {
+    const past = memStore[memKey(f.p, f.enemy.p)];
+    if (!past) continue;
+    f.mem = fadeMemory(past.mem);
+    const best = bestStrike(f.mem);
+    f.say(`помню его по ${past.fights} ${past.fights === 1 ? 'бою' : 'боям'}${best ? `: заходит ${MOVE_BY_ID[best].name}` : ''}`);
+  }
+}
+
 function startFight(): void {
   // Fighters keep a reference to these objects, so speed and strength sliders act live.
+  remember();
   sim?.dispose();
   sim = new Sim(params[0], params[1], (Math.random() * 1e9) | 0);
+  remembered = false;
+  recall();
   view.setSim(sim);
   koShownAt = -1;
   koTimer = 0;
@@ -118,14 +258,17 @@ function injuries(f: Sim['fighters'][number]): string {
 }
 
 function showKo(): void {
+  remember();
   const w = sim.winner!;
   const l = w.enemy;
+  const known = memStore[memKey(w.p, l.p)]?.fights ?? 0;
   $('koTitle').textContent = `Нокаут. Победил ${w.p.name}`;
   $('koStats').innerHTML = [
     `Бой длился <b>${sim.t.toFixed(2)} с</b> реального времени`,
     l.koReason === 'вылетел с арены' ? `${l.p.name} вылетел с арены` : '',
     `Попаданий: ${w.p.name} <b>${w.hits}</b>, ${l.p.name} <b>${l.hits}</b>`,
     `У победителя осталось <b>${Math.ceil(w.hp)}</b> здоровья`,
+    known > 1 ? `Они дрались уже <b>${known}</b> раз: оба помнят, что заходит` : '',
   ]
     .filter(Boolean)
     .map((s) => `<div>${s}</div>`)
@@ -146,8 +289,9 @@ function frame(now: number): void {
   const k = 1 - Math.exp(-realDt * 5);
   viewScale = Math.exp(Math.log(viewScale) + (Math.log(target) - Math.log(viewScale)) * k);
 
+  if (training) stepTraining();
   let worldDt = 0;
-  if (!paused) {
+  if (!paused && !training) {
     // On a slow phone the physics may not keep up; then time simply runs slower.
     worldDt = sim.advance(realDt * viewScale);
   }
@@ -271,6 +415,39 @@ function renderForm(): void {
   }
   form.appendChild(styles);
 
+  const disc = DISCIPLINE_BY_ID[p.discipline];
+  addTitle(`Тренировка · ${disc.name}`);
+  const skill = p.skills?.[p.discipline];
+  const info = document.createElement('p');
+  info.className = 'note';
+  const habits = skill ? describeGenome(skill.genome, schoolGenome(p.discipline), p.discipline) : [];
+  info.innerHTML = skill
+    ? `Опыт: <b>${skill.fights}</b> спаррингов${skill.vs ? ` (последний соперник: ${skill.vs})` : ''}.` +
+      (habits.length ? ` Привычки: ${habits.join(', ')}.` : ' Привычки пока как у школы стиля.')
+    : `Не тренировался: дерётся так, как учит школа стиля. Тренировка: ${TRAIN.rounds * PER_ROUND} спаррингов с текущим соперником, боец сам подбирает привычки, которые против него работают. Можно остановить в любой момент.`;
+  const met = memStore[memKey(p, params[1 - tab])]?.fights ?? 0;
+  if (met) info.innerHTML += ` Помнит соперника (${params[1 - tab].name}) по <b>${met}</b> ${met === 1 ? 'бою' : 'боям'}: что на него заходит и как он защищается.`;
+  form.appendChild(info);
+  const row = document.createElement('div');
+  row.className = 'train-row';
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.textContent = `Тренировать против: ${params[1 - tab].name}`;
+  go.addEventListener('click', () => startTraining(tab));
+  row.appendChild(go);
+  if (skill) {
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.textContent = 'Забыть';
+    reset.addEventListener('click', () => {
+      delete p.skills![p.discipline];
+      save();
+      renderForm();
+    });
+    row.appendChild(reset);
+  }
+  form.appendChild(row);
+
   addTitle('Сверхсилы · меняются сразу');
   const chips = document.createElement('div');
   chips.className = 'powers';
@@ -342,6 +519,14 @@ $('btnFight').addEventListener('click', () => {
   startFight();
 });
 $('koAgain').addEventListener('click', startFight);
+$('trainStop').addEventListener('click', () => {
+  if (training) {
+    finishTraining();
+    return;
+  }
+  $('train').hidden = true;
+  startFight();
+});
 $('koSetup').addEventListener('click', () => {
   $('ko').hidden = true;
   openSheet();

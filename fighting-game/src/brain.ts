@@ -61,6 +61,37 @@ export function makeMemory(): Memory {
   };
 }
 
+/**
+ * What carries into the next fight with the same opponent: everything but the
+ * timing, faded so recent fights count more than old ones.
+ */
+export function fadeMemory(m: Memory, k = 0.6): Memory {
+  const scale = (r: Record<string, number>) =>
+    Object.fromEntries(Object.entries(r).map(([key, v]) => [key, Math.round(v * k * 100) / 100]));
+  return {
+    tries: scale(m.tries),
+    hits: scale(m.hits),
+    oppReact: scale(m.oppReact) as Record<Reaction, number>,
+    oppMoves: scale(m.oppMoves),
+    oppAttackTimes: [],
+  };
+}
+
+/** Strike that has landed best on this opponent so far, if any. */
+export function bestStrike(m: Memory): string | null {
+  let best: string | null = null;
+  let br = 0;
+  for (const [id, t] of Object.entries(m.tries)) {
+    if (t < 2) continue;
+    const r = (m.hits[id] ?? 0) / t;
+    if (r > br) {
+      br = r;
+      best = id;
+    }
+  }
+  return best;
+}
+
 function rate(mem: Memory, r: Reaction): number {
   const total = Object.values(mem.oppReact).reduce((a, b) => a + b, 0);
   return total < 3 ? 0 : mem.oppReact[r] / total;
@@ -105,6 +136,8 @@ export function updatePlan(f: Fighter, e: Fighter, sim: Sim): void {
     finish: e.hp < 25 || e.dazed ? 0.75 + aggr * 0.3 : 0,
   };
   if (f.broken.lArm && f.broken.rArm) score.legs += 0.5;
+  // Learned taste for each plan; a plan that does not apply stays off.
+  for (const id of Object.keys(score) as PlanId[]) if (score[id] > 0) score[id] += f.gene(`p.${id}`);
   // Loyalty to the current plan, and a bit of personality noise.
   score[f.plan] += 0.15;
   let best: PlanId = f.plan;
@@ -124,11 +157,15 @@ export function updatePlan(f: Fighter, e: Fighter, sim: Sim): void {
 
 /** Preferred distance multiplier for the plan. */
 export function planDistance(f: Fighter): number {
-  return { outbox: 1.12, pressure: 0.85, counter: 1.05, legs: 1.0, body: 0.92, survive: 1.35, finish: 0.88 }[f.plan];
+  return Math.exp(f.gene('dist')) * { outbox: 1.12, pressure: 0.85, counter: 1.05, legs: 1.0, body: 0.92, survive: 1.35, finish: 0.88 }[f.plan];
 }
 
 /** How eager to attack, multiplier. */
 export function planEagerness(f: Fighter, punish: boolean): number {
+  return Math.exp(f.gene('eager')) * planEagernessBase(f, punish);
+}
+
+function planEagernessBase(f: Fighter, punish: boolean): number {
   switch (f.plan) {
     case 'counter':
       return punish ? 2.5 : 0.6;
@@ -147,7 +184,7 @@ export function planEagerness(f: Fighter, punish: boolean): number {
 
 /** Extra combination length. */
 export function planComboBonus(f: Fighter): number {
-  return f.plan === 'finish' ? 2 : f.plan === 'pressure' ? 1 : f.plan === 'outbox' ? -1 : 0;
+  return (f.plan === 'finish' ? 2 : f.plan === 'pressure' ? 1 : f.plan === 'outbox' ? -1 : 0) + f.gene('combo');
 }
 
 /**
@@ -156,7 +193,7 @@ export function planComboBonus(f: Fighter): number {
  */
 export function moveWeight(f: Fighter, m: Move): number {
   const mem = f.mem;
-  let k = 1;
+  let k = Math.exp(f.gene(`m.${m.id}`));
   switch (f.plan) {
     case 'outbox':
       if (RANGE_MOVES.includes(m.id)) k *= 2;
@@ -189,16 +226,16 @@ export function moveWeight(f: Fighter, m: Move): number {
 
 /** Chance to aim a punch at the body instead of the head. */
 export function bodyBias(f: Fighter): number {
-  return (f.plan === 'body' ? 0.45 : 0) + (rate(f.mem, 'block') > 0.4 ? 0.25 : 0);
+  return (f.plan === 'body' ? 0.45 : 0) + (rate(f.mem, 'block') > 0.4 ? 0.25 : 0) + f.gene('body');
 }
 
 /** Chance to throw a feint instead of a real strike. */
 export function feintChance(f: Fighter): number {
   if (f.tech < 0.4) return 0;
-  return 0.05 + 0.5 * (rate(f.mem, 'counter') + rate(f.mem, 'parry')) + 0.15 * rate(f.mem, 'block') + (f.plan === 'counter' ? 0.1 : 0);
+  return f.gene('feint') + 0.05 + 0.5 * (rate(f.mem, 'counter') + rate(f.mem, 'parry')) + 0.15 * rate(f.mem, 'block') + (f.plan === 'counter' ? 0.1 : 0);
 }
 
 /** Extra chance to counter when the plan is to counter. */
 export function counterBonus(f: Fighter): number {
-  return f.plan === 'counter' ? 0.35 : f.plan === 'survive' ? 0.1 : 0;
+  return (f.plan === 'counter' ? 0.35 : f.plan === 'survive' ? 0.1 : 0) + f.gene('counter');
 }

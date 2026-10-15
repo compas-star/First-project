@@ -411,8 +411,9 @@ button:active {
   text-transform: uppercase;
 }
 
-/* KO */
-#ko {
+/* KO and training */
+#ko,
+#train {
   position: absolute;
   inset: 0;
   display: grid;
@@ -443,6 +444,23 @@ button:active {
 }
 .ko-stats b {
   color: var(--fg);
+}
+.bar {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--gold);
+}
+.train-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
 }
 .row {
   display: grid;

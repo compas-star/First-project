@@ -291,7 +291,9 @@ function frame(now: number): void {
 
   if (training) stepTraining();
   let worldDt = 0;
-  if (!paused && !training) {
+  const frozen = view.hitStop > 0;
+  view.hitStop -= realDt;
+  if (!paused && !training && !frozen) {
     // On a slow phone the physics may not keep up; then time simply runs slower.
     worldDt = sim.advance(realDt * viewScale);
   }

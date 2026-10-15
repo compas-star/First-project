@@ -99,6 +99,15 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
     return;
   }
 
+  // Catch a kick to the body: trap the leg, then sweep the standing one.
+  const kickToBody = (m.limb === 'lFoot' || m.limb === 'rFoot') && m.path !== 'low' && ea.zone !== 'head' && !m.spin;
+  if (kickToBody && !f.broken.lArm && !f.broken.rArm && tti > 0.08 / f.body && sim.rng() < 0.2 + 0.5 * f.tech + f.gene('catch')) {
+    noted(f, 'parry');
+    sim.startAction(f, 'catch', { dur: tti * f.body + 0.3 });
+    f.say(`ловлю ${m.name}`);
+    return;
+  }
+
   // Counter: land a strike before theirs connects.
   const counters = sim
     .usableMoves(f)

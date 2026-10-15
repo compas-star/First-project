@@ -47,6 +47,8 @@ const AIM: Record<'head' | 'body' | 'leg', { part: PartName; at: [number, number
   leg: { part: 'lThigh', at: [0, -0.25, 0] },
 };
 
+const KICK_BODY = { part: 'chest' as PartName, at: [0, -0.04, 0] as [number, number, number] };
+
 const fwd = new THREE.Vector3();
 const out = new THREE.Vector3();
 const up = new THREE.Vector3(0, 1, 0);
@@ -110,7 +112,8 @@ function fromBasis(o: [number, number, number] | THREE.Vector3, s: number, res: 
 
 /** Where this punch is aimed right now, in world space. */
 export function aimPointOf(f: Fighter, a: Action, res: THREE.Vector3): THREE.Vector3 {
-  const z = AIM[a.zone];
+  // Kicks to the body go to the ribs and liver, below the chest centre.
+  const z = a.zone === 'body' && /Foot$/.test(a.move!.limb) ? KICK_BODY : AIM[a.zone];
   const e = f.enemy;
   partPoint(e.rag.byName[z.part], tmp.set(z.at[0], z.at[1], z.at[2]).multiplyScalar(e.scale), res);
   return res.addScaledVector(a.jitter, f.scale);

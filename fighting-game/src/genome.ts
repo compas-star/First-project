@@ -29,6 +29,7 @@ export const GENES: Gene[] = [
   { key: 'counter', min: -0.3, max: 0.4, sigma: 0.08, name: 'контратаки' },
   { key: 'feint', min: -0.2, max: 0.4, sigma: 0.08, name: 'финты' },
   { key: 'dodge', min: -0.3, max: 0.3, sigma: 0.08, name: 'уклоны' },
+  { key: 'catch', min: -0.3, max: 0.3, sigma: 0.08, name: 'ловля ноги' },
   { key: 'block', min: -0.3, max: 0.3, sigma: 0.08, name: 'блок' },
   { key: 'combo', min: -1.5, max: 2, sigma: 0.4, name: 'серии' },
   { key: 'body', min: -0.2, max: 0.35, sigma: 0.07, name: 'в корпус' },
@@ -70,6 +71,7 @@ export function describeGenome(g: Genome, base: Genome, disc: DisciplineId): str
   say('feint', 'больше финтов', 'меньше финтов', 0.06);
   say('dodge', 'больше уклонов', 'меньше уклонов', 0.06);
   say('block', 'чаще блок', 'реже блок', 0.06);
+  say('catch', 'ловит ноги', 'не ловит ноги', 0.06);
   say('combo', 'длинные серии', 'короткие серии', 0.4);
   say('body', 'чаще в корпус', 'чаще в голову', 0.06);
   const moves = MOVES.filter((m) => keys.includes(`m.${m.id}`)).map((m) => ({ m, v: diff(`m.${m.id}`) })).sort((a, b) => b.v - a.v);

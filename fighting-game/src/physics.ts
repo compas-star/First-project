@@ -421,7 +421,8 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
       rotErr(want, cur, alphaW).multiplyScalar(kp).addScaledVector(w, -kd).multiplyScalar(stand * pt);
     }
     let Ibar = inertiaTimes(p.body, alphaW, alphaW);
-    capped(alphaW, Ibar * capK);
+    // A part driven harder than usual (a kicking leg) also gets more muscle to do it.
+    capped(alphaW, Ibar * capK * Math.max(1, pt));
     if (p.parent && stand < 1 && d.tone > 0) {
       const pq = q(p.parent.body.rotation(), tq2);
       want.copy(pq).multiply(t[p.key].quaternion);

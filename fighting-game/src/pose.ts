@@ -122,6 +122,10 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
       case 'block':
         lerpPose(out, out, withStance(POSES.block), smooth(u * 8));
         break;
+      case 'catch':
+      case 'sweep':
+        lerpPose(out, out, withStance(POSES.block), smooth(Math.min(u * 6, (1 - u) * 4)));
+        break;
       case 'parry':
         lerpPose(out, out, withStance(POSES.parry), smooth(Math.min(u * 7, (1 - u) * 3)));
         break;

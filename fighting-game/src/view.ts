@@ -219,6 +219,9 @@ export class View {
   private waves: { mesh: THREE.Mesh; age: number; size: number }[] = [];
   private pops: { el: HTMLDivElement; pos: THREE.Vector3; age: number }[] = [];
   private shake = 0;
+  /** Real seconds the world stays frozen after a heavy blow (hit-stop). */
+  hitStop = 0;
+  private hitStopCool = 0;
   private sim: Sim | null = null;
   private tmp = new THREE.Vector3();
   private tmp2 = new THREE.Vector3();
@@ -365,6 +368,11 @@ export class View {
         this.burst(ev.pos, n, 1.5 + ev.power * 0.7, col, 0.35);
         if (ev.power > 3.5) this.wave(ev.target.pos, Math.min(9, ev.power * 0.5));
         this.shake = Math.max(this.shake, Math.min(0.35, ev.power * 0.025));
+        // Hit-stop: a short freeze sells the weight of a blow; not again right away.
+        if (!ev.blocked && ev.dmg > 4 && this.hitStopCool <= 0) {
+          this.hitStop = Math.min(0.14, 0.035 + ev.dmg * 0.006);
+          this.hitStopCool = this.hitStop + 0.2;
+        }
         this.pop(ev.pos, ev.blocked ? `блок −${ev.dmg.toFixed(1)}` : `−${ev.dmg.toFixed(1)} ${ev.fromBehind ? 'в спину' : ev.zone}`, ev.target.team);
       } else if (ev.type === 'land') {
         this.burst(ev.pos.clone().setY(0.1), Math.min(60, 10 + ev.power * 3), 1 + ev.power * 0.25, new THREE.Color(0x8b93a6), 0.6);
@@ -381,6 +389,9 @@ export class View {
         this.burst(ev.pos, 30, 3, new THREE.Color(0xff5a4a), 0.5);
         this.pop(ev.pos.clone().setY(ev.pos.y + 0.3), `перелом: ${LIMB_NAME[ev.limb]}`, ev.target.team);
         this.shake = Math.max(this.shake, 0.2);
+      } else if (ev.type === 'catch') {
+        this.burst(ev.pos, 18, 1.5, new THREE.Color(0xffffff), 0.3);
+        this.pop(ev.pos, 'поймал ногу', ev.target.team);
       } else {
         this.burst(ev.pos, 26, 2.5, new THREE.Color(0x7ff0ff), 0.35);
         this.pop(ev.pos, 'парирование', ev.target.team);
@@ -427,6 +438,7 @@ export class View {
   render(realDt: number, worldDt: number, viewScale: number): void {
     const sim = this.sim;
     if (!sim) return;
+    this.hitStopCool -= realDt;
     this.consumeEvents();
 
     for (const fv of this.fighters) fv.update(realDt, fv.f.body * viewScale);

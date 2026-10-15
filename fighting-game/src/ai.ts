@@ -95,6 +95,7 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
     sim.use(f, 'parry');
     noted(f, 'parry');
     sim.startAction(f, 'parry', { dur: Math.max(0.3, tti * f.body + 0.12) });
+    if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * f.tech) / f.mind;
     f.say(`парирую ${m.name}`);
     return;
   }
@@ -118,7 +119,7 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
     if (sim.rng() < want) {
       noted(f, 'counter');
       const strongest = counters.reduce((a, b) => (b.power > a.power ? b : a));
-      sim.startAction(f, 'attack', { move: strongest });
+      sim.startAction(f, 'attack', { move: strongest, reply: true });
       f.say(`вижу ${m.name} → ${strongest.name} первым`);
       return;
     }
@@ -137,11 +138,13 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
     if (m.dodge === 'back') {
       noted(f, 'back');
       sim.startAction(f, 'dodge', { dur: 0.3, dir: d.clone().negate(), pose: 'dodgeBack' });
+      if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * f.tech) / f.mind;
       f.say(`отскок от ${m.name}`);
     } else {
       const { dir, left } = sideStep(sim, f);
       noted(f, 'slip');
       sim.startAction(f, 'dodge', { dur: 0.28, dir, pose: left ? 'dodgeL' : 'dodgeR' });
+      if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * f.tech) / f.mind;
       f.say(`уклон от ${m.name}`);
     }
     return;
@@ -149,6 +152,7 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
 
   if (tti > 0.05 / f.body && sim.rng() < 0.4 + 0.6 * f.tech + f.gene('block')) {
     sim.startAction(f, 'block', { dur: 0.5 });
+    if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * f.tech) / f.mind;
     noted(f, 'block');
     f.say('блок');
     return;
@@ -172,6 +176,21 @@ function pickZone(f: Fighter, e: Fighter, sim: Sim, m: Move): 'head' | 'body' | 
     return sim.rng() < f.style.bodyLove + guardUp + bodyBias(f) ? 'body' : 'head';
   }
   return z[Math.floor(sim.rng() * z.length)];
+}
+
+/**
+ * 0..1: how long he stands and reads the opponent before going in. Technique
+ * and a waiting plan make him patient; aggression, a pressing plan, a lead on
+ * points and fresh legs make him go sooner.
+ */
+function patienceOf(f: Fighter): number {
+  const p = 0.2 + 0.75 * f.tech - 0.55 * (f.p.aggression - 0.5);
+  return THREE.MathUtils.clamp(p / Math.pow(planEagerness(f, false), 0.8), 0.05, 1);
+}
+
+/** World seconds until he takes the initiative again. */
+function waitTime(f: Fighter, sim: Sim): number {
+  return ((0.8 + 5.5 * patienceOf(f)) * (0.6 + 0.8 * sim.rng()) * (1 + 1.2 * f.fatigue)) / f.mind;
 }
 
 /** Closest the two bodies should come: legs and hips must not run into each other. */
@@ -219,14 +238,17 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   const enemyRange = sim.attackRange(e, jab) + jab.lunge * e.scale;
   // How far a lunge can carry the fighter into range.
   const lungeMax = (0.15 + 0.6 * tech) * f.scale * Math.exp(f.gene('lunge'));
-  // Technical fighters wait at the edge of the enemy's reach, brawlers want to be close.
-  const outside = Math.max(enemyRange + 0.1 * f.scale, myRange + 0.05);
+  // How long he is willing to stand and read the other man before going in.
+  const patience = patienceOf(f);
+  // Measuring distance: just outside the enemy's reach. A brawler stands close.
+  const outside = Math.max(enemyRange + (0.15 + 0.35 * patience) * f.scale, myRange + 0.05);
   const gap = minGap(f, e);
   const pref = Math.max(
     gap + 0.1 * f.scale,
-    THREE.MathUtils.lerp(myRange * 0.6, outside, tech) * f.disc.range * planDistance(f),
+    THREE.MathUtils.lerp(myRange * 0.6, outside, Math.min(1, patience * 1.4)) * f.disc.range * planDistance(f),
   );
   f.wantDist = pref;
+  if (f.initiativeW === 0) f.initiativeW = sim.t + waitTime(f, sim) * 0.6;
 
   if (sim.ready(f, 'shockwave') && dist < sim.waveRadius(f) * 0.75 && sim.rng() < 0.45) {
     sim.use(f, 'shockwave');
@@ -246,37 +268,77 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     return dist - r * 0.85 <= lungeMax && dist >= r * (m.style === 'wild' ? 0.3 : 0.5);
   });
   const ea = e.action;
-  const punish = ea?.kind === 'attack' && ea.t > ea.dur * ea.move!.active[1];
-  let eager = (0.15 + 0.7 * f.p.aggression + (behind ? 0.3 : 0) + (ratio > 2 ? 0.2 : 0) + (punish ? 0.5 * tech : 0)) * planEagerness(f, punish);
+  const heAttacks = ea?.kind === 'attack' && !ea.feint;
+  // He went first: answer him before thinking about my own entry.
+  if (heAttacks) f.initiativeW = Math.max(f.initiativeW, sim.t + (0.4 + 1.2 * patience) / f.mind);
+  // A blow that missed leaves him open, once; an answer that missed ends the exchange instead.
+  const punish = ea?.kind === 'attack' && !ea.reply && f.punishedId !== ea.id && (ea.t > ea.dur * ea.move!.active[1] || ea.overcommit > 0);
+  const opening = punish || ea?.kind === 'stagger' || e.dazed;
   // Right after a feint: if he bit (dodging, blocking, recovering), go now.
-  const bit = sim.t < f.baitUntilW && !!e.action && ['dodge', 'block', 'parry', 'stagger', 'attack'].includes(e.action.kind);
-  if (bit) eager += 0.9;
-  // Out of breath: pick the moments, keep a little more distance.
+  const bit = sim.t < f.baitUntilW && !!ea && ['dodge', 'block', 'parry', 'stagger', 'attack'].includes(ea.kind);
+  const answering = sim.t < f.answerUntilW;
+  // He walked into my range without attacking.
+  const steppedIn = !heAttacks && dist < myRange * 0.95;
   const tired = f.fatigue;
-  eager *= (1 - 0.55 * tired) * (f.stamina < 0.12 ? 0.3 : 1);
   if (tired > 0.5) f.wantDist = pref + 0.25 * tired * f.scale;
-  // A technician does not like trading while standing in the pocket.
-  if (tech > 0.5 && dist < pref - 0.3 * f.scale) eager *= 0.5;
-  if (options.length && sim.rng() < eager) {
+
+  let go: 'bait' | 'punish' | 'answer' | 'entry' | 'meet' | null = null;
+  if (bit) go = 'bait';
+  else if (opening && sim.rng() < (0.25 + 0.3 * tech) * Math.min(1.3, planEagerness(f, true) * 0.6)) go = 'punish';
+  else if (answering && sim.rng() < 0.12 + 0.2 * tech) go = 'answer';
+  else if (behind && sim.rng() < 0.5) go = 'punish';
+  else if (sim.t >= f.initiativeW) go = f.stamina < 0.12 ? null : 'entry';
+  else if (steppedIn && sim.rng() < 0.08 + 0.3 * tech) go = 'meet';
+  if (go === null && sim.t >= f.initiativeW) f.initiativeW = sim.t + waitTime(f, sim);
+
+  if (go === 'punish' && ea) f.punishedId = ea.id;
+  if (go && options.length) {
     const m = pickStyled(f, sim, options);
     const r = sim.attackRange(f, m);
     // Step in far enough to land, never so far as to walk into the enemy.
     const lunge = Math.min(Math.max(m.lunge * f.scale, dist - r * 0.85 + 0.05), Math.max(0, dist - gap));
     const zone = pickZone(f, e, sim, m);
-    if (!bit && m.path && sim.rng() < feintChance(f)) {
+    if (go === 'entry') f.initiativeW = sim.t + waitTime(f, sim);
+    if (go === 'entry' && m.path && sim.rng() < feintChance(f)) {
       sim.startAction(f, 'attack', { move: m, lunge: lunge * 0.4, zone, feint: true });
       f.say(`финт: ${m.name}`);
       return;
     }
-    sim.startAction(f, 'attack', { move: m, lunge, zone });
-    const stepIn = lunge > m.lunge * f.scale + 0.1;
+    sim.startAction(f, 'attack', { move: m, lunge, zone, reply: go === 'answer' || go === 'punish' || go === 'meet' });
+    f.answerUntilW = 0;
     const where = zone === 'body' ? ' в корпус' : zone === 'leg' ? ' по ноге' : '';
-    f.say(
-      bit ? `ловлю на финте: ${m.name}` : behind ? `${m.name} в спину` : punish ? `наказываю: ${m.name}${where}` : stepIn ? `выпад: ${m.name}${where}` : `${m.name}${where}`,
-    );
-    // Longer combinations for aggressive fighters; each fighter has a habit and the plan adds its own.
-    const len = Math.round(f.style.comboLen * (0.5 + f.p.aggression) * (0.5 + sim.rng()) + planComboBonus(f));
+    const label = {
+      bait: `ловлю на финте: ${m.name}`,
+      punish: behind ? `${m.name} в спину` : `наказываю: ${m.name}${where}`,
+      answer: `отвечаю: ${m.name}${where}`,
+      entry: lunge > m.lunge * f.scale + 0.1 ? `вхожу: ${m.name}${where}` : `${m.name}${where}`,
+      meet: `встречаю: ${m.name}${where}`,
+    }[go];
+    f.say(label);
+    // Entries come in combinations; answers and counters are short.
+    const base = f.style.comboLen * (0.5 + f.p.aggression) * (0.5 + sim.rng()) + planComboBonus(f);
+    // A patient fighter throws short, clean combinations; a brawler keeps swinging.
+    const len = Math.round(go === 'entry' || go === 'bait' ? Math.min(patience > 0.45 ? 1 + (sim.rng() < 0.6 ? 1 : 0) : 3, base * (1 - 0.6 * patience)) : 1);
     f.comboLeft = Math.max(0, len - 1);
+    return;
+  }
+  if (go === 'entry') {
+    // Too far to reach with a lunge: close the distance first.
+    f.wantDist = Math.max(gap, myRange * 0.85);
+    f.initiativeW = sim.t + 0.25 / f.mind;
+    intent(f, 'сокращаю дистанцию');
+    return;
+  }
+  // Reading him: now and then a feint to draw a reaction, or a probing jab.
+  if (patience > 0.3 && Math.abs(dist - pref) < 0.3 * f.scale && sim.rng() < 0.07 + 0.05 * tech) {
+    const jabLike = options.find((m) => m.id === 'jab' || m.id === 'teep' || m.id === 'leadkick');
+    if (jabLike && sim.rng() < 0.5) {
+      sim.startAction(f, 'attack', { move: jabLike, lunge: 0.05, zone: 'head', feint: true });
+      f.say(`прощупываю: ${jabLike.name}`);
+      return;
+    }
+    f.wantDist = pref - 0.3 * f.scale;
+    intent(f, 'финт шагом');
     return;
   }
 
@@ -306,16 +368,10 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     intent(f, 'захожу за спину');
     return;
   }
-  if (tech > 0.6 && Math.abs(dist - pref) < 0.2 * f.scale && sim.rng() < 0.15) {
-    // Feint: a short pressure step to draw a reaction.
-    f.wantDist = pref - 0.3 * f.scale;
-    intent(f, 'финт');
-    return;
-  }
   if (tired > 0.6) {
     intent(f, 'устал, перевожу дыхание');
     return;
   }
-  if (dist > pref + 0.3 * f.scale) intent(f, tech > 0.5 ? 'подхожу на дистанцию' : 'лезу в драку');
-  else intent(f, tech > 0.5 ? 'работаю на дистанции' : 'ищу момент');
+  if (dist > pref + 0.3 * f.scale) intent(f, patience > 0.4 ? 'подхожу на дистанцию' : 'лезу в драку');
+  else intent(f, patience > 0.4 ? 'изучаю его' : 'ищу момент');
 }

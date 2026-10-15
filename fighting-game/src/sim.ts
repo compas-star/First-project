@@ -49,7 +49,7 @@ const LIMB_MASS: Partial<Record<Striker, number>> = { rFoot: 2.1, lFoot: 1.7, rK
 
 const KICK_DRIVE = 2.2;
 /** Strikes of an ordinary human (body speed 1) take this much longer than the move data. */
-const STRIKE_TEMPO = 1.4;
+const STRIKE_TEMPO = 1.9;
 /** Points along the shin, shin frame for a 1.8 m fighter; the last is the foot itself. */
 const SHIN_POINTS = [new THREE.Vector3(0, -0.2, 0.04), new THREE.Vector3(0, -0.33, 0.06), STRIKERS.rFoot.at];
 const tmpQ2v = new THREE.Vector3();
@@ -88,6 +88,8 @@ export interface Action {
   /** 0..1 how badly a missed blow carried the body past the target. */
   overcommit: number;
   missChecked: boolean;
+  /** An answer to his attack: the exchange ends with it, nobody answers an answer. */
+  reply: boolean;
 }
 
 /**
@@ -240,6 +242,12 @@ export class Fighter {
   dazed = false;
   /** After a clean attack a technical fighter steps back out until this world time. */
   exitUntilW = 0;
+  /** World time he takes the initiative next (0 = not decided yet). */
+  initiativeW = 0;
+  /** After defending a blow he may answer until this world time. */
+  answerUntilW = 0;
+  /** Id of the enemy action he already punished. */
+  punishedId = -1;
   /** World time each active power is ready again. */
   readyAt: Partial<Record<PowerId, number>> = {};
 
@@ -516,7 +524,7 @@ export class Sim {
   startAction(
     f: Fighter,
     kind: ActionKind,
-    opts: { move?: Move; dur?: number; dir?: THREE.Vector3; pose?: Action['pose']; lunge?: number; zone?: 'head' | 'body' | 'leg'; feint?: boolean } = {},
+    opts: { move?: Move; dur?: number; dir?: THREE.Vector3; pose?: Action['pose']; lunge?: number; zone?: 'head' | 'body' | 'leg'; feint?: boolean; reply?: boolean } = {},
   ): Action {
     const m = opts.move;
     if (m && kind === 'attack') f.stamina -= (opts.feint ? 0.4 : 1) * (0.006 + 0.008 * m.power);
@@ -564,6 +572,7 @@ export class Sim {
       feint: !!opts.feint,
       overcommit: 0,
       missChecked: false,
+      reply: !!opts.reply,
     };
     f.action = a;
     f.strikeValid = false;
@@ -778,7 +787,7 @@ export class Sim {
       want.copy(behind).normalize().multiplyScalar(f.stride * 1.1);
     } else {
       let target = f.wantDist;
-      if (this.t < f.exitUntilW) target += 0.2 * f.scale;
+      if (this.t < f.exitUntilW) target += 0.35 * f.scale;
       target = Math.max(target, f.radius + e.radius + 0.3 * Math.max(f.scale, e.scale));
       const err = dist - target;
       // Small changes of distance are ignored: nobody steps back for every inch.
@@ -1009,7 +1018,7 @@ export class Sim {
       f.comboLeft--;
       if (next) {
         const zone = a.zone === 'body' ? (this.rng() < 0.75 ? 'head' : 'body') : this.rng() < f.style.bodyLove ? 'body' : 'head';
-        this.startAction(f, 'attack', { move: next, zone: next.path ? zone : 'body' });
+        this.startAction(f, 'attack', { move: next, zone: next.path ? zone : 'body', reply: a.reply });
         f.say(`и ${next.name}${zone === 'body' && next.path ? ' в корпус' : ''}`);
         return;
       }
@@ -1018,8 +1027,8 @@ export class Sim {
     if (a.t >= a.dur) {
       f.action = null;
       // A trained fighter does not stay in the pocket after striking.
-      if (a.kind === 'attack' && f.tech > 0.45) {
-        f.exitUntilW = this.t + (0.25 + 0.35 * f.tech) / f.body;
+      if (a.kind === 'attack' && f.tech + 0.5 * (1 - f.p.aggression) > 0.45) {
+        f.exitUntilW = this.t + (0.35 + 0.45 * f.tech) / f.body;
         if (this.rng() < f.tech * 0.6) {
           // Step off the line at an angle rather than straight back.
           f.circleDir = this.rng() < 0.5 ? -1 : 1;
@@ -1151,7 +1160,7 @@ export class Sim {
     }
     const blocked = def.action?.kind === 'block' && zone === 'arm' && facingAtt > 0;
     // Damage grows slower than the impulse, so a much faster fighter needs a few blows, not one.
-    let dmg = (4.8 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
+    let dmg = (8.5 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
     // A well placed blow lands on the point, a wild one spreads its force.
     dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
     if (fromBehind) dmg *= 1.3;

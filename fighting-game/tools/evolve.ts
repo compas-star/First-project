@@ -12,7 +12,7 @@ const rounds = Number(process.argv[3] ?? 10);
 const pairs = Number(process.argv[4] ?? 6);
 const fights = Number(process.argv[5] ?? 3);
 const out = process.argv[6];
-const maxT = 60;
+const maxT = 75;
 
 function fighter(team: 0 | 1, d: DisciplineId, extra: Partial<FighterParams> = {}): FighterParams {
   return { ...defaultFighter(team), discipline: d, skill: d === 'street' ? 0.3 : 0.8, aggression: 0.6, ...extra };

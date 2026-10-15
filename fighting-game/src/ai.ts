@@ -376,7 +376,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     }
     sim.startAction(f, 'attack', { move: m, lunge, zone, reply: go === 'answer' || go === 'punish' || go === 'meet' });
     f.answerUntilW = 0;
-    const where = zone === 'body' ? ' в корпус' : zone === 'leg' ? ' по ноге' : '';
+    const where = m.name.includes('корпус') ? '' : zone === 'body' ? ' в корпус' : zone === 'leg' ? ' по ноге' : '';
     const label = {
       bait: `ловлю на финте: ${m.name}`,
       punish: behind ? `${m.name} в спину` : `наказываю: ${m.name}${where}`,

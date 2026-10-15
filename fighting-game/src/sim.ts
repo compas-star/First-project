@@ -120,6 +120,8 @@ export interface FightStyle {
   comboLen: number;
   /** Phases of the idle motion. */
   phase: [number, number, number];
+  /** How well he takes a blow to the head ("chin"), 1 = average. */
+  chin: number;
 }
 
 function hashStr(str: string): number {
@@ -142,6 +144,7 @@ function makeStyle(p: FighterParams, team: number): FightStyle {
     handSpeed: 0.98 + 0.04 * r(),
     comboLen: 1 + Math.round(r() * 2 + tech + p.aggression),
     phase: [r() * 6.28, r() * 6.28, r() * 6.28],
+    chin: 0.8 + 0.45 * r(),
   };
 }
 
@@ -252,9 +255,27 @@ export class Fighter {
   /** Damage taken by each limb; past the limit the bone breaks. */
   limbDmg: Record<Limb, number> = { lArm: 0, rArm: 0, lLeg: 0, rLeg: 0 };
   broken: Record<Limb, boolean> = { lArm: false, rArm: false, lLeg: false, rLeg: false };
-  headDmg = 0;
+  /**
+   * Condition instead of hit points.
+   * daze: how shaken his consciousness is right now, 0 clear .. 1 about to go;
+   *   head blows raise it, it clears with time and breath.
+   * trauma: head damage that stays for the whole fight and weakens the chin.
+   * bodyHurt: body damage, caps his wind and clears slowly.
+   */
+  daze = 0;
+  trauma = 0;
+  bodyHurt = 0;
+  knockdowns = 0;
+  /** Unconscious (knocked out or the fight stopped). */
+  out = false;
+  /** A blow heavy enough to drop him without putting him out. */
+  flash = false;
+  /** A liver shot lands now and folds him a moment later, at this world time. */
+  liverW = 0;
+  /** World times of clean blows he took while badly shaken (for a stoppage). */
+  cleanTaken: number[] = [];
+  lastAttackW = -9;
   /** Concussed: perception drops by half until this world time. */
-  dazedUntilW = 0;
   dazed = false;
   /** After a clean attack a technical fighter steps back out until this world time. */
   exitUntilW = 0;
@@ -417,7 +438,8 @@ export type SimEvent =
   | { type: 'wave'; pos: THREE.Vector3; radius: number }
   | { type: 'break'; pos: THREE.Vector3; target: Fighter; limb: Limb }
   | { type: 'parry'; pos: THREE.Vector3; target: Fighter }
-  | { type: 'catch'; pos: THREE.Vector3; target: Fighter };
+  | { type: 'catch'; pos: THREE.Vector3; target: Fighter }
+  | { type: 'liver'; pos: THREE.Vector3; target: Fighter };
 
 const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
@@ -556,6 +578,7 @@ export class Sim {
     opts: { move?: Move; dur?: number; dir?: THREE.Vector3; pose?: Action['pose']; lunge?: number; zone?: 'head' | 'body' | 'leg'; feint?: boolean; reply?: boolean } = {},
   ): Action {
     const m = opts.move;
+    if (m && kind === 'attack') f.lastAttackW = this.t;
     if (m && kind === 'attack') f.stamina -= (opts.feint ? 0.4 : 1) * (0.006 + 0.008 * m.power);
     if (kind === 'dodge') f.stamina -= 0.02;
     if (m && kind === 'attack' && !opts.feint) {
@@ -641,19 +664,20 @@ export class Sim {
     f.fallT = 0;
     f.fallSide = side;
     f.stability = 0;
-    f.state = f.hp <= 0 ? 'ko' : 'down';
+    f.state = f.out ? 'ko' : 'down';
     f.action = null;
     f.combo = null;
     f.balance = 0;
     f.self.set(0, 0, 0);
-    f.downLeft = 0.8 + this.rng() * 0.5;
+    // A shaken man takes longer to get up.
+    f.downLeft = 0.8 + this.rng() * 0.5 + 2.5 * f.daze;
     f.topple = 0;
     if (f.state === 'down') f.say(why);
   }
 
   private preStep(f: Fighter, h: number): void {
     const dl = h * f.body;
-    f.dazed = this.t < f.dazedUntilW;
+    this.recover(f, dl);
     if (f.has('regen') && f.state !== 'ko') this.regenerate(f, dl);
     if (f.state === 'ok') {
       const getup = f.action?.kind === 'getup';
@@ -867,8 +891,80 @@ export class Sim {
     }
   }
 
+  /**
+   * What a blow does to his condition. A blow to the head shakes his
+   * consciousness by how hard it is against how much his chin takes right now:
+   * blows he did not see and blows that turn the head (hooks, uppercuts, round
+   * kicks, knees, elbows) shake far more. One blow beyond what he can take puts
+   * him out; a bit less drops him (a knockdown). Blows to the body take his
+   * wind and can fold him a moment later (the liver). An arm or a leg never
+   * knocks a man out; they suffer on their own (see limbDmg).
+   */
+  private hurt(def: Fighter, m: Move, zone: string, dmg: number, blocked: boolean, seen: boolean): void {
+    const stone = def.has('stone') ? 2 : 1;
+    const size = Math.sqrt(def.mass / 78);
+    def.stamina -= dmg * (blocked ? 0.003 : zone === 'body' ? 0.012 : 0.004);
+    if (blocked) return;
+    if (zone === 'head') {
+      const turning = m.path === 'hook' || m.path === 'upper' || m.path === 'over' || m.path === 'swing' || m.path === 'round' || /Knee|Elbow/.test(m.limb);
+      // A blow he saw coming meets a tucked chin and a braced neck, the more so the better he is trained.
+      const shock = dmg * (turning ? 1.25 : 1) * (seen ? 1 - 0.35 * def.tech : 1.45);
+      const chin = 23 * size * def.style.chin * stone * (1 - 0.55 * def.daze) * (1 - 0.45 * def.trauma) * (0.8 + 0.2 * Math.max(0, def.stamina));
+      const r = shock / chin;
+      def.daze = Math.min(1, def.daze + 0.75 * r);
+      def.trauma = Math.min(1, def.trauma + shock / (450 * size * stone));
+      if (r > 0.95 && this.rng() < THREE.MathUtils.smoothstep(r, 0.95, 1.4)) def.out = true;
+      else if (r > 0.6 && this.rng() < THREE.MathUtils.smoothstep(r, 0.6, 1)) def.flash = true;
+    } else if (zone === 'body') {
+      def.bodyHurt = Math.min(1, def.bodyHurt + dmg / (55 * size * stone));
+      // The liver: a hard blow to the body, worse on a body already hurt, folds him a moment later.
+      const r = (dmg / (11 * size * stone)) * (0.6 + 0.8 * def.bodyHurt) * (seen ? 1 : 1.3);
+      if (def.liverW === 0 && r > 1 && this.rng() < THREE.MathUtils.smoothstep(r, 1, 1.6)) def.liverW = this.t + (0.3 + 0.4 * this.rng()) / def.body;
+    }
+    if (zone !== 'arm' && def.daze > 0.5) {
+      // Hurt and not answering: the referee steps in.
+      def.cleanTaken = def.cleanTaken.filter((t) => this.t - t < 3);
+      def.cleanTaken.push(this.t);
+      if (def.cleanTaken.length >= 4 && this.t - def.lastAttackW > 3) this.stop(def, 'остановка боя: не защищался');
+    }
+  }
+
+  /** The referee stops the fight. */
+  private stop(f: Fighter, why: string): void {
+    f.out = true;
+    f.koReason = why;
+    if (f.state === 'down') f.state = 'ko';
+  }
+
+  /** Condition between blows: the head clears with time and breath, the body slowly. */
+  private recover(f: Fighter, dl: number): void {
+    const resting = f.state === 'down' ? 1.6 : f.action?.kind === 'attack' ? 0.6 : 1;
+    const regen = f.has('regen') ? 3 : 1;
+    if (!f.out) f.daze = Math.max(0, f.daze - dl * (0.035 + 0.1 * Math.max(0, f.stamina)) * (1 - 0.5 * f.trauma) * resting * regen);
+    f.bodyHurt = Math.max(0, f.bodyHurt - dl * 0.004 * regen);
+    f.stamina = Math.min(f.stamina, 1 - 0.5 * f.bodyHurt);
+    f.dazed = f.daze > 0.42;
+    // A summary number for the plans and the training score: 100 fresh, 0 out.
+    f.hp = f.out ? 0 : 100 * (1 - Math.min(1, Math.max(0.9 * f.daze, 0.4 * f.trauma + 0.35 * f.bodyHurt + 0.25 * f.daze)));
+    if (f.liverW && this.t >= f.liverW) {
+      f.liverW = 0;
+      if (f.state === 'ok') {
+        f.stamina = 0;
+        f.knockdowns++;
+        this.knockDown(f, 'печень!', 'fold');
+        f.downLeft += 2.5;
+        this.events.push({ type: 'liver', pos: f.pos.clone().setY(0.9 * f.scale), target: f });
+        if (f.knockdowns >= 3) {
+          this.stop(f, 'три нокдауна');
+          f.state = 'ko';
+          if (!this.winner) this.winner = f.enemy;
+        }
+      }
+    }
+  }
+
   private regenerate(f: Fighter, dl: number): void {
-    f.hp = Math.min(f.maxHp, f.hp + 1.2 * dl);
+    f.trauma = Math.max(0, f.trauma - 0.01 * dl);
     for (const l of Object.keys(f.limbDmg) as Limb[]) {
       f.limbDmg[l] = Math.max(0, f.limbDmg[l] - 3 * dl);
       if (f.broken[l] && f.limbDmg[l] < f.limbLimit * 0.4) {
@@ -895,8 +991,8 @@ export class Sim {
     }
     f.prevVy = vel.y;
 
-    if (p.y < -2 && f.hp > 0) {
-      f.hp = 0;
+    if (p.y < -2 && !f.out) {
+      f.out = true;
       this.knockDown(f, '');
       if (!this.winner) {
         this.winner = f.enemy;
@@ -1057,7 +1153,6 @@ export class Sim {
             const away = tmpA.subVectors(e.pos, f.pos).setY(0).normalize();
             const pel = e.rag.pelvis.body;
             pel.applyImpulse({ x: away.x * e.mass * 1.2, y: e.mass * 0.6, z: away.z * e.mass * 1.2 }, true);
-            e.hp = Math.max(0, e.hp - 4);
             this.knockDown(e, 'подсекли пойманную ногу', 'back');
             f.say('подсечка');
           }
@@ -1245,8 +1340,7 @@ export class Sim {
       dmg *= 0.45;
       push.multiplyScalar(0.6);
     }
-    def.hp = Math.max(0, def.hp - dmg);
-    def.stamina -= dmg * (blocked ? 0.003 : zone === 'body' ? 0.012 : 0.004);
+    this.hurt(def, m, zone, dmg, blocked, seen);
     if (!blocked && !stone) {
       if (zone === 'head') def.snapHeadW = this.t + (0.1 + 0.012 * dmg) / def.body;
       if (zone === 'body' || dmg > 9) def.snapChestW = this.t + (0.08 + 0.008 * dmg) / def.body;
@@ -1288,16 +1382,10 @@ export class Sim {
         if (def.action?.kind === 'attack' && !def.canUse(def.action.move!)) def.action = null;
         if (def.combo && !def.canUse(def.combo)) def.combo = null;
       }
-    } else if (zone === 'head' && !blocked) {
-      def.headDmg += dmg;
-      if (dmg > 10 || def.headDmg > 30) {
-        def.headDmg = 0;
-        def.dazedUntilW = this.t + (1.2 + dmg * 0.05) / def.body;
-      }
     }
 
     // A sweep takes the leg he stands on: down he goes, more surely if he was moving or kicking.
-    if (m.id === 'sweep' && !blocked && zone === 'leg' && def.state === 'ok' && def.hp > 0) {
+    if (m.id === 'sweep' && !blocked && zone === 'leg' && def.state === 'ok' && !def.out) {
       const busy = def.action?.kind === 'attack' || def.groundSpeed > 0.8 * def.stride ? 0.35 : 0;
       if (this.rng() < 0.4 + busy + 0.2 * att.tech) {
         this.knockDown(def, 'подсекли', 'back', side0(part.name));
@@ -1307,8 +1395,14 @@ export class Sim {
     const sturdy = Math.sqrt(def.mass / 75) * (stone ? 1.6 : 1);
     const interrupted = !blocked && def.action?.kind === 'attack' && dmg > 3.5 * sturdy;
     const side: 'l' | 'r' = part.name.startsWith('l') ? 'l' : 'r';
-    if (def.hp <= 0) {
-      this.knockDown(def, 'сбит с ног', zone === 'head' ? 'timber' : zone === 'body' ? 'fold' : zone === 'leg' ? 'buckle' : 'limp', side);
+    if (def.out) {
+      this.knockDown(def, 'нокаут', zone === 'head' ? 'timber' : zone === 'body' ? 'fold' : zone === 'leg' ? 'buckle' : 'limp', side);
+    } else if (def.flash && def.state === 'ok') {
+      // Knockdown: dropped, not out. He will get up, a little more shaken.
+      def.flash = false;
+      def.knockdowns++;
+      this.knockDown(def, 'нокдаун', this.rng() < 0.5 ? 'back' : 'buckle', side);
+      if (def.knockdowns >= 3) this.stop(def, 'три нокдауна');
     } else if (def.poise <= 0 && zone === 'body' && !blocked) {
       def.poise = def.maxPoise * 0.5;
       this.knockDown(def, 'скрутило от удара в корпус', 'fold', side);
@@ -1341,14 +1435,15 @@ export class Sim {
       }
     }
 
-    if (def.hp <= 0 && !this.winner) {
+    def.flash = false;
+    if (def.out && !this.winner) {
       this.winner = att;
-      def.koReason = 'нокаут';
-      def.say('нокаут');
+      def.koReason ||= 'нокаут';
+      def.say(def.koReason);
       att.combo = null;
     } else if (limb && def.broken[limb] && def.limbDmg[limb] - (dmg / part.def.dmg) * 0.5 <= def.limbLimit) {
       def.say(`сломана ${LIMB_NAME[limb]}`);
-    } else if (this.t < def.dazedUntilW && zone === 'head') {
+    } else if (def.dazed && zone === 'head') {
       def.say('поплыл');
     } else if (blocked) {
       def.say('держу блок');
@@ -1380,16 +1475,18 @@ export class Sim {
         p.body.applyImpulse({ x: out.x * p.mass * dv * 0.8, y: p.mass * dv * 0.6, z: out.z * p.mass * dv * 0.8 }, true);
       }
       const dmg = 7 * k * fall * (stone ? 0.45 : 1);
-      e.hp = Math.max(0, e.hp - dmg);
+      e.daze = Math.min(1, e.daze + dmg / 40);
+      e.bodyHurt = Math.min(1, e.bodyHurt + dmg / 80);
+      if (e.daze >= 1) e.out = true;
       this.events.push({
         type: 'hit', pos: e.pos.clone().setY(1), power: dv * 2, blocked: false, dmg, target: e,
         fromBehind: false, zone: 'волной', stone,
       });
-      if (e.hp <= 0 && !this.winner) {
+      if (e.out && !this.winner) {
         this.winner = f;
         e.koReason = 'нокаут';
       }
-      if (dv > 3 || e.hp <= 0) this.knockDown(e, 'сбит волной', 'back');
+      if (dv > 3 || e.out) this.knockDown(e, 'сбит волной', 'back');
     }
     for (const c of this.crates) {
       if (c.gone) continue;
@@ -1411,6 +1508,6 @@ export class Sim {
     const rel = v(crate.body.linvel(), tmpA).sub(v(fp.part.body.linvel(), tmpB)).length();
     if (rel < 3) return;
     this.events.push({ type: 'crash', pos: v(crate.body.translation()), power: rel });
-    if (fp.f.state === 'down' && fp.f.hp > 1) fp.f.hp = Math.max(1, fp.f.hp - Math.min(4, rel * 0.3));
+    if (fp.f.state === 'down') fp.f.daze = Math.min(0.95, fp.f.daze + Math.min(0.1, rel * 0.01));
   }
 }

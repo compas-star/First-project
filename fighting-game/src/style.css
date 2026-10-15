@@ -118,7 +118,9 @@ button:active {
   color: var(--blue);
 }
 .hpnum {
-  font: 700 13px/1 var(--mono);
+  font: 700 12px/1 var(--body);
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--fg);
   font-variant-numeric: tabular-nums;
 }
@@ -129,11 +131,44 @@ button:active {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
+.hp {
+  position: relative;
+}
 .hp i {
   display: block;
   height: 100%;
   width: 100%;
   transition: width 0.15s;
+}
+/* Head damage that stays for the fight: a dark block eating the bar from the end. */
+.hp b {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 0;
+  background: repeating-linear-gradient(135deg, #3a2a2e 0 3px, #241a1d 3px 6px);
+}
+.bars {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.bd {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.bd i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: #e8a24a;
+  transition: width 0.15s;
+}
+.team1 .bd {
+  transform: scaleX(-1);
 }
 .team0 .hp i {
   background: var(--red);

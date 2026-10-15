@@ -239,9 +239,15 @@ function eyesCaption(): string {
 
 function updateHud(): void {
   sim.fighters.forEach((f, i) => {
-    $(`hp${i}`).style.width = `${(f.hp / f.maxHp) * 100}%`;
+    // Consciousness: what is left of it under the head damage that stays.
+    const ceiling = 1 - 0.6 * f.trauma;
+    $(`hp${i}`).style.width = `${(f.out ? 0 : ceiling * (1 - f.daze)) * 100}%`;
+    $(`tr${i}`).style.width = `${(1 - ceiling) * 100}%`;
+    $(`bd${i}`).style.width = `${(1 - f.bodyHurt) * 100}%`;
     $(`sp${i}`).style.width = `${Math.max(0, f.stamina) * 100}%`;
-    $(`hpn${i}`).textContent = Math.ceil(f.hp).toString();
+    const word = stateWord(f);
+    $(`hpn${i}`).textContent = word.text;
+    $(`hpn${i}`).style.color = word.color;
     $(`n${i}`).textContent = f.p.name;
     $(`s${i}`).innerHTML =
       `тело <b>×${fmt(f.body)}</b> ум <b>×${fmt(f.mind)}</b><br>на экране <b>×${fmt(f.body * viewScale)}</b>` +
@@ -251,9 +257,23 @@ function updateHud(): void {
   $('eyesLabel').textContent = eyesCaption();
 }
 
+function stateWord(f: Sim['fighters'][number]): { text: string; color: string } {
+  if (f.out) return { text: f.koReason === 'нокаут' ? 'без сознания' : 'остановлен', color: '#ff5a4a' };
+  if (f.state === 'down') return { text: 'на полу', color: '#ff8a5a' };
+  if (f.daze > 0.75) return { text: 'на грани', color: '#ff5a4a' };
+  if (f.daze > 0.42) return { text: 'плывёт', color: '#ff8a5a' };
+  if (f.daze > 0.18) return { text: 'потрясён', color: '#f2c14e' };
+  return { text: 'ясно', color: '#e8ecf3' };
+}
+
 function injuries(f: Sim['fighters'][number]): string {
   const list = (Object.keys(f.broken) as Limb[]).filter((l) => f.broken[l]).map((l) => `перелом: ${LIMB_NAME[l]}`);
-  if (f.dazed) list.unshift('поплыл');
+  // Limbs: bruised before they break, and an arm or leg can be hurt without the man being hurt.
+  for (const l of Object.keys(f.limbDmg) as Limb[]) {
+    if (!f.broken[l] && f.limbDmg[l] > f.limbLimit * 0.5) list.push(`отбита: ${LIMB_NAME[l]}`);
+  }
+  if (f.knockdowns) list.unshift(`нокдаунов: ${f.knockdowns}`);
+  if (f.bodyHurt > 0.5) list.unshift('корпус избит');
   if (f.fatigue > 0.5) list.unshift('выдохся');
   const plan = f.state === 'ok' && !sim.winner ? `<br><span class="plan">${PLAN_SHORT[f.plan]}</span>` : '';
   return plan + (list.length ? `<br><span class="hurt">${list.join('<br>')}</span>` : '');
@@ -264,12 +284,13 @@ function showKo(): void {
   const w = sim.winner!;
   const l = w.enemy;
   const known = memStore[memKey(w.p, l.p)]?.fights ?? 0;
-  $('koTitle').textContent = `Нокаут. Победил ${w.p.name}`;
+  $('koTitle').textContent = `${l.koReason === 'нокаут' ? 'Нокаут' : 'Победа'}. Победил ${w.p.name}`;
   $('koStats').innerHTML = [
     `Бой длился <b>${sim.t.toFixed(2)} с</b> реального времени`,
     l.koReason === 'вылетел с арены' ? `${l.p.name} вылетел с арены` : '',
     `Попаданий: ${w.p.name} <b>${w.hits}</b>, ${l.p.name} <b>${l.hits}</b>`,
-    `У победителя осталось <b>${Math.ceil(w.hp)}</b> здоровья`,
+    l.koReason && l.koReason !== 'нокаут' ? `Причина: <b>${l.koReason}</b>` : '',
+    `Победитель: ${stateWord(w).text}${w.knockdowns ? `, нокдаунов ${w.knockdowns}` : ''}`,
     known > 1 ? `Они дрались уже <b>${known}</b> раз: оба помнят, что заходит` : '',
   ]
     .filter(Boolean)

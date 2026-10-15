@@ -97,6 +97,16 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
 - Feel of weight so far: hit-stop (view.hitStop), head/trunk snap (partTone dips), heavy
   legs (LIMB_MASS), kick catch + sweep.
 
+- Condition, not hit points (user's request): `daze` (consciousness, clears with
+  time and breath), `trauma` (head damage for the whole fight, weakens the chin),
+  `bodyHurt` (caps wind; liver shots fold a moment later), limbs separately. One head
+  blow beyond the current chin = KO; a bit less = knockdown; 3 knockdowns or taking
+  clean shots while badly shaken without answering = stoppage. Unseen and turning
+  blows shake more; a seen blow meets a tucked chin (technique). `hp` is now only a
+  derived summary for plans and training. Tool: `ends` (how fights end).
+- Head punches used to rise through the guard and chest (and the chest hit zone
+  reached the chin): head hits were ~5%. Punches now load at the target's height.
+
 ## Next steps (planned with the user)
 
 1. Done: training (genome/train/school), memory across fights.

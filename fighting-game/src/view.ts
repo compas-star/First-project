@@ -373,7 +373,9 @@ export class View {
           this.hitStop = Math.min(0.14, 0.035 + ev.dmg * 0.006);
           this.hitStopCool = this.hitStop + 0.2;
         }
-        this.pop(ev.pos, ev.blocked ? `блок −${ev.dmg.toFixed(1)}` : `−${ev.dmg.toFixed(1)} ${ev.fromBehind ? 'в спину' : ev.zone}`, ev.target.team);
+        // No numbers: where it landed, and how hard (one to three marks).
+        const marks = ev.dmg < 5 ? '' : ev.dmg < 10 ? '!' : ev.dmg < 16 ? '!!' : '!!!';
+        this.pop(ev.pos, ev.blocked ? 'в блок' : `${ev.fromBehind ? 'в спину' : ev.zone}${marks}`, ev.target.team);
       } else if (ev.type === 'land') {
         this.burst(ev.pos.clone().setY(0.1), Math.min(60, 10 + ev.power * 3), 1 + ev.power * 0.25, new THREE.Color(0x8b93a6), 0.6);
         if (ev.power > 6) this.wave(ev.pos, Math.min(8, ev.power * 0.35));
@@ -389,6 +391,9 @@ export class View {
         this.burst(ev.pos, 30, 3, new THREE.Color(0xff5a4a), 0.5);
         this.pop(ev.pos.clone().setY(ev.pos.y + 0.3), `перелом: ${LIMB_NAME[ev.limb]}`, ev.target.team);
         this.shake = Math.max(this.shake, 0.2);
+      } else if (ev.type === 'liver') {
+        this.pop(ev.pos, 'печень!', ev.target.team);
+        this.shake = Math.max(this.shake, 0.15);
       } else if (ev.type === 'catch') {
         this.burst(ev.pos, 18, 1.5, new THREE.Color(0xffffff), 0.3);
         this.pop(ev.pos, 'поймал ногу', ev.target.team);

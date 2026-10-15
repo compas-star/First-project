@@ -198,6 +198,9 @@ button:active {
   text-overflow: ellipsis;
 }
 
+.st .plan {
+  color: var(--gold);
+}
 .st .hurt {
   color: #e889ff;
 }

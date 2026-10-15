@@ -3,6 +3,7 @@ import { PRESETS, applyPreset, defaultFighter, type FighterParams } from './conf
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Sim, LIMB_NAME, type Limb } from './sim';
 import { POWERS } from './powers';
+import { PLAN_SHORT } from './brain';
 import { DISCIPLINES } from './disciplines';
 
 const DISCIPLINE_IDS: string[] = DISCIPLINES.map((d) => d.id);
@@ -112,7 +113,8 @@ function updateHud(): void {
 function injuries(f: Sim['fighters'][number]): string {
   const list = (Object.keys(f.broken) as Limb[]).filter((l) => f.broken[l]).map((l) => `перелом: ${LIMB_NAME[l]}`);
   if (f.dazed) list.unshift('поплыл');
-  return list.length ? `<br><span class="hurt">${list.join('<br>')}</span>` : '';
+  const plan = f.state === 'ok' && !sim.winner ? `<br><span class="plan">${PLAN_SHORT[f.plan]}</span>` : '';
+  return plan + (list.length ? `<br><span class="hurt">${list.join('<br>')}</span>` : '');
 }
 
 function showKo(): void {

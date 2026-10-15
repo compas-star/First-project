@@ -5,6 +5,7 @@ import { MOVES, MOVE_BY_ID, FOLLOW, type Move, type Striker } from './moves';
 import { makeFeet, resetFeet, updateFeet, legOverride, anchorFeet, measureBalance, type Foot } from './feet';
 import { DISCIPLINE_BY_ID, type Discipline, type Stance } from './disciplines';
 import { punchOverride } from './strikes';
+import { makeMemory, type Memory, type PlanId } from './brain';
 import { POWER_BY_ID, type PowerId } from './powers';
 import { react, think } from './ai';
 import { clonePose, STANCE, PELVIS_Y, type Pose } from './rig';
@@ -71,6 +72,8 @@ export interface Action {
   jitter: THREE.Vector3;
   /** Fist position at the start of an aimed punch, in the body frame. */
   handStart: THREE.Vector3 | null;
+  /** A feint: shows the start of the strike and pulls out. */
+  feint: boolean;
 }
 
 /**
@@ -189,6 +192,12 @@ export class Fighter {
   fall: FallKind = 'back';
   /** Own time since the fall began. */
   fallT = 0;
+  /** What this fighter has learned about the opponent, and the current game plan. */
+  mem: Memory = makeMemory();
+  plan: PlanId = 'outbox';
+  nextPlanW = 0;
+  /** After a feint: the opponent may be caught reacting until this world time. */
+  baitUntilW = 0;
   /** Which leg gave way in a buckle. */
   fallSide: 'l' | 'r' = 'l';
   /** +1 lying on the back (chest up), -1 face down. */
@@ -347,6 +356,8 @@ export class Sim {
   readonly events: SimEvent[] = [];
   readonly rng: () => number;
   winner: Fighter | null = null;
+  /** World time of the last clean blow by anyone. */
+  lastHitW = 0;
   private eq = new RAPIER.EventQueue(true);
   private override: Partial<Record<string, THREE.Quaternion>> = {};
   private crateByCollider = new Map<number, Crate>();
@@ -456,9 +467,14 @@ export class Sim {
   startAction(
     f: Fighter,
     kind: ActionKind,
-    opts: { move?: Move; dur?: number; dir?: THREE.Vector3; pose?: Action['pose']; lunge?: number; zone?: 'head' | 'body' | 'leg' } = {},
+    opts: { move?: Move; dur?: number; dir?: THREE.Vector3; pose?: Action['pose']; lunge?: number; zone?: 'head' | 'body' | 'leg'; feint?: boolean } = {},
   ): Action {
     const m = opts.move;
+    if (m && kind === 'attack' && !opts.feint) {
+      f.mem.tries[m.id] = (f.mem.tries[m.id] ?? 0) + 1;
+      f.enemy.mem.oppMoves[m.id] = (f.enemy.mem.oppMoves[m.id] ?? 0) + 1;
+      f.enemy.mem.oppAttackTimes.push(this.t);
+    }
     // No two blows are quite the same: timing and aim vary a little, more without technique.
     const dur = m ? f.durOf(m) * (0.9 + 0.2 * this.rng()) : opts.dur ?? 0.3;
     const miss = 0.02 + 0.1 * (1 - f.tech);
@@ -494,6 +510,7 @@ export class Sim {
       zone: opts.zone ?? (m ? m.zones[0] : 'head'),
       jitter,
       handStart: null,
+      feint: !!opts.feint,
     };
     f.action = a;
     f.strikeValid = false;
@@ -803,6 +820,13 @@ export class Sim {
     switch (a.kind) {
       case 'attack': {
         const m = a.move!;
+        if (a.feint && u >= m.active[0] * 0.55) {
+          // Pull the feint out and look for the reaction.
+          f.action = null;
+          f.comboLeft = 0;
+          f.baitUntilW = this.t + 0.45 / f.mind;
+          return;
+        }
         if (u < m.active[0]) f.self.copy(fwd).multiplyScalar(a.lunge / (a.dur * m.active[0]));
         else f.self.multiplyScalar(Math.max(0, 1 - 20 * dl));
         break;
@@ -952,7 +976,7 @@ export class Sim {
 
     const blocked = def.action?.kind === 'block' && zone === 'arm' && facingAtt > 0;
     // Damage grows slower than the impulse, so a much faster fighter needs a few blows, not one.
-    let dmg = (6.5 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
+    let dmg = (7.5 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
     // A well placed blow lands on the point, a wild one spreads its force.
     dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
     if (fromBehind) dmg *= 1.3;
@@ -964,6 +988,11 @@ export class Sim {
     def.hp = Math.max(0, def.hp - dmg);
     def.poise -= blocked ? dmg * 0.5 : dmg * (zone === 'head' ? 1.4 : 1);
     att.hits++;
+    if (!blocked) {
+      att.mem.hits[m.id] = (att.mem.hits[m.id] ?? 0) + 1;
+      this.lastHitW = this.t;
+    }
+    if (!seen) att.mem.oppReact.none++;
     // The whole body moves at most a few m/s from one blow (more for real super strength),
     // and the momentum spreads through the trunk instead of tearing one limb away.
     const maxDv = 3 * Math.sqrt(Math.max(1, att.p.strength));

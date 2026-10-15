@@ -251,6 +251,10 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   // Right after a feint: if he bit (dodging, blocking, recovering), go now.
   const bit = sim.t < f.baitUntilW && !!e.action && ['dodge', 'block', 'parry', 'stagger', 'attack'].includes(e.action.kind);
   if (bit) eager += 0.9;
+  // Out of breath: pick the moments, keep a little more distance.
+  const tired = f.fatigue;
+  eager *= (1 - 0.55 * tired) * (f.stamina < 0.12 ? 0.3 : 1);
+  if (tired > 0.5) f.wantDist = pref + 0.25 * tired * f.scale;
   // A technician does not like trading while standing in the pocket.
   if (tech > 0.5 && dist < pref - 0.3 * f.scale) eager *= 0.5;
   if (options.length && sim.rng() < eager) {
@@ -306,6 +310,10 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     // Feint: a short pressure step to draw a reaction.
     f.wantDist = pref - 0.3 * f.scale;
     intent(f, 'финт');
+    return;
+  }
+  if (tired > 0.6) {
+    intent(f, 'устал, перевожу дыхание');
     return;
   }
   if (dist > pref + 0.3 * f.scale) intent(f, tech > 0.5 ? 'подхожу на дистанцию' : 'лезу в драку');

@@ -100,6 +100,17 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
     const s = Math.sin(f.walkPhase);
     out.lShF -= 6 * s * amp;
     out.rShF += 6 * s * amp;
+    // Tired: the hands sink, the chin comes up, the chest heaves.
+    const tired = f.fatigue;
+    if (tired > 0) {
+      out.lShF -= 28 * tired;
+      out.rShF -= 22 * tired;
+      out.lEl -= 18 * tired;
+      out.rEl -= 18 * tired;
+      out.headPitch -= 8 * tired;
+      out.spineLean += 6 * tired + 4 * tired * Math.sin(t * 2 * Math.PI * (0.6 + 0.6 * tired));
+      out.crouch -= 0.02 * tired;
+    }
   }
   if (a) {
     const u = a.t / a.dur;

@@ -104,7 +104,10 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
    carried into the blow, overcommit on a missed power shot (`Action.overcommit`, slow
    recovery, punishable), arms/head at lower muscle frequency (`FREQ` in physics.ts).
    Base damage 4.8 (fights ~20 s). Possible next: rear-foot pivot, recoil on a landed blow.
-3. **Stamina:** tired fighters slow down, drop the guard.
+3. Done: stamina (`Fighter.stamina`, `fatigue`): strikes/misses/dodges/body shots spend
+   it, rest restores; tired = slower strikes and reactions, weaker blows, hands drop,
+   less eager. Strikes at body speed 1 slowed by `STRIKE_TEMPO` 1.4 (user: too fast).
+   School habits were trained before these two changes; retrain when convenient.
 4. **Lookahead where mind = depth:** faster perception simulates more options ahead.
 5. Known issues: rare support-shin velocity spike during cross/bodykick (IK flip?);
    no sweeps as a technique; no southpaw; no grappling; crates are the only props.

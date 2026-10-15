@@ -240,6 +240,7 @@ function eyesCaption(): string {
 function updateHud(): void {
   sim.fighters.forEach((f, i) => {
     $(`hp${i}`).style.width = `${(f.hp / f.maxHp) * 100}%`;
+    $(`sp${i}`).style.width = `${Math.max(0, f.stamina) * 100}%`;
     $(`hpn${i}`).textContent = Math.ceil(f.hp).toString();
     $(`n${i}`).textContent = f.p.name;
     $(`s${i}`).innerHTML =
@@ -253,6 +254,7 @@ function updateHud(): void {
 function injuries(f: Sim['fighters'][number]): string {
   const list = (Object.keys(f.broken) as Limb[]).filter((l) => f.broken[l]).map((l) => `перелом: ${LIMB_NAME[l]}`);
   if (f.dazed) list.unshift('поплыл');
+  if (f.fatigue > 0.5) list.unshift('выдохся');
   const plan = f.state === 'ok' && !sim.winner ? `<br><span class="plan">${PLAN_SHORT[f.plan]}</span>` : '';
   return plan + (list.length ? `<br><span class="hurt">${list.join('<br>')}</span>` : '');
 }

@@ -48,6 +48,8 @@ const LIMB_OF_STRIKER: Record<Striker, Limb> = {
 const LIMB_MASS: Partial<Record<Striker, number>> = { rFoot: 2.1, lFoot: 1.7, rKnee: 1.7, lKnee: 1.5, rElbow: 1.15, lElbow: 1.1 };
 
 const KICK_DRIVE = 2.2;
+/** Strikes of an ordinary human (body speed 1) take this much longer than the move data. */
+const STRIKE_TEMPO = 1.4;
 /** Points along the shin, shin frame for a 1.8 m fighter; the last is the foot itself. */
 const SHIN_POINTS = [new THREE.Vector3(0, -0.2, 0.04), new THREE.Vector3(0, -0.33, 0.06), STRIKERS.rFoot.at];
 const tmpQ2v = new THREE.Vector3();
@@ -248,6 +250,8 @@ export class Fighter {
   hits = 0;
   /** A power dash carries him: balance is not judged until this world time. */
   dashGraceW = 0;
+  /** 0..1 wind. Strikes, misses, dodges and body shots spend it; it comes back at rest. */
+  stamina = 1;
   /** A blow snaps the head or trunk loose for a moment (world time until). */
   snapHeadW = 0;
   snapChestW = 0;
@@ -281,6 +285,11 @@ export class Fighter {
 
   gene(key: string): number {
     return this.g[key] ?? 0;
+  }
+
+  /** 0 fresh .. 1 spent: slower strikes and reactions, weaker blows, guard drops. */
+  get fatigue(): number {
+    return THREE.MathUtils.clamp(1 - this.stamina / 0.85, 0, 1) ** 1.3;
   }
 
   get body(): number {
@@ -323,7 +332,7 @@ export class Fighter {
 
   /** Length of a move for this fighter in local seconds: poor technique telegraphs. */
   durOf(m: Move): number {
-    return (m.duration * (1 + 0.35 * (1 - this.tech))) / (m.path ? this.style.handSpeed : 1);
+    return (m.duration * STRIKE_TEMPO * (1 + 0.35 * (1 - this.tech)) * (1 + 0.45 * this.fatigue)) / (m.path ? this.style.handSpeed : 1);
   }
 
   /** World seconds from starting a move until it can hit. */
@@ -333,7 +342,7 @@ export class Fighter {
 
   /** World seconds between seeing an action start and becoming aware of it. */
   get reactDelay(): number {
-    return 0.17 / this.mind;
+    return (0.17 * (1 + 0.4 * this.fatigue)) / this.mind;
   }
 
   forward(out = new THREE.Vector3()): THREE.Vector3 {
@@ -510,6 +519,8 @@ export class Sim {
     opts: { move?: Move; dur?: number; dir?: THREE.Vector3; pose?: Action['pose']; lunge?: number; zone?: 'head' | 'body' | 'leg'; feint?: boolean } = {},
   ): Action {
     const m = opts.move;
+    if (m && kind === 'attack') f.stamina -= (opts.feint ? 0.4 : 1) * (0.006 + 0.008 * m.power);
+    if (kind === 'dodge') f.stamina -= 0.02;
     if (m && kind === 'attack' && !opts.feint) {
       f.mem.tries[m.id] = (f.mem.tries[m.id] ?? 0) + 1;
       f.enemy.mem.oppMoves[m.id] = (f.enemy.mem.oppMoves[m.id] ?? 0) + 1;
@@ -610,6 +621,10 @@ export class Sim {
       f.tone = Math.min(1, f.tone + dl / 0.4);
       const legs = (f.broken.lLeg ? 0.6 : 1) * (f.broken.rLeg ? 0.6 : 1);
       f.poise = Math.min(f.maxPoise * legs, f.poise + 10 * dl);
+      // Getting the wind back: fastest standing still, none while throwing a blow.
+      const busy = f.action?.kind === 'attack' ? 0 : 1;
+      const moving = Math.min(1, f.groundSpeed / (f.stride * f.body + 1e-6));
+      f.stamina = Math.min(1, Math.max(0, f.stamina) + busy * (0.09 - 0.035 * moving) * dl);
       if (!this.winner) {
         react(f, f.enemy, this);
         if (this.t >= f.nextThinkW) {
@@ -917,6 +932,7 @@ export class Sim {
             const k = THREE.MathUtils.clamp((m.power - 1.3) / 1.4, 0, 1) * (1.2 - 0.6 * f.tech) + (m.style === 'wild' ? 0.25 : 0);
             if (k > 0.15) {
               a.overcommit = Math.min(1, k);
+              f.stamina -= 0.03 * a.overcommit;
               f.stability = Math.min(f.stability, 1 - 0.45 * a.overcommit);
               if (a.overcommit > 0.45) f.comboLeft = 0;
               f.say(`провалился после промаха: ${m.name}`);
@@ -1139,12 +1155,14 @@ export class Sim {
     // A well placed blow lands on the point, a wild one spreads its force.
     dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
     if (fromBehind) dmg *= 1.3;
+    dmg *= 1 - 0.3 * att.fatigue;
     if (blocked) dmg *= 0.4;
     if (stone) {
       dmg *= 0.45;
       push.multiplyScalar(0.6);
     }
     def.hp = Math.max(0, def.hp - dmg);
+    def.stamina -= dmg * (blocked ? 0.003 : zone === 'body' ? 0.012 : 0.004);
     if (!blocked && !stone) {
       if (zone === 'head') def.snapHeadW = this.t + (0.1 + 0.012 * dmg) / def.body;
       if (zone === 'body' || dmg > 9) def.snapChestW = this.t + (0.08 + 0.008 * dmg) / def.body;

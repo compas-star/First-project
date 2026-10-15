@@ -144,6 +144,22 @@ button:active {
 .team1 .hp i {
   background: var(--blue);
 }
+.sp {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.sp i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: #7fd88f;
+  transition: width 0.15s;
+}
+.team1 .sp {
+  transform: scaleX(-1);
+}
 .st {
   font: 500 10.5px/1.35 var(--mono);
   white-space: nowrap;

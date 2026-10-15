@@ -7,6 +7,7 @@ import { DISCIPLINE_BY_ID, type Discipline, type Stance } from './disciplines';
 import { punchOverride, aimPointOf } from './strikes';
 import { makeMemory, type Memory, type PlanId } from './brain';
 import { schoolGenome, type Genome } from './genome';
+import { readOpponent, fitOf } from './tactics';
 import { POWER_BY_ID, type PowerId } from './powers';
 import { react, think } from './ai';
 import { clonePose, STANCE, PELVIS_Y, type Pose } from './rig';
@@ -248,6 +249,12 @@ export class Fighter {
   answerUntilW = 0;
   /** Id of the enemy action he already punished. */
   punishedId = -1;
+  /** The hand that last took a blocked blow, busy until this world time. */
+  blockedSide: 'l' | 'r' = 'l';
+  blockedW = 0;
+  /** Side whose hand is out or still coming back from a punch, open until this world time. */
+  openSide: 'l' | 'r' = 'l';
+  openUntilW = 0;
   /** World time each active power is ready again. */
   readyAt: Partial<Record<PowerId, number>> = {};
 
@@ -927,6 +934,11 @@ export class Sim {
         if (u < m.active[0]) f.self.copy(fwd).multiplyScalar(a.lunge / (a.dur * m.active[0]));
         else f.self.multiplyScalar(Math.max(0, 1 - 20 * dl));
         const [a0, a1] = m.active;
+        // A punching hand leaves its side of the head open until it is back in the guard.
+        if (m.limb.endsWith('Hand') && u >= a0 * 0.8 && !a.feint) {
+          f.openSide = m.limb[0] as 'l' | 'r';
+          f.openUntilW = this.t + ((1 - u) * a.dur + 0.2) / f.body;
+        }
         const heavy = Math.min(1.5, m.power / 1.6);
         // Weight transfer: the body travels a little with the blow.
         if (u >= a0 * 0.7 && u < a1) {
@@ -1047,13 +1059,16 @@ export class Sim {
     const dist = tmpA.subVectors(f.enemy.pos, f.pos).setY(0).length();
     const reach = opts.filter(([m]) => dist <= this.attackRange(f, m) + 0.4 * f.scale);
     if (!reach.length) return null;
-    const total = reach.reduce((s2, [, w]) => s2 + w, 0);
+    // The next blow of a combination also reads what the last one did to him.
+    const read = readOpponent(f, f.enemy, this.t);
+    const weighted = reach.map(([m, w]) => [m, w * fitOf(f, m, read, this.attackRange(f, m)).k] as const);
+    const total = weighted.reduce((s2, [, w]) => s2 + w, 0);
     let r = this.rng() * total;
-    for (const [m, w] of reach) {
+    for (const [m, w] of weighted) {
       r -= w;
       if (r <= 0) return m;
     }
-    return reach[0][0];
+    return weighted[0][0];
   }
 
   /** Did the striking fist or foot touch the enemy during the strike window? */
@@ -1159,6 +1174,10 @@ export class Sim {
       return;
     }
     const blocked = def.action?.kind === 'block' && zone === 'arm' && facingAtt > 0;
+    if (blocked) {
+      def.blockedSide = part.name[0] as 'l' | 'r';
+      def.blockedW = this.t + 0.5 / def.body;
+    }
     // Damage grows slower than the impulse, so a much faster fighter needs a few blows, not one.
     let dmg = (8.5 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
     // A well placed blow lands on the point, a wild one spreads its force.

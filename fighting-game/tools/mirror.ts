@@ -9,7 +9,7 @@ RAPIER.init().then(() => {
     const a = { ...defaultFighter(0), skill: 0.8, aggression: 0.6 };
     const b = { ...defaultFighter(1), skill: 0.8, aggression: 0.6, ...(process.env.SAME ? { name: a.name } : {}) };
     const sim = new Sim(a, b, s * 31 + 3 + Number(process.env.OFF ?? 0));
-    while (!sim.winner && sim.t < 40) sim.step(sim.stepSize());
+    while (!sim.winner && sim.t < 75) sim.step(sim.stepSize());
     w[sim.winner ? sim.winner.team : 2]++; hp[0] += sim.fighters[0].hp; hp[1] += sim.fighters[1].hp;
     sim.dispose();
   }

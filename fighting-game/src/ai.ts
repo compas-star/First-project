@@ -5,6 +5,7 @@ import {
   updatePlan, planDistance, planEagerness, planComboBonus, moveWeight, bodyBias, feintChance, counterBonus,
   type Reaction,
 } from './brain';
+import { readOpponent, fitOf, zoneBias, type Read } from './tactics';
 
 // Fighter AI. Two entry points:
 //  - react(): a reflex, runs once per enemy action as soon as the fighter can
@@ -25,14 +26,19 @@ function styleWeight(f: Fighter, m: Move): number {
   return f.weightOf(m) * k * moveWeight(f, m);
 }
 
-function pickStyled(f: Fighter, sim: Sim, list: Move[]): Move {
-  const total = list.reduce((s, m) => s + styleWeight(f, m), 0);
+/** Picks a strike: style and habits, times how well it fits what he sees right now. */
+function pickStyled(f: Fighter, sim: Sim, list: Move[], read: Read): { m: Move; why: string | null } {
+  const scored = list.map((m) => {
+    const fit = fitOf(f, m, read, sim.attackRange(f, m));
+    return { m, why: fit.why, w: styleWeight(f, m) * Math.pow(fit.k, 1.5) };
+  });
+  const total = scored.reduce((s, x) => s + x.w, 0);
   let r = sim.rng() * total;
-  for (const m of list) {
-    r -= styleWeight(f, m);
-    if (r <= 0) return m;
+  for (const x of scored) {
+    r -= x.w;
+    if (r <= 0) return x;
   }
-  return list[list.length - 1];
+  return scored[scored.length - 1];
 }
 
 function sideStep(sim: Sim, f: Fighter): { dir: THREE.Vector3; left: boolean } {
@@ -118,7 +124,10 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
     const want = 0.2 + 0.55 * f.p.aggression * f.tech + (roomy ? 0.35 : 0) + counterBonus(f);
     if (sim.rng() < want) {
       noted(f, 'counter');
-      const strongest = counters.reduce((a, b) => (b.power > a.power ? b : a));
+      // Not simply the hardest blow: the one that goes where his strike opened him.
+      const read = readOpponent(f, e, sim.t);
+      const score = (c: Move) => c.power * fitOf(f, c, read, sim.attackRange(f, c)).k * (0.5 + f.weightOf(c));
+      const strongest = counters.reduce((a, b) => (score(b) > score(a) ? b : a));
       sim.startAction(f, 'attack', { move: strongest, reply: true });
       f.say(`вижу ${m.name} → ${strongest.name} первым`);
       return;
@@ -167,13 +176,13 @@ function intent(f: Fighter, text: string): void {
   if (f.thought !== text) f.say(text);
 }
 
-function pickZone(f: Fighter, e: Fighter, sim: Sim, m: Move): 'head' | 'body' | 'leg' {
+function pickZone(f: Fighter, e: Fighter, sim: Sim, m: Move, read?: Read): 'head' | 'body' | 'leg' {
   const z = m.zones;
   if (z.length === 1) return z[0];
   if (z.includes('head') && z.includes('body')) {
     // Go to the body more when the guard is up.
     const guardUp = e.action?.kind === 'block' ? 0.35 : 0;
-    return sim.rng() < f.style.bodyLove + guardUp + bodyBias(f) ? 'body' : 'head';
+    return sim.rng() < f.style.bodyLove + guardUp + bodyBias(f) + (read ? zoneBias(read) * f.tech : 0) ? 'body' : 'head';
   }
   return z[Math.floor(sim.rng() * z.length)];
 }
@@ -293,11 +302,12 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
 
   if (go === 'punish' && ea) f.punishedId = ea.id;
   if (go && options.length) {
-    const m = pickStyled(f, sim, options);
+    const read = readOpponent(f, e, sim.t);
+    const { m, why } = pickStyled(f, sim, options, read);
     const r = sim.attackRange(f, m);
     // Step in far enough to land, never so far as to walk into the enemy.
     const lunge = Math.min(Math.max(m.lunge * f.scale, dist - r * 0.85 + 0.05), Math.max(0, dist - gap));
-    const zone = pickZone(f, e, sim, m);
+    const zone = pickZone(f, e, sim, m, read);
     if (go === 'entry') f.initiativeW = sim.t + waitTime(f, sim);
     if (go === 'entry' && m.path && sim.rng() < feintChance(f)) {
       sim.startAction(f, 'attack', { move: m, lunge: lunge * 0.4, zone, feint: true });
@@ -314,7 +324,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
       entry: lunge > m.lunge * f.scale + 0.1 ? `вхожу: ${m.name}${where}` : `${m.name}${where}`,
       meet: `встречаю: ${m.name}${where}`,
     }[go];
-    f.say(label);
+    f.say(why ? `${label} (${why})` : label);
     // Entries come in combinations; answers and counters are short.
     const base = f.style.comboLen * (0.5 + f.p.aggression) * (0.5 + sim.rng()) + planComboBonus(f);
     // A patient fighter throws short, clean combinations; a brawler keeps swinging.

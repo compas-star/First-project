@@ -295,6 +295,57 @@ export interface Drive {
 }
 
 const ARMS = new Set<PartName>(['lUpper', 'lFore', 'rUpper', 'rFore']);
+
+/**
+ * Joint ranges, degrees, relative to the parent: elbows and knees are hinges
+ * that bend one way only, the rest are cones around the rest direction.
+ */
+const LIMITS: Partial<Record<PartName, { hinge?: [number, number]; cone?: number }>> = {
+  chest: { cone: 55 },
+  head: { cone: 65 },
+  lUpper: { cone: 165 },
+  rUpper: { cone: 165 },
+  lFore: { hinge: [-155, 4] },
+  rFore: { hinge: [-155, 4] },
+  lThigh: { cone: 125 },
+  rThigh: { cone: 125 },
+  lShin: { hinge: [-4, 150] },
+  rShin: { hinge: [-4, 150] },
+};
+const DEG = Math.PI / 180;
+const lq = new THREE.Quaternion();
+const lq2 = new THREE.Quaternion();
+const lv = new THREE.Vector3();
+const lw = new THREE.Vector3();
+const lt = new THREE.Vector3();
+
+/** Correction (axis * angle, parent frame) that brings a joint back inside its range. */
+function limitCorrection(name: PartName, parentQ: THREE.Quaternion, childQ: THREE.Quaternion, out: THREE.Vector3): boolean {
+  const lim = LIMITS[name];
+  if (!lim) return false;
+  lq.copy(parentQ).invert().multiply(childQ);
+  if (lq.w < 0) lq.set(-lq.x, -lq.y, -lq.z, -lq.w);
+  out.set(0, 0, 0);
+  if (lim.hinge) {
+    // Twist about the hinge axis (local X), anything else is swing that a hinge cannot do.
+    const twist = 2 * Math.atan2(lq.x, lq.w);
+    lq2.setFromAxisAngle(lv.set(1, 0, 0), twist).invert();
+    lq2.premultiply(lq);
+    const sinHalf = Math.hypot(lq2.x, lq2.y, lq2.z);
+    if (sinHalf > 0.02) {
+      const ang = 2 * Math.atan2(sinHalf, Math.abs(lq2.w));
+      out.set(lq2.x, lq2.y, lq2.z).multiplyScalar((-ang / sinHalf) * Math.sign(lq2.w || 1));
+    }
+    const [lo, hi] = lim.hinge;
+    if (twist < lo * DEG) out.x += lo * DEG - twist;
+    else if (twist > hi * DEG) out.x += hi * DEG - twist;
+  } else if (lim.cone) {
+    const sinHalf = Math.hypot(lq.x, lq.y, lq.z);
+    const ang = 2 * Math.atan2(sinHalf, lq.w);
+    if (ang > lim.cone * DEG && sinHalf > 1e-6) out.set(lq.x, lq.y, lq.z).multiplyScalar(-(ang - lim.cone * DEG) / sinHalf);
+  }
+  return out.lengthSq() > 1e-8;
+}
 const UP = new THREE.Vector3(0, 1, 0);
 
 function rotErr(target: THREE.Quaternion, cur: THREE.Quaternion, out: THREE.Vector3): THREE.Vector3 {
@@ -383,6 +434,23 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
     }
     alphaW.multiplyScalar(h);
     p.body.applyTorqueImpulse({ x: alphaW.x, y: alphaW.y, z: alphaW.z }, true);
+
+    // Joint ranges: a stiff push back once a joint leaves its natural range.
+    if (p.parent) {
+      const pq = q(p.parent.body.rotation(), tq2);
+      if (limitCorrection(p.name, pq, q(p.body.rotation(), tq), lt)) {
+        lt.applyQuaternion(pq);
+        lw.copy(v(p.body.angvel(), tv)).sub(v(p.parent.body.angvel(), tv2));
+        // Spring back plus damping of the motion that pushes further out.
+        const along = lv.copy(lt).normalize();
+        const tau = lt.multiplyScalar(kp * 0.6).addScaledVector(along, -lw.dot(along) * kd * 0.8);
+        const Ib = inertiaTimes(p.body, tau, tau);
+        capped(tau, Ib * kp * 3);
+        tau.multiplyScalar(h);
+        p.body.applyTorqueImpulse({ x: tau.x, y: tau.y, z: tau.z }, true);
+        p.parent.body.applyTorqueImpulse({ x: -tau.x, y: -tau.y, z: -tau.z }, true);
+      }
+    }
   }
 
   const stand = balance * stab;

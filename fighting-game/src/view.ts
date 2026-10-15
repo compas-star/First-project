@@ -221,7 +221,11 @@ export class View {
   private shake = 0;
   private sim: Sim | null = null;
   private tmp = new THREE.Vector3();
+  private tmp2 = new THREE.Vector3();
   private follow = new THREE.Vector3();
+  /** Fighter the camera closes in on after a knockout. */
+  koFocus: Fighter | null = null;
+  private koZoom = 0;
   /** Real seconds since the player last turned the camera. */
   private sinceTouch = 99;
   private touching = false;
@@ -463,6 +467,11 @@ export class View {
     const [a, b] = sim.fighters;
     const mid = this.tmp.addVectors(a.pos, b.pos).multiplyScalar(0.5);
     mid.y = Math.max(a.scale, b.scale) * 1.1;
+    this.koZoom += ((this.koFocus ? 1 : 0) - this.koZoom) * Math.min(1, realDt * 1.5);
+    if (this.koFocus && this.koZoom > 0.001) {
+      const p = this.koFocus.rag.pelvis.body.translation();
+      mid.lerp(this.tmp2.set(p.x, 0.7 * this.koFocus.scale, p.z), this.koZoom);
+    }
     const before = this.follow.clone();
     this.follow.lerp(mid, 1 - Math.exp(-realDt * 4));
     const delta = this.follow.clone().sub(before);
@@ -476,7 +485,7 @@ export class View {
     const lying = a.state !== 'ok' || b.state !== 'ok' ? 1.0 * big : 0;
     const needW = (sep / 2 + 0.9 * big + lying) / Math.tan(hHalf);
     const needH = (1.3 * big) / Math.tan(vHalf);
-    const want = Math.min(45, Math.max(3.5, needW, needH) * 1.08);
+    const want = Math.min(45, Math.max(3.5, needW, needH) * 1.08) * (1 - 0.45 * this.koZoom);
     this.controls.update();
     const off = this.camera.position.clone().sub(this.controls.target);
     // Unless the player is steering, swing round to look at the fight from the side.

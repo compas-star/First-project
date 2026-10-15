@@ -24,11 +24,60 @@ function stanceOf(f: Fighter): Pose {
 }
 const SLOPPY = withStance(POSES.sloppy);
 
-export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
-  if (f.state !== 'ok') {
-    Object.assign(out, DOWN);
-    return out;
+const FENCING = withStance(POSES.fencing);
+const FOLD = withStance(POSES.fold);
+const TUCK = withStance(POSES.tuck);
+const CATCH = withStance(POSES.catch);
+const DOWN_BACK = withStance(POSES.downBack);
+const DOWN_FRONT = withStance(POSES.downFront);
+
+/**
+ * Pose the muscles hold while falling and lying. A knockout locks rigid, a body
+ * shot folds, a buckled leg gives way, a fall is braced with the arms; on the
+ * floor a conscious fighter pulls his knees up or pushes with his hands.
+ */
+function downPose(f: Fighter, out: Pose): Pose {
+  const t = f.fallT;
+  const falling = t < 0.8;
+  if (f.state === 'ko' && t > 1.2) return Object.assign(out, DOWN);
+  if (falling) {
+    switch (f.fall) {
+      case 'timber':
+        return Object.assign(out, FENCING);
+      case 'fold':
+        return Object.assign(out, FOLD);
+      case 'buckle': {
+        Object.assign(out, f.faceUp < 0 ? CATCH : TUCK);
+        // The leg that was hit folds under him.
+        if (f.fallSide === 'l') {
+          out.lHipF = 55;
+          out.lKn = 130;
+        } else {
+          out.rHipF = 55;
+          out.rKn = 130;
+        }
+        return out;
+      }
+      case 'back':
+        // Arms go where the floor is coming from.
+        return Object.assign(out, f.faceUp < -0.2 ? CATCH : TUCK);
+      default:
+        return Object.assign(out, DOWN);
+    }
   }
+  if (f.state === 'ko') return Object.assign(out, DOWN);
+  // Conscious on the floor: never quite still.
+  Object.assign(out, f.faceUp > 0.2 ? DOWN_BACK : f.faceUp < -0.2 ? DOWN_FRONT : FOLD);
+  const w = Math.sin(t * 2.3);
+  out.lHipF += 12 * w;
+  out.rHipF -= 10 * w;
+  out.lKn += 15 * Math.sin(t * 1.7 + 1);
+  out.headPitch += 8 * Math.sin(t * 1.1);
+  return out;
+}
+
+export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
+  if (f.state !== 'ok') return downPose(f, out);
   // The fighter's own stance comes from the fighting style.
   const base = stanceOf(f);
   Object.assign(out, base);
@@ -103,6 +152,15 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
   // Losing balance: the arms go out to catch the fall.
   if (f.stability < 0.75 && a?.kind !== 'getup') {
     lerpPose(out, out, withStance(POSES.brace, base), smooth((0.75 - f.stability) / 0.5));
+  }
+  // Dazed: hands drop, knees go soft, the body sways.
+  if (f.dazed && a?.kind !== 'getup') {
+    const t = f.clock;
+    lerpPose(out, out, SLOPPY, 0.6);
+    out.spineSide += 14 * Math.sin(t * 2.1);
+    out.spineLean += 8 * Math.sin(t * 1.3 + 0.7);
+    out.headPitch += 12 * Math.sin(t * 1.7);
+    out.crouch += 0.06 * (1 + Math.sin(t * 3.1));
   }
   // An untrained fighter carries the hands low and wide whatever he does.
   const sloppy = 1 - f.tech;

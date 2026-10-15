@@ -328,6 +328,18 @@ export const POSES = {
   air: { lShF: 120, lShS: 60, lEl: 30, rShF: 110, rShS: 60, rEl: 30, lHipF: 30, rHipF: 10, lKn: 40, rKn: 20 },
   /** Lying: loose arms, slightly bent legs. */
   down: { lShF: 25, lShS: 35, lEl: 35, rShF: 20, rShS: 35, rEl: 30, lHipF: 15, rHipF: 5, lKn: 25, rKn: 15, crouch: 0, headPitch: 0, spineLean: 5 },
+  /** Knocked out cold: body goes rigid, one arm locks up (the "fencing response"). */
+  fencing: { lShF: 140, lShS: 10, lEl: 12, rShF: 8, rShS: 6, rEl: 8, spineLean: 0, spineTwist: 0, pelvisTwist: 0, lHipF: 0, rHipF: 0, lKn: 2, rKn: 2, headPitch: -5, crouch: 0 },
+  /** Body shot: folds in half, arms hugging the ribs. */
+  fold: { spineLean: 70, headPitch: 30, lShF: 55, lShS: -25, lEl: 125, rShF: 55, rShS: -25, rEl: 125, lHipF: 75, rHipF: 70, lKn: 100, rKn: 95, crouch: 0 },
+  /** Falling backward: chin tucked, arms forward. */
+  tuck: { headPitch: 38, spineLean: 25, lShF: 85, rShF: 80, lEl: 45, rEl: 50, lShS: 30, rShS: 30, lHipF: 35, rHipF: 30, lKn: 45, rKn: 40, crouch: 0 },
+  /** Falling forward: arms straight out to catch the floor. */
+  catch: { headPitch: -25, spineLean: 5, lShF: 115, rShF: 115, lEl: 10, rEl: 10, lShS: 20, rShS: 20, lHipF: 10, rHipF: 5, lKn: 25, rKn: 20, crouch: 0 },
+  /** Lying on the back, conscious: knees up, hands guarding. */
+  downBack: { headPitch: 20, spineLean: 12, lShF: 70, lShS: 30, lEl: 110, rShF: 60, rShS: 30, rEl: 120, lHipF: 65, lKn: 95, rHipF: 45, rKn: 75, crouch: 0 },
+  /** Face down, conscious: hands under the shoulders, trying to push up. */
+  downFront: { headPitch: -20, spineLean: -10, lShF: 75, lShS: 45, lEl: 95, rShF: 75, rShS: 45, rEl: 95, lHipF: 20, lKn: 45, rHipF: 10, rKn: 30, crouch: 0 },
   /** Losing balance: arms thrown out to catch the fall. */
   brace: { lShF: 95, lShS: 45, lEl: 20, rShF: 95, rShS: 45, rEl: 20, headPitch: -10 },
   parry: { lShF: 95, lShS: 38, lEl: 45, spineTwist: -28, spineLean: 12, rShF: 55, rEl: 120, crouch: 0.1 },

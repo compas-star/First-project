@@ -54,6 +54,7 @@ let sim: Sim;
 let viewScale = 1;
 let koShownAt = -1;
 let koTimer = 0;
+let koReal = 0;
 
 const view = new View($('scene'), $('labels'));
 
@@ -64,6 +65,7 @@ function startFight(): void {
   view.setSim(sim);
   koShownAt = -1;
   koTimer = 0;
+  koReal = 0;
   $('ko').hidden = true;
   paused = false;
   $('btnPause').textContent = 'Пауза';
@@ -135,7 +137,10 @@ function frame(now: number): void {
   last = now;
   // Glide between time scales in log space so switching eyes does not jump.
   // Once the fight is decided, ease toward normal speed so the knockout plays out in reasonable time.
-  const target = sim.winner ? Math.max(targetScale(), 0.5) : targetScale();
+  // A knockout plays in slow motion first, then eases toward normal speed.
+  if (sim.winner) koReal += realDt;
+  const target = sim.winner ? (koReal < 1.8 ? Math.min(targetScale(), 0.22) : Math.max(targetScale(), 0.5)) : targetScale();
+  view.koFocus = sim.winner ? sim.winner.enemy : null;
   const k = 1 - Math.exp(-realDt * 5);
   viewScale = Math.exp(Math.log(viewScale) + (Math.log(target) - Math.log(viewScale)) * k);
 
@@ -150,7 +155,7 @@ function frame(now: number): void {
     if (w.enemy.state === 'ko') {
       koTimer += realDt;
       if (w.state === 'ok' && !w.action) sim.startAction(w, 'victory', { dur: 1e9 });
-      if (koTimer > 1.6) {
+      if (koTimer > 2.4) {
         koShownAt = now;
         showKo();
       }

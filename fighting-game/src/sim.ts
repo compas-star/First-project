@@ -119,6 +119,12 @@ function makeStyle(p: FighterParams, team: number): FightStyle {
 
 export type FighterState = 'ok' | 'down' | 'ko';
 
+/**
+ * How a fighter goes down, chosen by the blow: rigid "timber" fall of a clean
+ * knockout, folding over a body shot, a leg giving way, or toppling back.
+ */
+export type FallKind = 'timber' | 'fold' | 'buckle' | 'back' | 'limp';
+
 export function rng32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -180,6 +186,13 @@ export class Fighter {
   wobbleUntilW = 0;
   /** Rising from the floor: tilt of the body when the getup began and pelvis height. */
   getupTilt = new THREE.Quaternion();
+  fall: FallKind = 'back';
+  /** Own time since the fall began. */
+  fallT = 0;
+  /** Which leg gave way in a buckle. */
+  fallSide: 'l' | 'r' = 'l';
+  /** +1 lying on the back (chest up), -1 face down. */
+  faceUp = 0;
   getupFromY = 0;
   walkPhase = 0;
   groundSpeed = 0;
@@ -507,7 +520,10 @@ export class Sim {
     return MOVES.filter((m) => f.canUse(m) && f.weightOf(m) > 0);
   }
 
-  private knockDown(f: Fighter, why: string): void {
+  private knockDown(f: Fighter, why: string, how: FallKind = 'back', side: 'l' | 'r' = 'l'): void {
+    f.fall = how;
+    f.fallT = 0;
+    f.fallSide = side;
     f.stability = 0;
     f.state = f.hp <= 0 ? 'ko' : 'down';
     f.action = null;
@@ -542,6 +558,12 @@ export class Sim {
       const a = f.action;
       f.clock += dl;
       if (!a || a.kind === 'block' || a.kind === 'parry') this.footwork(f, dl, a ? 0.4 : 1);
+      if (f.dazed && a?.kind !== 'getup') {
+        // Rubber legs: drifting off line, and now and then the knees give.
+        tmpA.set(Math.cos(f.facing), 0, -Math.sin(f.facing));
+        f.self.addScaledVector(tmpA, Math.sin(f.clock * 1.9) * 0.5 * f.stride * dl * 4);
+        if (this.rng() < 0.25 * h * f.body) f.wobbleUntilW = this.t + 0.3 / f.body;
+      }
       // Stay off the edge unless something throws you over it.
       const r = Math.hypot(f.pos.x, f.pos.z);
       if (r > ARENA_R - 1.5) {
@@ -566,7 +588,8 @@ export class Sim {
       }
     } else {
       f.balance = 0;
-      f.tone = f.state === 'ko' ? 0.06 : 0.15;
+      f.fallT += dl;
+      f.tone = this.fallTone(f);
       f.self.set(0, 0, 0);
       if (f.state === 'down') {
         const lv = f.rag.pelvis.body.linvel();
@@ -691,6 +714,24 @@ export class Sim {
     f.self.lerp(want.multiplyScalar(mul), Math.min(1, 7 * dl));
   }
 
+  /** Muscle tone through a fall: rigid for a knockout, half-tense while folding, then loose. */
+  private fallTone(f: Fighter): number {
+    const t = f.fallT;
+    const ko = f.state === 'ko';
+    switch (f.fall) {
+      case 'timber':
+        return t < 0.7 ? 0.75 : ko ? 0.05 : 0.22;
+      case 'fold':
+        return t < 1 ? 0.5 : ko ? 0.06 : 0.3;
+      case 'buckle':
+        return t < 0.8 ? 0.45 : ko ? 0.06 : 0.3;
+      case 'back':
+        return t < 0.7 ? 0.4 : ko ? 0.06 : 0.3;
+      default:
+        return ko ? 0.05 : 0.2;
+    }
+  }
+
   private regenerate(f: Fighter, dl: number): void {
     f.hp = Math.min(f.maxHp, f.hp + 1.2 * dl);
     for (const l of Object.keys(f.limbDmg) as Limb[]) {
@@ -710,6 +751,10 @@ export class Sim {
     f.groundSpeed = Math.hypot(vel.x, vel.z);
     f.walkPhase += f.groundSpeed * h * (3.2 / f.scale);
 
+    if (f.state !== 'ok') {
+      // Chest facing up or down decides how he lies and how he tries to get up.
+      f.faceUp = tmpA.set(0, 0, 1).applyQuaternion(q(f.rag.byName.chest.body.rotation(), tmpQ)).y;
+    }
     if (f.state !== 'ok' && f.prevVy < -4 && vel.y > f.prevVy + 3) {
       this.events.push({ type: 'land', pos: f.pos.clone(), power: -f.prevVy * f.scale });
     }
@@ -919,7 +964,25 @@ export class Sim {
     def.hp = Math.max(0, def.hp - dmg);
     def.poise -= blocked ? dmg * 0.5 : dmg * (zone === 'head' ? 1.4 : 1);
     att.hits++;
-    part.body.applyImpulseAtPoint({ x: push.x, y: push.y, z: push.z }, { x: at.x, y: at.y, z: at.z }, true);
+    // The whole body moves at most a few m/s from one blow (more for real super strength),
+    // and the momentum spreads through the trunk instead of tearing one limb away.
+    const maxDv = 3 * Math.sqrt(Math.max(1, att.p.strength));
+    const Jl = push.length();
+    if (Jl > def.mass * maxDv) push.multiplyScalar((def.mass * maxDv) / Jl);
+    const local = Math.min(1, (part.mass * 5) / Math.max(1e-6, push.length()));
+    part.body.applyImpulseAtPoint(
+      { x: push.x * local, y: push.y * local, z: push.z * local },
+      { x: at.x, y: at.y, z: at.z },
+      true,
+    );
+    if (local < 1) {
+      const rest = push.multiplyScalar(1 - local);
+      const chest = def.rag.byName.chest;
+      const pel = def.rag.pelvis;
+      const k = chest.mass / (chest.mass + pel.mass);
+      chest.body.applyImpulse({ x: rest.x * k, y: rest.y * k, z: rest.z * k }, true);
+      pel.body.applyImpulse({ x: rest.x * (1 - k), y: rest.y * (1 - k), z: rest.z * (1 - k) }, true);
+    }
 
     // Limbs take damage of their own and can break; the head can be concussed.
     const limb = LIMB_OF_PART[part.name];
@@ -941,8 +1004,15 @@ export class Sim {
 
     const sturdy = Math.sqrt(def.mass / 75) * (stone ? 1.6 : 1);
     const interrupted = !blocked && def.action?.kind === 'attack' && dmg > 3.5 * sturdy;
+    const side: 'l' | 'r' = part.name.startsWith('l') ? 'l' : 'r';
     if (def.hp <= 0) {
-      this.knockDown(def, 'сбит с ног');
+      this.knockDown(def, 'сбит с ног', zone === 'head' ? 'timber' : zone === 'body' ? 'fold' : zone === 'leg' ? 'buckle' : 'limp', side);
+    } else if (def.poise <= 0 && zone === 'body' && !blocked) {
+      def.poise = def.maxPoise * 0.5;
+      this.knockDown(def, 'скрутило от удара в корпус', 'fold', side);
+    } else if (def.poise <= 0 && zone === 'leg') {
+      def.poise = def.maxPoise * 0.5;
+      this.knockDown(def, 'подсекли ногу', 'buckle', side);
     } else if (def.poise <= 0) {
       // Legs buckle: for a moment he cannot hold himself up, the blow decides where he goes.
       def.poise = def.maxPoise * 0.5;
@@ -1003,7 +1073,7 @@ export class Sim {
         this.winner = f;
         e.koReason = 'нокаут';
       }
-      if (dv > 3 || e.hp <= 0) this.knockDown(e, 'сбит волной');
+      if (dv > 3 || e.hp <= 0) this.knockDown(e, 'сбит волной', 'back');
     }
     for (const c of this.crates) {
       if (c.gone) continue;

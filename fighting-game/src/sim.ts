@@ -30,6 +30,22 @@ import {
 // fist or foot and a body part; damage comes from the impact speed and the part hit.
 
 export const G = 9.81;
+
+/**
+ * How a fight is run. A quick fight goes to a finish; a bout has five-minute
+ * rounds, judges, and fighters built to last: harder chins, slower damage,
+ * limbs that do not break from a few blocked kicks.
+ */
+export interface Rules {
+  /** Round length in world seconds; 0 = no rounds. */
+  roundLen: number;
+  rounds: number;
+  /** How much more punishment a fighter takes than in a quick fight. */
+  tough: number;
+}
+
+export const QUICK: Rules = { roundLen: 0, rounds: 0, tough: 1 };
+export const bout = (rounds: number): Rules => ({ roundLen: 300, rounds, tough: 3 });
 export const ARENA_R = 12;
 export const FLOOR_R = 13.5;
 
@@ -266,6 +282,10 @@ export class Fighter {
   daze = 0;
   trauma = 0;
   bodyHurt = 0;
+  /** Long-fight tiredness: builds over the rounds, lowers the wind he can get back. */
+  wear = 0;
+  /** Toughness from the rules (bouts are built to last). */
+  tough = 1;
   knockdowns = 0;
   /** Unconscious (knocked out or the fight stopped). */
   out = false;
@@ -369,7 +389,8 @@ export class Fighter {
 
   /** Damage a limb takes before the bone breaks. */
   get limbLimit(): number {
-    return 45 * Math.sqrt(this.mass / 78) * (this.has('stone') ? 2.5 : 1);
+    // In a bout limbs are far sturdier: a forearm does not break from blocking kicks for a few rounds.
+    return 45 * Math.sqrt(this.mass / 78) * (this.has('stone') ? 2.5 : 1) * (this.tough > 1 ? this.tough * 3.5 : 1);
   }
 
   get disc(): Discipline {
@@ -433,14 +454,15 @@ export interface Crate {
 }
 
 export type SimEvent =
-  | { type: 'hit'; pos: THREE.Vector3; power: number; blocked: boolean; dmg: number; target: Fighter; fromBehind: boolean; zone: string; stone: boolean }
+  | { type: 'hit'; pos: THREE.Vector3; power: number; blocked: boolean; dmg: number; target: Fighter; fromBehind: boolean; zone: string; stone: boolean; part?: string }
   | { type: 'land'; pos: THREE.Vector3; power: number }
   | { type: 'crash'; pos: THREE.Vector3; power: number }
   | { type: 'wave'; pos: THREE.Vector3; radius: number }
   | { type: 'break'; pos: THREE.Vector3; target: Fighter; limb: Limb }
   | { type: 'parry'; pos: THREE.Vector3; target: Fighter }
   | { type: 'catch'; pos: THREE.Vector3; target: Fighter }
-  | { type: 'liver'; pos: THREE.Vector3; target: Fighter };
+  | { type: 'liver'; pos: THREE.Vector3; target: Fighter }
+  | { type: 'bell'; round: number };
 
 const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
@@ -465,6 +487,8 @@ export class Sim {
   readonly events: SimEvent[] = [];
   readonly rng: () => number;
   winner: Fighter | null = null;
+  /** The judges could not separate them. */
+  draw = false;
   /** World time of the last clean blow by anyone. */
   lastHitW = 0;
   private eq = new RAPIER.EventQueue(true);
@@ -474,15 +498,26 @@ export class Sim {
 
   /** RAPIER.init() must have finished before a Sim is created. */
   readonly map: MapDef;
+  readonly rules: Rules;
+  /** Rounds: current round (1-based), time into it, and a break between rounds. */
+  round = 1;
+  roundT = 0;
+  betweenRounds = false;
+  /** Judges' cards: points per round for each fighter, and what each did this round. */
+  cards: [number, number][] = [];
+  private roundDealt = [0, 0];
+  private roundDowns = [0, 0];
 
-  constructor(red: FighterParams, blue: FighterParams, seed = 7, map: MapDef = MAP_BY_ID.void) {
+  constructor(red: FighterParams, blue: FighterParams, seed = 7, map: MapDef = MAP_BY_ID.void, rules: Rules = QUICK) {
     this.rng = rng32(seed);
     this.map = map;
+    this.rules = rules;
     this.world = new RAPIER.World({ x: 0, y: -G, z: 0 });
     this.buildMap();
 
     const a = new Fighter(red, 0);
     const b = new Fighter(blue, 1);
+    a.tough = b.tough = rules.tough;
     a.enemy = b;
     b.enemy = a;
     const gap = map.start > 0 ? map.start * Math.max(1, (a.scale + b.scale) / 2) : 2.2 + (a.scale + b.scale) * 0.6;
@@ -634,7 +669,12 @@ export class Sim {
   }
 
   step(h: number): void {
+    if (this.betweenRounds) return;
     this.t += h;
+    if (this.rules.roundLen && !this.winner) {
+      this.roundT += h;
+      if (this.roundT >= this.rules.roundLen) this.endRound();
+    }
     for (const f of this.fighters) this.preStep(f, h);
     this.world.timestep = h;
     this.world.step(this.eq);
@@ -976,6 +1016,78 @@ export class Sim {
     }
   }
 
+  /** Puts a fighter who fell out of the ring back on the canvas near the middle, lying down. */
+  private backInside(f: Fighter): void {
+    const p = f.rag.pelvis.body.translation();
+    const inward = { x: 0, z: 0 };
+    room(this.map, p.x, p.z, inward);
+    const to = new THREE.Vector3(p.x, 0, p.z).multiplyScalar(0.35);
+    const dx = to.x - p.x;
+    const dz = to.z - p.z;
+    const dy = this.map.floorY + 0.25 - p.y;
+    for (const part of f.rag.parts) {
+      const t = part.body.translation();
+      part.body.setTranslation({ x: t.x + dx, y: t.y + dy, z: t.z + dz }, true);
+      part.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      part.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    }
+    f.pos.set(to.x, 0, to.z);
+    if (f.state === 'ok') this.knockDown(f, 'вылетел за канаты');
+    f.say('рефери возвращает на ринг');
+  }
+
+  /** The bell: score the round, then a break (the view resumes with nextRound) or the decision. */
+  private endRound(): void {
+    const d = this.roundDealt;
+    const k = this.roundDowns;
+    // Ten-point must: the better round gets 10, the other 9; each knockdown costs a point more.
+    let a = 10;
+    let b = 10;
+    if (d[0] > d[1] * 1.08) b = 9;
+    else if (d[1] > d[0] * 1.08) a = 9;
+    a -= k[0];
+    b -= k[1];
+    this.cards.push([Math.max(6, a), Math.max(6, b)]);
+    this.roundDealt = [0, 0];
+    this.roundDowns = [0, 0];
+    this.events.push({ type: 'bell', round: this.round });
+    if (this.round >= this.rules.rounds) {
+      const [ta, tb] = this.score();
+      const [fa, fb] = this.fighters;
+      if (ta !== tb) {
+        const w = ta > tb ? fa : fb;
+        this.winner = w;
+        w.enemy.koReason = `решение судей ${Math.max(ta, tb)}–${Math.min(ta, tb)}`;
+      } else {
+        this.draw = true;
+      }
+      return;
+    }
+    this.betweenRounds = true;
+  }
+
+  /** Totals on the judges' cards. */
+  score(): [number, number] {
+    return this.cards.reduce<[number, number]>((s, [a, b]) => [s[0] + a, s[1] + b], [0, 0]);
+  }
+
+  /** After the break: the corner has done what it can. */
+  nextRound(): void {
+    for (const f of this.fighters) {
+      if (f.state === 'down' && !f.out) f.downLeft = Math.min(f.downLeft, 0.3);
+      f.daze *= 0.35;
+      f.bodyHurt *= 0.85;
+      for (const l of Object.keys(f.limbDmg) as Limb[]) f.limbDmg[l] *= 0.85;
+      f.stamina = 1 - 0.5 * f.bodyHurt - 0.35 * f.wear;
+      f.action = null;
+      f.combo = null;
+      f.initiativeW = 0;
+    }
+    this.round++;
+    this.roundT = 0;
+    this.betweenRounds = false;
+  }
+
   /**
    * What a blow does to his condition. A blow to the head shakes his
    * consciousness by how hard it is against how much his chin takes right now:
@@ -987,6 +1099,8 @@ export class Sim {
    */
   private hurt(def: Fighter, m: Move, zone: string, dmg: number, blocked: boolean, seen: boolean): void {
     const stone = def.has('stone') ? 2 : 1;
+    // Judges count clean, effective blows: the head most, the body next, arms barely.
+    this.roundDealt[1 - def.team] += blocked ? 0.1 * dmg : dmg * (zone === 'head' ? 1.3 : zone === 'arm' ? 0.25 : 1);
     const size = Math.sqrt(def.mass / 78);
     def.stamina -= dmg * (blocked ? 0.003 : zone === 'body' ? 0.012 : 0.004);
     if (blocked) return;
@@ -994,16 +1108,16 @@ export class Sim {
       const turning = m.path === 'hook' || m.path === 'upper' || m.path === 'over' || m.path === 'swing' || m.path === 'round' || /Knee|Elbow/.test(m.limb);
       // A blow he saw coming meets a tucked chin and a braced neck, the more so the better he is trained.
       const shock = dmg * (turning ? 1.25 : 1) * (seen ? 1 - 0.35 * def.tech : 1.45);
-      const chin = 23 * size * def.style.chin * stone * (1 - 0.55 * def.daze) * (1 - 0.45 * def.trauma) * (0.8 + 0.2 * Math.max(0, def.stamina));
+      const chin = 23 * size * def.style.chin * Math.pow(def.tough, 0.65) * stone * (1 - 0.55 * def.daze) * (1 - 0.45 * def.trauma) * (0.8 + 0.2 * Math.max(0, def.stamina));
       const r = shock / chin;
       def.daze = Math.min(1, def.daze + 0.75 * r);
-      def.trauma = Math.min(1, def.trauma + shock / (450 * size * stone));
+      def.trauma = Math.min(1, def.trauma + shock / (450 * size * stone * (def.tough > 1 ? def.tough * 2.5 : 1)));
       if (r > 0.95 && this.rng() < THREE.MathUtils.smoothstep(r, 0.95, 1.4)) def.out = true;
       else if (r > 0.6 && this.rng() < THREE.MathUtils.smoothstep(r, 0.6, 1)) def.flash = true;
     } else if (zone === 'body') {
-      def.bodyHurt = Math.min(1, def.bodyHurt + dmg / (55 * size * stone));
+      def.bodyHurt = Math.min(1, def.bodyHurt + dmg / (55 * size * stone * def.tough));
       // The liver: a hard blow to the body, worse on a body already hurt, folds him a moment later.
-      const r = (dmg / (11 * size * stone)) * (0.6 + 0.8 * def.bodyHurt) * (seen ? 1 : 1.3);
+      const r = (dmg / (11 * size * stone * Math.sqrt(def.tough))) * (0.6 + 0.8 * def.bodyHurt) * (seen ? 1 : 1.3);
       if (def.liverW === 0 && r > 1 && this.rng() < THREE.MathUtils.smoothstep(r, 1, 1.6)) def.liverW = this.t + (0.3 + 0.4 * this.rng()) / def.body;
     }
     if (zone !== 'arm' && def.daze > 0.5) {
@@ -1027,7 +1141,10 @@ export class Sim {
     const regen = f.has('regen') ? 3 : 1;
     if (!f.out) f.daze = Math.max(0, f.daze - dl * (0.035 + 0.1 * Math.max(0, f.stamina)) * (1 - 0.5 * f.trauma) * resting * regen);
     f.bodyHurt = Math.max(0, f.bodyHurt - dl * 0.004 * regen);
-    f.stamina = Math.min(f.stamina, 1 - 0.5 * f.bodyHurt);
+    if (f.tough > 1) for (const l of Object.keys(f.limbDmg) as Limb[]) f.limbDmg[l] = Math.max(0, f.limbDmg[l] - 0.35 * dl);
+    // In a long fight the tiredness builds: work and damage wear him down round by round.
+    if (this.rules.roundLen && f.state === 'ok') f.wear = Math.min(1, f.wear + dl * (0.00035 + 0.0006 * (1 - Math.max(0, f.stamina)) + 0.0005 * f.daze));
+    f.stamina = Math.min(f.stamina, 1 - 0.5 * f.bodyHurt - 0.35 * f.wear);
     f.dazed = f.daze > 0.42;
     // A summary number for the plans and the training score: 100 fresh, 0 out.
     f.hp = f.out ? 0 : 100 * (1 - Math.min(1, Math.max(0.9 * f.daze, 0.4 * f.trauma + 0.35 * f.bodyHurt + 0.25 * f.daze)));
@@ -1036,10 +1153,11 @@ export class Sim {
       if (f.state === 'ok') {
         f.stamina = 0;
         f.knockdowns++;
+        this.roundDowns[f.team]++;
         this.knockDown(f, 'печень!', 'fold');
         f.downLeft += 2.5;
         this.events.push({ type: 'liver', pos: f.pos.clone().setY(0.9 * f.scale), target: f });
-        if (f.knockdowns >= 3) {
+        if ((this.rules.roundLen ? this.roundDowns[f.team] : f.knockdowns) >= 3) {
           this.stop(f, 'три нокдауна');
           f.state = 'ko';
           if (!this.winner) this.winner = f.enemy;
@@ -1078,6 +1196,11 @@ export class Sim {
 
     // Thrown out of a raised ring onto the floor below, or off a roof: the fight is over.
     const fellOut = this.map.outside === 'ground' && p.y < this.map.floorY - 0.7 && room(this.map, p.x, p.z, { x: 0, z: 0 }) < -0.2;
+    // In a bout a fall through the ropes is not the end: the referee brings him back in.
+    if (fellOut && this.rules.roundLen && !f.out) {
+      this.backInside(f);
+      return;
+    }
     if ((p.y < -2 || fellOut) && !f.out) {
       f.out = true;
       this.knockDown(f, '');
@@ -1488,8 +1611,9 @@ export class Sim {
       // Knockdown: dropped, not out. He will get up, a little more shaken.
       def.flash = false;
       def.knockdowns++;
+      this.roundDowns[def.team]++;
       this.knockDown(def, 'нокдаун', this.rng() < 0.5 ? 'back' : 'buckle', side);
-      if (def.knockdowns >= 3) this.stop(def, 'три нокдауна');
+      if ((this.rules.roundLen ? this.roundDowns[def.team] : def.knockdowns) >= 3) this.stop(def, 'три нокдауна');
     } else if (def.poise <= 0 && zone === 'body' && !blocked) {
       def.poise = def.maxPoise * 0.5;
       this.knockDown(def, 'скрутило от удара в корпус', 'fold', side);
@@ -1542,7 +1666,7 @@ export class Sim {
 
     this.events.push({
       type: 'hit', pos: at, power: (J / def.mass) * 4, blocked, dmg, target: def, fromBehind,
-      zone: ZONE_NAME[zone], stone,
+      zone: ZONE_NAME[zone], stone, part: part.name,
     });
   }
 

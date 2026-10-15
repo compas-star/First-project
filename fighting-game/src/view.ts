@@ -62,6 +62,11 @@ class FighterView {
   nodes: THREE.Object3D[];
   ghosts: { root: THREE.Object3D; nodes: THREE.Object3D[]; mat: THREE.MeshBasicMaterial; age: number }[] = [];
   ghostTimer = 0;
+  /** Bare skin: it gets a sweaty shine as he tires. */
+  private skinMat: THREE.MeshStandardMaterial;
+  /** Bruises and cuts where blows landed, swelling round the eyes. */
+  private marks: { mesh: THREE.Mesh; group: THREE.Object3D; n: number }[] = [];
+  private swell: THREE.Mesh[] = [];
   ring: THREE.Mesh;
   /** A faint ring in the team colour always under the fighter. */
   mark: THREE.Mesh;
@@ -81,7 +86,7 @@ class FighterView {
     this.rig = buildRig(f.p.color, f.girth);
     let seed = 0;
     for (const ch of f.p.name) seed = (seed * 31 + ch.charCodeAt(0)) | 0;
-    dress(this.rig, f.p.skin ?? defaultSkin(f.p.discipline), f.p.color, f.girth, seed);
+    this.skinMat = dress(this.rig, f.p.skin ?? defaultSkin(f.p.discipline), f.p.color, f.girth, seed);
     this.hurtMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(f.p.color).multiplyScalar(0.35).lerp(new THREE.Color(0x5a2a6a), 0.5),
       roughness: 0.8,
@@ -135,6 +140,7 @@ class FighterView {
     const r = this.rig.root;
     syncRig(f.rag, this.rig, f.scale);
     this.showInjuries();
+    this.showWear();
     r.updateMatrixWorld(true);
 
     // Afterimages appear when the fighter looks faster than a normal person.
@@ -181,6 +187,60 @@ class FighterView {
       this.bubbleAge = 0;
     }
     this.bubbleAge += realDt;
+  }
+
+  /**
+   * A blow that landed leaves a mark on the part it hit: a red patch that
+   * darkens to purple as more land on the same spot. Hard head blows can cut.
+   */
+  addMark(part: string, at: THREE.Vector3, dmg: number): boolean {
+    const r = this.rig;
+    const group = ({
+      head: r.head, chest: r.spine, pelvis: r.pelvis, lUpper: r.lSh, lFore: r.lEl, rUpper: r.rSh, rFore: r.rEl,
+      lThigh: r.lHip, lShin: r.lKn, rThigh: r.rHip, rShin: r.rKn,
+    } as Record<string, THREE.Object3D>)[part];
+    if (!group || dmg < 2.5) return false;
+    group.updateWorldMatrix(true, false);
+    const local = group.worldToLocal(at.clone()).divideScalar(this.f.scale);
+    // A blow on the same spot deepens the old mark instead of adding a new one.
+    const near = this.marks.find((m) => m.group === group && m.mesh.position.distanceTo(local) < 0.05);
+    const cut = part === 'head' && dmg > 9 && Math.random() < 0.35;
+    if (near && !cut) {
+      near.n += dmg / 6;
+      const k = Math.min(1, near.n / 6);
+      (near.mesh.material as THREE.MeshStandardMaterial).color.setHex(0xb34848).lerp(new THREE.Color(0x4a2046), k);
+      near.mesh.scale.setScalar(1 + 0.6 * k);
+      return false;
+    }
+    if (this.marks.length > 40) return false;
+    const mat = new THREE.MeshStandardMaterial({ color: cut ? 0x7a0606 : 0xb34848, roughness: cut ? 0.25 : 0.8 });
+    const mesh = cut
+      ? new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.008, 0.01), mat)
+      : new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), mat);
+    mesh.position.copy(local);
+    if (cut) mesh.rotation.z = (Math.random() - 0.5) * 1.2;
+    group.add(mesh);
+    this.marks.push({ mesh, group, n: dmg / 6 });
+    return cut;
+  }
+
+  /** Swollen eyes and sweat follow the head damage and the tiredness. */
+  private showWear(): void {
+    const f = this.f;
+    if (this.swell.length === 0 && f.trauma > 0.08) {
+      const m = new THREE.MeshStandardMaterial({ color: 0x8a4a5a, roughness: 0.6 });
+      const z = 0.098 * Math.sqrt(f.girth);
+      for (const x of [0.042, -0.042]) {
+        const s = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), m);
+        s.position.set(x, 0.165, z);
+        this.rig.head.add(s);
+        this.swell.push(s);
+      }
+    }
+    // One eye takes more than the other.
+    this.swell.forEach((s, i) => s.scale.setScalar(Math.min(1.8, 0.4 + f.trauma * (i ? 2.2 : 3.2))));
+    const tired = Math.min(1, f.wear * 1.4 + (1 - Math.max(0, f.stamina)) * 0.3);
+    this.skinMat.roughness = 0.7 - 0.45 * tired;
   }
 
   /** A broken limb turns dark, so it is clear why it hangs. */
@@ -405,6 +465,11 @@ export class View {
           this.hitStop = Math.min(0.14, 0.035 + ev.dmg * 0.006);
           this.hitStopCool = this.hitStop + 0.2;
         }
+        if (!ev.blocked && ev.part) {
+          const fv = this.fighters.find((x) => x.f === ev.target);
+          if (fv?.addMark(ev.part, ev.pos, ev.dmg)) this.burst(ev.pos, 24, 1.2, new THREE.Color(0x9a0a0a), 0.6);
+          else if (fv && ev.zone === 'в голову' && ev.target.trauma > 0.25) this.burst(ev.pos, 8, 1, new THREE.Color(0x9a0a0a), 0.5);
+        }
         // No numbers: where it landed, and how hard (one to three marks).
         const marks = ev.dmg < 5 ? '' : ev.dmg < 10 ? '!' : ev.dmg < 16 ? '!!' : '!!!';
         this.pop(ev.pos, ev.blocked ? 'в блок' : `${ev.fromBehind ? 'в спину' : ev.zone}${marks}`, ev.target.team);
@@ -427,6 +492,8 @@ export class View {
         this.pop(ev.pos, 'печень!', ev.target.team);
         this.excite = 1;
         this.shake = Math.max(this.shake, 0.15);
+      } else if (ev.type === 'bell') {
+        this.excite = Math.max(this.excite, 0.7);
       } else if (ev.type === 'catch') {
         this.burst(ev.pos, 18, 1.5, new THREE.Color(0xffffff), 0.3);
         this.pop(ev.pos, 'поймал ногу', ev.target.team);

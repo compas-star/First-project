@@ -157,8 +157,8 @@ class Tailor {
   }
 }
 
-/** Dresses a rig in a skin. Call before cloning it for afterimages. */
-export function dress(r: Rig, id: SkinId, team: number, girth: number, seed: number): void {
+/** Dresses a rig in a skin. Call before cloning it for afterimages. Returns the bare-skin material (for sweat). */
+export function dress(r: Rig, id: SkinId, team: number, girth: number, seed: number): THREE.MeshStandardMaterial {
   const t = new Tailor(r, team, girth);
   const tone = TONES[Math.abs(seed) % TONES.length];
   const skin = t.mat(tone, 0.7);
@@ -345,4 +345,5 @@ export function dress(r: Rig, id: SkinId, team: number, girth: number, seed: num
       break;
     }
   }
+  return skin;
 }

@@ -45,6 +45,7 @@
       <nav class="dock">
         <button id="btnPause" type="button">Пауза</button>
         <button id="btnEyes" type="button">Глаза: быстрейший</button>
+        <button id="btnSpeed" type="button" title="ускорение">×1</button>
         <button id="btnRestart" type="button">Заново</button>
         <button id="btnSetup" type="button" class="primary">Бойцы</button>
       </nav>
@@ -55,6 +56,8 @@
           <button id="btnClose" type="button">Закрыть</button>
         </div>
         <div class="presets" id="presets"></div>
+        <div class="group-title">Режим</div>
+        <div class="presets" id="modes"></div>
         <div class="group-title">Арена</div>
         <div class="presets" id="maps"></div>
         <div class="tabs" role="tablist">
@@ -78,6 +81,14 @@
             <button id="koAgain" type="button" class="primary">Ещё раз</button>
             <button id="koSetup" type="button">Настроить</button>
           </div>
+        </div>
+      </div>
+
+      <div id="round" hidden>
+        <div class="ko-card">
+          <div class="ko-title" id="roundTitle">Конец раунда</div>
+          <div class="ko-stats" id="roundStats"></div>
+          <button id="roundGo" type="button" class="primary">Следующий раунд</button>
         </div>
       </div>
 

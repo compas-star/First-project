@@ -237,7 +237,7 @@ button:active {
   right: 0;
   bottom: 0;
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   gap: 8px;
   padding-bottom: 12px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
@@ -468,6 +468,7 @@ button:active {
 
 /* KO and training */
 #ko,
+#round,
 #train {
   position: absolute;
   inset: 0;

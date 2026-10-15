@@ -1,7 +1,7 @@
 import './style.css';
 import { PRESETS, applyPreset, defaultFighter, type FighterParams } from './config';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { Sim, LIMB_NAME, type Limb } from './sim';
+import { Sim, LIMB_NAME, QUICK, bout, type Limb } from './sim';
 import { POWERS } from './powers';
 import { PLAN_SHORT, fadeMemory, bestStrike, type Memory } from './brain';
 import { MOVE_BY_ID } from './moves';
@@ -62,6 +62,25 @@ try {
 } catch {
   /* storage unavailable */
 }
+// Mode: a quick fight to the finish, or a bout of five-minute rounds with judges.
+const MODE_KEY = 'arena-mode-v1';
+const MODES = [
+  { rounds: 0, name: 'Быстрый бой', desc: 'До нокаута, без раундов. Бойцы обычной прочности.' },
+  { rounds: 3, name: '3 раунда', desc: 'По 5 минут. Крепкие бойцы, судьи, усталость копится.' },
+  { rounds: 5, name: '5 раундов', desc: 'Чемпионская дистанция: 25 минут боя.' },
+  { rounds: 7, name: '7 раундов', desc: '35 минут. Кто выдержит темп до конца.' },
+  { rounds: 12, name: '12 раундов', desc: 'Старая боксёрская классика, час боя.' },
+];
+let rounds = 0;
+try {
+  rounds = Number(localStorage.getItem(MODE_KEY) ?? 0) || 0;
+} catch {
+  /* storage unavailable */
+}
+const SPEEDS = [1, 2, 4, 8];
+let speed = 1;
+let roundShownAt = -1;
+
 function setMap(id: MapId): void {
   mapId = id;
   try {
@@ -218,7 +237,9 @@ function startFight(): void {
   // Fighters keep a reference to these objects, so speed and strength sliders act live.
   remember();
   sim?.dispose();
-  sim = new Sim(params[0], params[1], (Math.random() * 1e9) | 0, MAP_BY_ID[mapId]);
+  sim = new Sim(params[0], params[1], (Math.random() * 1e9) | 0, MAP_BY_ID[mapId], rounds ? bout(rounds) : QUICK);
+  roundShownAt = -1;
+  $('round').hidden = true;
   remembered = false;
   recall();
   view.setSim(sim);
@@ -273,6 +294,10 @@ function updateHud(): void {
   });
   $('clock').textContent = `×${viewScale >= 0.1 ? viewScale.toFixed(2) : viewScale.toFixed(3)}`;
   $('eyesLabel').textContent = eyesCaption();
+  if (sim.rules.roundLen) {
+    $('clock').textContent = fmtClock(Math.max(0, sim.rules.roundLen - sim.roundT));
+    $('eyesLabel').textContent = `раунд ${sim.round} из ${sim.rules.rounds}`;
+  }
 }
 
 function stateWord(f: Sim['fighters'][number]): { text: string; color: string } {
@@ -302,17 +327,49 @@ function showKo(): void {
   const w = sim.winner!;
   const l = w.enemy;
   const known = memStore[memKey(w.p, l.p)]?.fights ?? 0;
-  $('koTitle').textContent = `${l.koReason === 'нокаут' ? 'Нокаут' : 'Победа'}. Победил ${w.p.name}`;
+  $('koTitle').textContent = `${l.koReason === 'нокаут' ? 'Нокаут' : l.koReason.startsWith('решение') ? 'Решение судей' : 'Победа'}. Победил ${w.p.name}`;
   $('koStats').innerHTML = [
-    `Бой длился <b>${sim.t.toFixed(2)} с</b> реального времени`,
+    `Бой длился <b>${sim.t >= 120 ? fmtClock(sim.t) : `${sim.t.toFixed(2)} с`}</b> реального времени`,
     `Попаданий: ${w.p.name} <b>${w.hits}</b>, ${l.p.name} <b>${l.hits}</b>`,
     l.koReason && l.koReason !== 'нокаут' ? `Причина: <b>${l.koReason}</b>` : '',
     `Победитель: ${stateWord(w).text}${w.knockdowns ? `, нокдаунов ${w.knockdowns}` : ''}`,
     known > 1 ? `Они дрались уже <b>${known}</b> раз: оба помнят, что заходит` : '',
+    sim.rules.roundLen ? `Раунд ${sim.round}, ${fmtClock(sim.roundT)}` : '',
+    sim.cards.length ? cardsHtml() : '',
   ]
     .filter(Boolean)
     .map((s) => `<div>${s}</div>`)
     .join('');
+  $('ko').hidden = false;
+}
+
+const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+function cardsHtml(): string {
+  const [a, b] = sim.fighters;
+  const rows = sim.cards.map(([x, y], i) => `<div>Раунд ${i + 1}: ${a.p.name} <b>${x}</b> — <b>${y}</b> ${b.p.name}</div>`);
+  const [ta, tb] = sim.score();
+  return rows.join('') + `<div>Итого: <b>${ta}–${tb}</b></div>`;
+}
+
+function showRound(): void {
+  const [a, b] = sim.fighters;
+  $('roundTitle').textContent = `Конец раунда ${sim.round} из ${sim.rules.rounds}`;
+  const st = (f: typeof a) =>
+    `${f.p.name}: ${stateWord(f).text}, дыхание ${Math.round(Math.max(0, f.stamina) * 100)}%, усталость ${Math.round(f.wear * 100)}%`;
+  $('roundStats').innerHTML = cardsHtml() + `<div>${st(a)}</div><div>${st(b)}</div><div>Угол работает: дыхание и голова частично восстановятся.</div>`;
+  $('round').hidden = false;
+}
+
+function startNextRound(): void {
+  $('round').hidden = true;
+  roundShownAt = -1;
+  sim.nextRound();
+}
+
+function showDraw(): void {
+  $('koTitle').textContent = 'Ничья';
+  $('koStats').innerHTML = cardsHtml();
   $('ko').hidden = false;
 }
 
@@ -335,12 +392,31 @@ function frame(now: number): void {
   view.hitStop -= realDt;
   if (!paused && !training && !frozen) {
     // On a slow phone the physics may not keep up; then time simply runs slower.
-    worldDt = sim.advance(realDt * viewScale);
+    worldDt = sim.advance(realDt * viewScale * (sim.winner ? 1 : speed));
   }
 
+  // Between rounds: the card, then the next round (by tap or after a few seconds).
+  if (sim.betweenRounds) {
+    if (roundShownAt < 0) {
+      roundShownAt = now;
+      showRound();
+    } else if (now - roundShownAt > 6000 && !paused) startNextRound();
+  }
+  if (sim.draw && koShownAt < 0) {
+    koShownAt = now;
+    showDraw();
+  }
   if (sim.winner && koShownAt < 0) {
     const w = sim.winner;
-    if (w.enemy.state === 'ko') {
+    const decision = w.enemy.koReason.startsWith('решение');
+    if (decision) {
+      koTimer += realDt;
+      if (w.state === 'ok' && !w.action) sim.startAction(w, 'victory', { dur: 1e9 });
+      if (koTimer > 1.2) {
+        koShownAt = now;
+        showKo();
+      }
+    } else if (w.enemy.state === 'ko') {
       koTimer += realDt;
       if (w.state === 'ok' && !w.action) sim.startAction(w, 'victory', { dur: 1e9 });
       if (koTimer > 2.4) {
@@ -570,7 +646,30 @@ function renderMaps(): void {
   }
 }
 
+function renderModes(): void {
+  const box = $('modes');
+  box.innerHTML = '';
+  for (const m of MODES) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `preset${m.rounds === rounds ? ' on' : ''}`;
+    b.setAttribute('aria-pressed', String(m.rounds === rounds));
+    b.innerHTML = `<b>${m.name}</b><span>${m.desc}</span>`;
+    b.addEventListener('click', () => {
+      rounds = m.rounds;
+      try {
+        localStorage.setItem(MODE_KEY, String(rounds));
+      } catch {
+        /* storage unavailable */
+      }
+      renderModes();
+    });
+    box.appendChild(b);
+  }
+}
+
 function openSheet(): void {
+  renderModes();
   renderMaps();
   renderForm();
   $('sheet').hidden = false;
@@ -593,6 +692,11 @@ $('btnEyes').addEventListener('click', () => {
   $('btnEyes').textContent = EYES_LABEL[eyes];
 });
 $('btnRestart').addEventListener('click', startFight);
+$('btnSpeed').addEventListener('click', () => {
+  speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
+  $('btnSpeed').textContent = `×${speed}`;
+});
+$('roundGo').addEventListener('click', startNextRound);
 $('btnSetup').addEventListener('click', openSheet);
 $('btnClose').addEventListener('click', () => ($('sheet').hidden = true));
 $('btnFight').addEventListener('click', () => {

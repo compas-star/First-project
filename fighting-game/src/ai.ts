@@ -202,7 +202,9 @@ function patienceOf(f: Fighter): number {
 
 /** World seconds until he takes the initiative again. */
 function waitTime(f: Fighter, sim: Sim): number {
-  return ((0.8 + 5.5 * patienceOf(f)) * (0.6 + 0.8 * sim.rng()) * (1 + 1.2 * f.fatigue)) / f.mind;
+  // In a long fight with rounds he paces himself.
+  const pace = sim.rules.roundLen ? 1.5 : 1;
+  return ((0.8 + 5.5 * patienceOf(f)) * (0.6 + 0.8 * sim.rng()) * (1 + 1.2 * f.fatigue) * pace) / f.mind;
 }
 
 /**

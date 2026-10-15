@@ -448,7 +448,11 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
         capped(tau, Ib * kp * 3);
         tau.multiplyScalar(h);
         p.body.applyTorqueImpulse({ x: tau.x, y: tau.y, z: tau.z }, true);
-        p.parent.body.applyTorqueImpulse({ x: -tau.x, y: -tau.y, z: -tau.z }, true);
+        // While standing, the trunk is held by the balance controller; a limb hitting
+        // its joint limit (a kick reaching past the hip's range) must not tip it over,
+        // so the reaction on the trunk fades in only as the fighter loses his feet.
+        const back = 1 - balance * stab;
+        if (back > 0) p.parent.body.applyTorqueImpulse({ x: -tau.x * back, y: -tau.y * back, z: -tau.z * back }, true);
       }
     }
   }

@@ -115,7 +115,7 @@ function makeStyle(p: FighterParams, team: number): FightStyle {
     headMove: (0.35 + 0.65 * r()) * (0.25 + 0.75 * tech),
     bounce: (0.3 + 0.7 * r()) * tech,
     bodyLove: 0.15 + 0.35 * r(),
-    handSpeed: 0.9 + 0.2 * r(),
+    handSpeed: 0.98 + 0.04 * r(),
     comboLen: 1 + Math.round(r() * 2 + tech + p.aggression),
     phase: [r() * 6.28, r() * 6.28, r() * 6.28],
   };
@@ -233,6 +233,8 @@ export class Fighter {
   thoughtSeq = 0;
   thinkSeq = 0;
   hits = 0;
+  /** A power dash carries him: balance is not judged until this world time. */
+  dashGraceW = 0;
 
   constructor(
     readonly p: FighterParams,
@@ -551,7 +553,13 @@ export class Sim {
   }
 
   usableMoves(f: Fighter): Move[] {
-    return MOVES.filter((m) => f.canUse(m) && f.weightOf(m) > 0);
+    return MOVES.filter((m) => f.canUse(m) && f.weightOf(m) > 0 && this.footReady(f, m));
+  }
+
+  /** A kick or knee stands on one leg: only from a settled stance, not on the move. */
+  footReady(f: Fighter, m: Move): boolean {
+    if (FOOT_OF_STRIKER[m.limb] === undefined) return true;
+    return f.stability > 0.85 && f.balanceErr < 0.1 * f.scale && f.groundSpeed < 0.9 * f.body * f.scale;
   }
 
   private knockDown(f: Fighter, why: string, how: FallKind = 'back', side: 'l' | 'r' = 'l'): void {
@@ -811,10 +819,19 @@ export class Sim {
       const s = f.scale;
       let want = 1 - THREE.MathUtils.smoothstep(f.balanceErr, 0.12 * s, 0.5 * s);
       if (this.t < f.wobbleUntilW) want = Math.min(want, 0.12);
+      else if (this.t < f.dashGraceW) want = 1;
       // A moment off balance (during a step) is nothing; staying off it tips you over.
       const rate = (want < f.stability ? (this.t < f.wobbleUntilW ? 25 : 3) : 4) * h * f.body;
       f.stability += THREE.MathUtils.clamp(want - f.stability, -rate, rate);
       if (f.stability < 0.5 && f.thought !== 'теряю равновесие' && this.rng() < 0.02) f.say('теряю равновесие');
+      // Thrown off balance on one leg: abandon the kick and put the foot down to catch himself.
+      const a = f.action;
+      if (a?.kind === 'attack' && FOOT_OF_STRIKER[a.move!.limb] !== undefined && f.balanceErr > 0.3 * s && f.stability < 0.75) {
+        f.action = null;
+        f.combo = null;
+        f.comboLeft = 0;
+        f.say('ставлю ногу');
+      }
     }
     if (f.state === 'ok' && f.action?.kind !== 'getup') {
       // Physical loss of balance: the pelvis tips over or sinks to the floor.
@@ -848,10 +865,16 @@ export class Sim {
         else f.self.multiplyScalar(Math.max(0, 1 - 20 * dl));
         break;
       }
-      case 'dash':
-        if (u < 0.8) f.self.copy(a.dir).multiplyScalar(f.stride * 5);
+      case 'dash': {
+        // A dash at the enemy stops short of him instead of ramming him.
+        const to = tmpA.subVectors(f.enemy.pos, f.pos).setY(0);
+        const gap = f.radius + f.enemy.radius + 0.35 * f.scale;
+        if (u < 0.8 && to.dot(a.dir!) > 0 && to.length() < gap + f.groundSpeed * 0.06) a.t = Math.max(a.t, a.dur * 0.8);
+        f.dashGraceW = this.t + 0.3 / f.body;
+        if (a.t / a.dur < 0.8) f.self.copy(a.dir).multiplyScalar(f.stride * 5);
         else f.self.multiplyScalar(Math.max(0, 1 - 25 * dl));
         break;
+      }
       case 'slam':
         f.self.multiplyScalar(Math.max(0, 1 - 15 * dl));
         if (!a.hitDone && u >= 0.55) {
@@ -898,7 +921,7 @@ export class Sim {
   private nextInCombo(f: Fighter, a: Action): Move | null {
     const opts = (FOLLOW[a.move!.id] ?? [])
       .map(([id, w]) => [MOVE_BY_ID[id], w] as const)
-      .filter(([m]) => f.canUse(m) && f.weightOf(m) > 0);
+      .filter(([m]) => f.canUse(m) && f.weightOf(m) > 0 && this.footReady(f, m));
     if (!opts.length) return null;
     const dist = tmpA.subVectors(f.enemy.pos, f.pos).setY(0).length();
     const reach = opts.filter(([m]) => dist <= this.attackRange(f, m) + 0.4 * f.scale);

@@ -255,6 +255,90 @@ export const MOVES: Move[] = [
       { t: 1, pose: G },
     ],
   }),
+  // ---- More of the arsenal ----
+  move({
+    id: 'shovel', name: 'лопата', duration: 0.5, active: [0.44, 0.66], reach: 0.45, lunge: 0.1, power: 1.8, lift: 0.4,
+    limb: 'lHand', path: 'upper', zones: ['body', 'head'], dodge: 'back',
+    keys: [
+      { t: 0, pose: G },
+      { t: 0.3, pose: { spineTwist: -30, crouch: 0.16, spineSide: -10, spineLean: 16 } },
+      { t: 0.56, pose: { spineTwist: 26, crouch: 0.08, spineSide: 6, pelvisTwist: 4 } },
+      { t: 1, pose: G },
+    ],
+  }),
+  move({
+    id: 'checkhook', name: 'хук на отходе', duration: 0.56, active: [0.46, 0.68], reach: 0.47, lunge: -0.25, power: 1.7,
+    limb: 'lHand', path: 'hook', zones: ['head'], dodge: 'back',
+    keys: [
+      { t: 0, pose: G },
+      { t: 0.3, pose: { spineTwist: -36, crouch: 0.08, pelvisTwist: -10 } },
+      { t: 0.58, pose: { spineTwist: 44, spineSide: -10, pelvisTwist: 40 } },
+      { t: 1, pose: G },
+    ],
+  }),
+  move({
+    id: 'frontkick', name: 'прямой ногой', duration: 0.62, active: [0.46, 0.68], reach: 0.8, lunge: 0.12, power: 2.2, lift: 0.1,
+    limb: 'rFoot', path: 'teep', zones: ['body', 'head'],
+    keys: [
+      { t: 0, pose: G },
+      { t: 0.3, pose: { spineLean: -4, crouch: 0.04, pelvisTwist: 6 } },
+      { t: 0.52, pose: { spineLean: -26, pelvisTwist: 14 } },
+      { t: 0.7, pose: { spineLean: -22 } },
+      { t: 1, pose: G },
+    ],
+  }),
+  move({
+    id: 'lknee', name: 'левое колено', duration: 0.54, active: [0.44, 0.68], reach: 0.38, lunge: 0.2, power: 2,
+    limb: 'lKnee', zones: ['body'], dodge: 'back', lift: 0.4,
+    keys: [
+      { t: 0, pose: G },
+      { t: 0.3, pose: { lHipF: 40, lKn: 120, spineLean: 18, lShF: 85, rShF: 85, lEl: 60, rEl: 60, lShS: -8, rShS: -8 } },
+      { t: 0.52, pose: { lHipF: 112, lKn: 135, spineLean: -12, pelvisTwist: -10, lShF: 60, rShF: 60, lEl: 90, rEl: 90 } },
+      { t: 0.7, pose: { lHipF: 108, lKn: 135, spineLean: -12, lShF: 60, rShF: 60, lEl: 90, rEl: 90 } },
+      { t: 1, pose: G },
+    ],
+  }),
+  move({
+    id: 'flyknee', name: 'колено в прыжке', duration: 0.78, active: [0.48, 0.7], reach: 0.42, lunge: 0.6, power: 3.2, lift: 0.5,
+    limb: 'rKnee', zones: ['body', 'head'], dodge: 'side',
+    keys: [
+      { t: 0, pose: G },
+      { t: 0.3, pose: { crouch: 0.2, spineLean: 20, lShF: 50, rShF: 50 } },
+      { t: 0.5, pose: { rHipF: 125, rKn: 140, lHipF: 30, lKn: 60, spineLean: -16, lShF: 110, rShF: 100, lEl: 70, rEl: 70, crouch: 0 } },
+      { t: 0.72, pose: { rHipF: 115, rKn: 135, lHipF: 20, lKn: 40, spineLean: -10 } },
+      { t: 1, pose: G },
+    ],
+  }),
+  move({
+    id: 'spinelbow', name: 'локоть с разворота', duration: 0.84, active: [0.55, 0.72], reach: 0.36, lunge: 0.2, power: 2.8,
+    limb: 'rElbow', zones: ['head'], dodge: 'back', spin: -2 * Math.PI,
+    keys: [
+      { t: 0, pose: G },
+      { t: 0.35, pose: { rShF: 60, rShS: 70, rEl: 150, spineLean: 8, crouch: 0.1 } },
+      { t: 0.6, pose: { rShF: 90, rShS: 80, rEl: 155, spineTwist: 30, spineLean: 6 } },
+      { t: 1, pose: G },
+    ],
+  }),
+  move({
+    id: 'sweep', name: 'подсечка', duration: 0.6, active: [0.44, 0.68], reach: 0.6, lunge: 0.1, power: 0.9,
+    limb: 'lFoot', path: 'low', zones: ['leg'], dodge: 'back',
+    keys: [
+      { t: 0, pose: G },
+      { t: 0.3, pose: { crouch: 0.18, pelvisTwist: -20, spineLean: 12 } },
+      { t: 0.55, pose: { crouch: 0.22, pelvisTwist: -55, spineTwist: 20, spineLean: 16 } },
+      { t: 1, pose: G },
+    ],
+  }),
+  move({
+    id: 'hammer', name: 'молотом сверху', duration: 0.74, active: [0.5, 0.7], reach: 0.5, lunge: 0.15, power: 2.1,
+    limb: 'rHand', path: 'over', zones: ['head'], style: 'wild',
+    keys: [
+      { t: 0, pose: G },
+      { t: 0.4, pose: { spineTwist: -25, spineLean: -8, lShF: 40 } },
+      { t: 0.62, pose: { spineTwist: 30, spineLean: 22, crouch: 0.1 } },
+      { t: 1, pose: G },
+    ],
+  }),
   // ---- Wild ----
   move({
     id: 'haymaker', name: 'размашистый', duration: 0.8, active: [0.5, 0.7], reach: 0.5, lunge: 0.15, power: 2.4, lift: 0.1,
@@ -325,9 +409,9 @@ export const MOVE_BY_ID = Object.fromEntries(MOVES.map((m) => [m.id, m])) as Rec
 
 /** What tends to follow what in a combination, with weights. */
 export const FOLLOW: Record<string, [string, number][]> = {
-  jab: [['jab', 0.2], ['cross', 0.5], ['hook', 0.15], ['lowkick', 0.1], ['superman', 0.05]],
-  cross: [['hook', 0.4], ['luppercut', 0.1], ['lowkick', 0.2], ['bodykick', 0.1], ['jab', 0.1], ['lelbow', 0.1]],
-  hook: [['cross', 0.4], ['uppercut', 0.25], ['rhook', 0.15], ['bodykick', 0.1], ['relbow', 0.1]],
+  jab: [['jab', 0.2], ['cross', 0.45], ['hook', 0.15], ['lowkick', 0.1], ['superman', 0.05], ['frontkick', 0.05]],
+  cross: [['checkhook', 0.08], ['hook', 0.35], ['luppercut', 0.1], ['lowkick', 0.2], ['bodykick', 0.1], ['jab', 0.1], ['lelbow', 0.1]],
+  hook: [['cross', 0.35], ['uppercut', 0.2], ['rhook', 0.15], ['bodykick', 0.1], ['relbow', 0.1], ['shovel', 0.1]],
   rhook: [['hook', 0.5], ['luppercut', 0.2], ['calfkick', 0.2], ['lelbow', 0.1]],
   luppercut: [['rhook', 0.4], ['cross', 0.4], ['rknee', 0.2]],
   uppercut: [['hook', 0.6], ['lelbow', 0.2], ['rknee', 0.2]],
@@ -350,6 +434,14 @@ export const FOLLOW: Record<string, [string, number][]> = {
   flail: [['haymaker', 0.4], ['lhaymaker', 0.4], ['shove', 0.2]],
   shove: [['haymaker', 0.5], ['stomp', 0.5]],
   stomp: [['haymaker', 0.5], ['lhaymaker', 0.5]],
+  shovel: [['rhook', 0.5], ['cross', 0.5]],
+  checkhook: [['cross', 0.5], ['jab', 0.5]],
+  frontkick: [['cross', 0.6], ['hook', 0.4]],
+  lknee: [['rknee', 0.5], ['relbow', 0.5]],
+  flyknee: [['relbow', 0.5], ['hook', 0.5]],
+  spinelbow: [['hook', 1]],
+  sweep: [['cross', 1]],
+  hammer: [['haymaker', 0.5], ['lhaymaker', 0.5]],
 };
 
 /** Poses for non-attack actions, merged over the stance. */

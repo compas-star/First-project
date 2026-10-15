@@ -14,7 +14,7 @@ import { clonePose, STANCE, PELVIS_Y, type Pose } from './rig';
 import { targetPose } from './pose';
 import {
   createRagdoll, drive, partPoint, segSegDist, collisionGroups, q, v,
-  GROUP_ENV, STRIKERS, type Part, type Ragdoll,
+  GROUP_ENV, STRIKERS, type Part, type PartName, type Ragdoll,
 } from './physics';
 
 // The fight simulation. Time model:
@@ -49,6 +49,7 @@ const LIMB_OF_STRIKER: Record<Striker, Limb> = {
 const LIMB_MASS: Partial<Record<Striker, number>> = { rFoot: 2.1, lFoot: 1.7, rKnee: 1.7, lKnee: 1.5, rElbow: 1.15, lElbow: 1.1 };
 
 const KICK_DRIVE = 2.2;
+const side0 = (name: string): 'l' | 'r' => (name.startsWith('l') ? 'l' : 'r');
 /** The punching arm is driven harder too: it must not sag below its line. */
 const PUNCH_DRIVE = 1.8;
 /** Strikes of an ordinary human (body speed 1) take this much longer than the move data. */
@@ -93,6 +94,11 @@ export interface Action {
   missChecked: boolean;
   /** An answer to his attack: the exchange ends with it, nobody answers an answer. */
   reply: boolean;
+  jumped?: boolean;
+  /** Connected: the fist or foot snaps back quicker than from a miss. */
+  landed?: boolean;
+  /** Hit while throwing it: the blow goes on with what it has, weaker. */
+  shaken?: boolean;
 }
 
 /**
@@ -188,6 +194,13 @@ export class Fighter {
   wantDist = 1;
   circleDir = 1;
   circleSpeed = 0.3;
+  /** How he moves his feet right now (see chooseFootwork in ai.ts). */
+  moveMode: 'circle' | 'rhythm' | 'stalk' | 'still' | 'pivot' = 'circle';
+  /** Multiplier on the in-and-out bounce. */
+  bounceK = 1;
+  /** A quick shoulder or level feint, started at this local time (clock). */
+  twitch: 'shoulder' | 'level' | null = null;
+  twitchW = -9;
   nextCircleW = 0;
   /** Go round behind the enemy instead of holding distance. */
   flank = false;
@@ -259,6 +272,11 @@ export class Fighter {
   openUntilW = 0;
   /** Last few strikes thrown, newest last. */
   recentMoves: string[] = [];
+  /** A strike cut off in its wind-up: that limb hangs loose and swings on until this world time. */
+  looseLimb: Striker | null = null;
+  looseUntilW = 0;
+  /** Reel for this long once the blow he is throwing ends. */
+  staggerAfter = 0;
   /** World time each active power is ready again. */
   readyAt: Partial<Record<PowerId, number>> = {};
 
@@ -747,6 +765,19 @@ export class Sim {
       rootTilt = tmpQ2.copy(f.getupTilt).slerp(IDENTITY, e);
       pelvisY = THREE.MathUtils.lerp(f.getupFromY, (PELVIS_Y - f.pose.crouch) * f.scale, e);
     }
+    const partTone: Partial<Record<PartName, number>> = {
+      head: this.t < f.snapHeadW ? 0.06 : 1,
+      chest: this.t < f.snapChestW || this.t < f.looseUntilW ? 0.4 : 1,
+      lUpper: f.broken.lArm ? 0.04 : punchArm === 'l' ? PUNCH_DRIVE : 1,
+      lFore: f.broken.lArm ? 0.04 : punchArm === 'l' ? PUNCH_DRIVE : 1,
+      rUpper: f.broken.rArm ? 0.04 : punchArm === 'r' ? PUNCH_DRIVE : 1,
+      rFore: f.broken.rArm ? 0.04 : punchArm === 'r' ? PUNCH_DRIVE : 1,
+      lThigh: f.broken.lLeg ? 0.45 : kickLeg === 0 ? KICK_DRIVE : 1,
+      lShin: f.broken.lLeg ? 0.3 : kickLeg === 0 ? KICK_DRIVE : 1,
+      rThigh: f.broken.rLeg ? 0.45 : kickLeg === 1 ? KICK_DRIVE : 1,
+      rShin: f.broken.rLeg ? 0.3 : kickLeg === 1 ? KICK_DRIVE : 1,
+    };
+    this.loosen(f, partTone);
     drive(
       f.rag,
       {
@@ -766,21 +797,18 @@ export class Sim {
         rootTilt,
         pelvisY,
         override: aimed || standing ? this.override : undefined,
-        partTone: {
-          head: this.t < f.snapHeadW ? 0.06 : 1,
-          chest: this.t < f.snapChestW ? 0.3 : 1,
-          lUpper: f.broken.lArm ? 0.04 : punchArm === 'l' ? PUNCH_DRIVE : 1,
-          lFore: f.broken.lArm ? 0.04 : punchArm === 'l' ? PUNCH_DRIVE : 1,
-          rUpper: f.broken.rArm ? 0.04 : punchArm === 'r' ? PUNCH_DRIVE : 1,
-          rFore: f.broken.rArm ? 0.04 : punchArm === 'r' ? PUNCH_DRIVE : 1,
-          lThigh: f.broken.lLeg ? 0.45 : kickLeg === 0 ? KICK_DRIVE : 1,
-          lShin: f.broken.lLeg ? 0.3 : kickLeg === 0 ? KICK_DRIVE : 1,
-          rThigh: f.broken.rLeg ? 0.45 : kickLeg === 1 ? KICK_DRIVE : 1,
-          rShin: f.broken.rLeg ? 0.3 : kickLeg === 1 ? KICK_DRIVE : 1,
-        },
+        partTone,
       },
       h,
     );
+  }
+
+  /** Lowers the muscle of a limb that swings on loose after its strike was cut off. */
+  private loosen(f: Fighter, tone: Partial<Record<PartName, number>>): void {
+    if (!f.looseLimb || this.t >= f.looseUntilW) return;
+    const side = f.looseLimb[0];
+    const parts = /Hand|Elbow/.test(f.looseLimb) ? ['Upper', 'Fore'] : ['Thigh', 'Shin'];
+    for (const p of parts) tone[(side + p) as PartName] = 0.12;
   }
 
   /**
@@ -816,7 +844,7 @@ export class Sim {
       }
       want.addScaledVector(side, f.circleDir * f.circleSpeed * f.stride);
       // Rhythm: a light in-and-out bounce of a trained fighter.
-      want.addScaledVector(d, Math.sin(f.clock * 2 * Math.PI * 1.4 + f.style.phase[0]) * 0.18 * f.style.bounce * f.stride);
+      want.addScaledVector(d, Math.sin(f.clock * 2 * Math.PI * 1.4 + f.style.phase[0]) * 0.18 * f.style.bounce * f.bounceK * f.stride);
     }
     f.self.lerp(want.multiplyScalar(mul), Math.min(1, 7 * dl));
   }
@@ -920,6 +948,7 @@ export class Sim {
     const a = f.action;
     if (!a) return;
     a.t += dl;
+    if (a.landed && a.kind === 'attack' && a.t > a.dur * a.move!.active[1]) a.t += dl * 0.6;
     const u = a.t / a.dur;
     const fwd = f.forward(tmpB);
     switch (a.kind) {
@@ -941,6 +970,13 @@ export class Sim {
         if (u < m.active[0]) f.self.copy(fwd).multiplyScalar(a.lunge / (a.dur * m.active[0]));
         else f.self.multiplyScalar(Math.max(0, 1 - 20 * dl));
         const [a0, a1] = m.active;
+        // Flying knee: jump off the floor into it.
+        if (m.id === 'flyknee' && !a.missChecked && u >= a0 * 0.6 && !a.jumped) {
+          a.jumped = true;
+          const pel = f.rag.pelvis.body;
+          pel.applyImpulse({ x: fwd.x * f.mass * 1.2, y: f.mass * 2.6 * Math.sqrt(f.scale), z: fwd.z * f.mass * 1.2 }, true);
+          f.dashGraceW = this.t + 0.7 / f.body;
+        }
         // A punching hand leaves its side of the head open until it is back in the guard.
         if (m.limb.endsWith('Hand') && u >= a0 * 0.8 && !a.feint) {
           f.openSide = m.limb[0] as 'l' | 'r';
@@ -1045,6 +1081,12 @@ export class Sim {
     }
     if (a.t >= a.dur) {
       f.action = null;
+      if (f.staggerAfter > 0) {
+        const d = f.staggerAfter;
+        f.staggerAfter = 0;
+        this.startAction(f, 'stagger', { dur: d });
+        return;
+      }
       // A trained fighter does not stay in the pocket after striking.
       if (a.kind === 'attack' && f.tech + 0.5 * (1 - f.p.aggression) > 0.45) {
         f.exitUntilW = this.t + (0.35 + 0.45 * f.tech) / f.body;
@@ -1132,6 +1174,7 @@ export class Sim {
     const closing = rel.dot(n);
     if (closing < 1) return;
     a.hitDone = true;
+    a.landed = true;
     this.resolveHit(f, e, m, best, closing, rel.clone().normalize(), bestPoint.clone(), a.id);
   }
 
@@ -1190,6 +1233,7 @@ export class Sim {
     // A well placed blow lands on the point, a wild one spreads its force.
     dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
     if (fromBehind) dmg *= 1.3;
+    if (att.action?.shaken) dmg *= 0.6;
     // A shove moves the man, it does not hurt him.
     if (m.id === 'shove') {
       dmg *= 0.2;
@@ -1252,6 +1296,14 @@ export class Sim {
       }
     }
 
+    // A sweep takes the leg he stands on: down he goes, more surely if he was moving or kicking.
+    if (m.id === 'sweep' && !blocked && zone === 'leg' && def.state === 'ok' && def.hp > 0) {
+      const busy = def.action?.kind === 'attack' || def.groundSpeed > 0.8 * def.stride ? 0.35 : 0;
+      if (this.rng() < 0.4 + busy + 0.2 * att.tech) {
+        this.knockDown(def, 'подсекли', 'back', side0(part.name));
+        att.say('подсёк!');
+      }
+    }
     const sturdy = Math.sqrt(def.mass / 75) * (stone ? 1.6 : 1);
     const interrupted = !blocked && def.action?.kind === 'attack' && dmg > 3.5 * sturdy;
     const side: 'l' | 'r' = part.name.startsWith('l') ? 'l' : 'r';
@@ -1272,7 +1324,21 @@ export class Sim {
       def.say('ноги подкосились');
     } else if (!blocked && dmg > 3.5 * sturdy) {
       def.combo = null;
-      this.startAction(def, 'stagger', { dur: (0.2 + dmg / 50) / sturdy });
+      def.comboLeft = 0;
+      const da = def.action;
+      const stagger = (0.2 + dmg / 50) / sturdy;
+      if (da?.kind === 'attack' && !da.feint && !da.hitDone && da.t >= da.dur * da.move!.active[0] * 0.8) {
+        // His own blow is already on its way: it goes on with what it has, then he reels.
+        da.shaken = true;
+        def.staggerAfter = stagger;
+      } else {
+        // Caught in the wind-up: the limb is not stopped dead, it swings on loose.
+        if (da?.kind === 'attack') {
+          def.looseLimb = da.move!.limb;
+          def.looseUntilW = this.t + 0.35 / def.body;
+        }
+        this.startAction(def, 'stagger', { dur: stagger });
+      }
     }
 
     if (def.hp <= 0 && !this.winner) {

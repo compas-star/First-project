@@ -37,7 +37,7 @@ export const DISCIPLINES: Discipline[] = [
     weights: {
       jab: 2, cross: 2, hook: 1.4, rhook: 1, luppercut: 0.5, uppercut: 0.8, overhand: 1, superman: 0.3, backfist: 0.15,
       lelbow: 0.5, relbow: 0.5, rknee: 0.8, teep: 0.6, lowkick: 1.5, calfkick: 0.8, bodykick: 1.1, headkick: 0.5,
-      leadkick: 0.5, spinkick: 0.15,
+      leadkick: 0.5, spinkick: 0.15, shovel: 0.4, checkhook: 0.3, frontkick: 0.3, lknee: 0.4, flyknee: 0.15, spinelbow: 0.1, sweep: 0.2,
     },
     stance: { footFwd: 0.18, footBack: 0.22, footWidth: 0.13, pose: { crouch: 0.1 } },
     range: 1,
@@ -48,7 +48,7 @@ export const DISCIPLINES: Discipline[] = [
     id: 'boxing',
     name: 'Бокс',
     desc: 'Только руки: джеб, двойки, хуки и апперкоты, нырки и уклоны головой.',
-    weights: { jab: 3, cross: 2.5, hook: 2, rhook: 1.5, luppercut: 1, uppercut: 1.2, overhand: 0.8 },
+    weights: { jab: 3, cross: 2.5, hook: 2, rhook: 1.5, luppercut: 1, uppercut: 1.2, overhand: 0.8, shovel: 0.9, checkhook: 0.7 },
     stance: {
       footFwd: 0.2, footBack: 0.24, footWidth: 0.1,
       pose: { crouch: 0.12, spineLean: 14, headPitch: 10, lShF: 62, lEl: 112, rShF: 44, rEl: 130 },
@@ -63,7 +63,7 @@ export const DISCIPLINES: Discipline[] = [
     desc: 'Прямая стойка, длинная защита, тип, лоу-кики, удары ногой в корпус, локти и колени.',
     weights: {
       jab: 1.4, cross: 1.4, hook: 0.9, rhook: 0.7, uppercut: 0.4, teep: 2, lowkick: 2.2, bodykick: 2.3, headkick: 1,
-      leadkick: 1, lelbow: 1.2, relbow: 1.2, rknee: 1.6,
+      leadkick: 1, lelbow: 1.2, relbow: 1.2, rknee: 1.6, lknee: 1.2, flyknee: 0.4, frontkick: 0.6, spinelbow: 0.3, sweep: 0.3,
     },
     stance: {
       footFwd: 0.15, footBack: 0.16, footWidth: 0.16,
@@ -79,7 +79,7 @@ export const DISCIPLINES: Discipline[] = [
     desc: 'Серии руками, которые заканчиваются ударом ногой.',
     weights: {
       jab: 2, cross: 2, hook: 1.5, rhook: 1.2, uppercut: 0.8, teep: 0.7, lowkick: 1.5, calfkick: 0.6, bodykick: 1.5,
-      headkick: 1, leadkick: 1, spinkick: 0.3,
+      headkick: 1, leadkick: 1, spinkick: 0.3, frontkick: 0.7, flyknee: 0.2, checkhook: 0.3, shovel: 0.3,
     },
     stance: { footFwd: 0.18, footBack: 0.2, footWidth: 0.12, pose: { crouch: 0.07 } },
     range: 1,
@@ -91,7 +91,7 @@ export const DISCIPLINES: Discipline[] = [
     name: 'Каратэ',
     desc: 'Длинная боковая стойка, прыжки на дистанции, резкие входы, удары ногами и с разворота.',
     weights: {
-      jab: 1.5, cross: 2, teep: 1, bodykick: 1.2, headkick: 1.4, leadkick: 1.6, spinkick: 1, backfist: 0.8, superman: 0.4,
+      jab: 1.5, cross: 2, teep: 1, bodykick: 1.2, headkick: 1.4, leadkick: 1.6, spinkick: 1, backfist: 0.8, superman: 0.4, frontkick: 1.2, sweep: 0.8, checkhook: 0.3,
     },
     stance: {
       footFwd: 0.28, footBack: 0.3, footWidth: 0.06,
@@ -105,7 +105,7 @@ export const DISCIPLINES: Discipline[] = [
     id: 'street',
     name: 'Уличная драка',
     desc: 'Размашистые удары, пинки и колени, без системы.',
-    weights: { haymaker: 1.6, lhaymaker: 1.3, wildupper: 0.9, shove: 0.6, flail: 0.8, jab: 0.5, cross: 1, hook: 0.7, rhook: 1, overhand: 1, stomp: 0.35, rknee: 0.6 },
+    weights: { haymaker: 1.6, lhaymaker: 1.3, wildupper: 0.9, shove: 0.6, flail: 0.8, jab: 0.5, cross: 1, hook: 0.7, rhook: 1, overhand: 1, stomp: 0.35, rknee: 0.6, hammer: 0.9 },
     stance: { footFwd: 0.12, footBack: 0.14, footWidth: 0.15, pose: { crouch: 0.03 } },
     range: 0.7,
     headMove: 0.3,

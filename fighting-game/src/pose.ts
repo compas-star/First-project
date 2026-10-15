@@ -100,6 +100,19 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
     const s = Math.sin(f.walkPhase);
     out.lShF -= 6 * s * amp;
     out.rShF += 6 * s * amp;
+    // Shoulder feint: a sharp half-turn as if a punch is coming. Level feint: a quick dip.
+    const tw = f.clock - f.twitchW;
+    if (f.twitch && tw >= 0 && tw < 0.35) {
+      const k = Math.sin((Math.PI * tw) / 0.35);
+      if (f.twitch === 'shoulder') {
+        out.spineTwist += 26 * k;
+        out.pelvisTwist += 10 * k;
+        out.rShF += 12 * k;
+      } else {
+        out.crouch += 0.14 * k;
+        out.spineLean += 12 * k;
+      }
+    }
     // Not under attack, the guard is relaxed; it comes up fully only in a block.
     if (!a) {
       const relax = 8 + 14 * (1 - f.tech);
@@ -136,6 +149,11 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
         out.spineTwist = chain.spineTwist;
         out.spineLean = chain.spineLean;
         out.spineSide = chain.spineSide;
+        // The head leaves the line of a straight punch, to the outside of the punching arm.
+        if (m.path === 'straight' && m.limb.endsWith('Hand')) {
+          const off = 8 * (0.4 + 0.6 * f.tech) * Math.sin(Math.PI * Math.min(1, u));
+          out.spineSide += m.limb[0] === 'l' ? off : -off;
+        }
         // The hand that is not punching should stay at the chin; without training it drops.
         if (m.path && m.limb.endsWith('Hand')) {
           const drop = 30 * (1 - f.tech) * Math.sin(Math.PI * Math.min(1, u));

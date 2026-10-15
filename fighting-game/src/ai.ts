@@ -205,6 +205,60 @@ function waitTime(f: Fighter, sim: Sim): number {
   return ((0.8 + 5.5 * patienceOf(f)) * (0.6 + 0.8 * sim.rng()) * (1 + 1.2 * f.fatigue)) / f.mind;
 }
 
+/**
+ * Footwork changes now and then, so the fight does not look like the same
+ * circle forever: circle, work a rhythm in and out, stalk and cut him off,
+ * stand still and read, or snap off at an angle.
+ */
+function chooseFootwork(f: Fighter, e: Fighter, sim: Sim): void {
+  const tech = f.tech;
+  const opts: [Fighter['moveMode'], number][] = [
+    ['circle', 1],
+    ['rhythm', 0.3 + tech * f.disc.bounce],
+    ['stalk', 0.2 + f.p.aggression + (f.plan === 'pressure' || f.plan === 'finish' ? 1 : 0)],
+    ['still', 0.2 + 0.6 * patienceOf(f)],
+    ['pivot', 0.5 * tech],
+  ];
+  const total = opts.reduce((a, [, w]) => a + w, 0);
+  let r = sim.rng() * total;
+  let mode: Fighter['moveMode'] = 'circle';
+  for (const [m, w] of opts) {
+    r -= w;
+    if (r <= 0) {
+      mode = m;
+      break;
+    }
+  }
+  f.moveMode = mode;
+  f.circleDir = sim.rng() < 0.5 ? -1 : 1;
+  f.bounceK = 1;
+  let dur = 1 + 2.5 * sim.rng();
+  switch (mode) {
+    case 'circle':
+      f.circleSpeed = (0.15 + 0.35 * tech) * (0.4 + sim.rng());
+      break;
+    case 'rhythm':
+      f.circleSpeed = 0.05 + 0.1 * sim.rng();
+      f.bounceK = 2.5;
+      break;
+    case 'stalk':
+      // Walk him down and cut off the way he is circling.
+      f.circleDir = -e.circleDir as 1 | -1;
+      f.circleSpeed = 0.25 + 0.2 * sim.rng();
+      break;
+    case 'still':
+      f.circleSpeed = 0.03;
+      f.bounceK = 0.3;
+      dur = 0.8 + 1.5 * sim.rng();
+      break;
+    case 'pivot':
+      f.circleSpeed = 0.9 + 0.3 * sim.rng();
+      dur = 0.35 + 0.25 * sim.rng();
+      break;
+  }
+  f.nextCircleW = sim.t + dur / f.mind;
+}
+
 /** Closest the two bodies should come: legs and hips must not run into each other. */
 export function minGap(f: Fighter, e: Fighter): number {
   return f.radius + e.radius + 0.3 * Math.max(f.scale, e.scale);
@@ -225,9 +279,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
 
   // Circling direction and pace change now and then, not every decision.
   if (sim.t >= f.nextCircleW) {
-    f.circleDir = sim.rng() < 0.5 ? -1 : 1;
-    f.circleSpeed = (0.15 + 0.35 * f.tech) * (0.4 + sim.rng());
-    f.nextCircleW = sim.t + (1 + 2.5 * sim.rng()) / f.mind;
+    chooseFootwork(f, e, sim);
   }
   f.flank = false;
 
@@ -259,7 +311,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     gap + 0.1 * f.scale,
     THREE.MathUtils.lerp(myRange * 0.6, outside, Math.min(1, patience * 1.4)) * f.disc.range * planDistance(f),
   );
-  f.wantDist = pref;
+  f.wantDist = pref - (f.moveMode === 'stalk' ? 0.12 * f.scale : 0);
   if (f.initiativeW === 0) f.initiativeW = sim.t + waitTime(f, sim) * 0.6;
 
   if (sim.ready(f, 'shockwave') && dist < sim.waveRadius(f) * 0.75 && sim.rng() < 0.45) {
@@ -313,7 +365,8 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     const { m, why } = pickStyled(f, sim, options, read);
     const r = sim.attackRange(f, m);
     // Step in far enough to land, never so far as to walk into the enemy.
-    const lunge = Math.min(Math.max(m.lunge * f.scale, dist - r * 0.85 + 0.05), Math.max(0, dist - gap));
+    // A check hook steps back out of the way while it lands; everything else steps in.
+    const lunge = m.lunge < 0 ? m.lunge * f.scale : Math.min(Math.max(m.lunge * f.scale, dist - r * 0.85 + 0.05), Math.max(0, dist - gap));
     const zone = pickZone(f, e, sim, m, read);
     if (go === 'entry') f.initiativeW = sim.t + waitTime(f, sim);
     if (go === 'entry' && m.path && sim.rng() < feintChance(f)) {
@@ -354,8 +407,15 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
       f.say(`прощупываю: ${jabLike.name}`);
       return;
     }
-    f.wantDist = pref - 0.3 * f.scale;
-    intent(f, 'финт шагом');
+    const kind = sim.rng();
+    if (kind < 0.4) {
+      f.wantDist = pref - 0.3 * f.scale;
+      intent(f, 'финт шагом');
+    } else {
+      f.twitch = kind < 0.75 ? 'shoulder' : 'level';
+      f.twitchW = f.clock;
+      intent(f, f.twitch === 'shoulder' ? 'финт плечом' : 'финт уровнем');
+    }
     return;
   }
 

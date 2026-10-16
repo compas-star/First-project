@@ -91,51 +91,57 @@ function groundPose(f: Fighter, out: Pose): Pose {
   out.crouch = 0;
   out.pelvisTwist = 0;
   out.spineTwist = 0;
+  out.spineSide = 0;
+  out.bodyTilt = 0;
   const now = f.clock;
+  // Breathing and small shifts of weight, so nobody lies frozen.
+  const breathe = Math.sin(now * 2.2 + f.style.phase[0]);
   if (g.top === f) {
+    // The whole body is upright here (the sim turns it); kneeling, sitting, or lying across.
     const p = g.pos;
-    Object.assign(out, {
-      lHipF: p === 'side' ? 50 : 15, rHipF: p === 'side' ? 50 : 15,
-      lKn: p === 'side' ? 100 : 120, rKn: p === 'side' ? 100 : 120,
-      lHipS: p === 'mount' ? 32 : 14, rHipS: p === 'mount' ? 32 : 14,
-      spineLean: p === 'guard' ? 22 : p === 'mount' ? 12 : 55,
-      headPitch: 25, spineSide: 0,
-      lShF: 55, lShS: 10, lEl: 50, rShF: 55, rShS: 10, rEl: 50,
-    });
-    // A strike: the fist goes up high, then is driven down.
-    const st = g.strike;
-    if (st) {
-      const left = st.hand === 'l';
-      const raise = !st.done ? 1 : 0;
-      if (left) {
-        out.lShF = raise ? 150 : 75;
-        out.lEl = raise ? 110 : 10;
-      } else {
-        out.rShF = raise ? 150 : 75;
-        out.rEl = raise ? 110 : 10;
-      }
-      out.spineTwist = left ? -15 : 15;
+    if (p === 'guard') {
+      Object.assign(out, {
+        lHipF: 5, rHipF: 5, lKn: 95, rKn: 95, lHipS: 22, rHipS: 22,
+        spineLean: 35 + 3 * breathe, headPitch: 20,
+        lShF: 70, lShS: 12, lEl: 35, rShF: 70, rShS: 12, rEl: 35,
+      });
+    } else if (p === 'mount') {
+      Object.assign(out, {
+        lHipF: 65, rHipF: 65, lKn: 135, rKn: 135, lHipS: 42, rHipS: 42,
+        spineLean: 18 + 3 * breathe, headPitch: 15,
+        lShF: 55, lShS: 20, lEl: 35, rShF: 55, rShS: 20, rEl: 35,
+      });
+    } else {
+      Object.assign(out, {
+        lHipF: 35, rHipF: 25, lKn: 100, rKn: 110, lHipS: 25, rHipS: 25,
+        spineLean: 68 + 3 * breathe, headPitch: 10,
+        lShF: 80, lShS: 30, lEl: 60, rShF: 80, rShS: 30, rEl: 60,
+      });
     }
+    if (g.strike) out.spineTwist = g.strike.hand === 'l' ? 18 : -18;
     if (g.sub?.by === f) {
-      if (g.sub.kind === 'choke') Object.assign(out, { lShF: 75, lShS: -25, lEl: 125, rShF: 75, rShS: -25, rEl: 125, spineLean: 55, headPitch: 30 });
-      else Object.assign(out, { spineLean: -55, lShF: 30, rShF: 30, lEl: 40, rEl: 40, lHipF: 60, rHipF: 60, lKn: 40, rKn: 40 });
+      if (g.sub.kind === 'choke') Object.assign(out, { lShF: 85, lShS: -30, lEl: 125, rShF: 85, rShS: -30, rEl: 125, spineLean: out.spineLean + 15, headPitch: 35 });
+      else Object.assign(out, { spineLean: -45, lShF: 40, rShF: 40, lEl: 20, rEl: 20, lHipF: 80, rHipF: 80, lKn: 60, rKn: 60 });
     }
   } else {
+    // On his back (the sim lays him down): "forward" here is up toward the top man.
     const guard = g.pos === 'guard';
-    Object.assign(out, {
-      lHipF: guard ? 88 : 25, rHipF: guard ? 88 : 30, lKn: guard ? 95 : 55, rKn: guard ? 95 : 60,
-      lHipS: guard ? 32 : 8, rHipS: guard ? 32 : 8, spineLean: 8, headPitch: 15,
-      lShF: 70, lShS: 15, lEl: 95, rShF: 70, rShS: 15, rEl: 95,
-    });
-    if (g.covering || f.daze > 0.4) Object.assign(out, { lShF: 115, lEl: 140, rShF: 115, rEl: 140, headPitch: 25 });
+    Object.assign(out, guard
+      ? { lHipF: 85, rHipF: 85, lKn: 105, rKn: 105, lHipS: 50, rHipS: 50, spineLean: 18 + 2 * breathe, headPitch: 25,
+          lShF: 100, lShS: 10, lEl: 60, rShF: 100, rShS: 10, rEl: 60 }
+      : { lHipF: 45, rHipF: 30, lKn: 90, rKn: 70, lHipS: 12, rHipS: 12, spineLean: 12 + 2 * breathe, headPitch: 25,
+          lShF: 90, lShS: 15, lEl: 85, rShF: 90, rShS: 15, rEl: 85 });
+    if (g.covering || f.daze > 0.4) Object.assign(out, { lShF: 125, lShS: 5, lEl: 135, rShF: 125, rShS: 5, rEl: 135, headPitch: 35 });
+    if (f.daze > 0.75) Object.assign(out, { lShF: 30, lEl: 30, rShF: 40, rEl: 20, lHipF: 15, rHipF: 25, lKn: 25, rKn: 40, headPitch: -10, spineLean: 0 });
     if (g.sub?.by === f) {
-      // Triangle or armbar from the guard: the legs go high.
-      Object.assign(out, { lHipF: 125, rHipF: 120, lKn: 85, rKn: 70, lHipS: 20, rHipS: 25, lShF: 60, rShF: 60, lEl: 60, rEl: 60 });
+      // Triangle or armbar from the guard: the legs go high round his head and arm.
+      Object.assign(out, { lHipF: 115, rHipF: 110, lKn: 80, rKn: 65, lHipS: 22, rHipS: 28, lShF: 110, rShF: 110, lEl: 50, rEl: 50, spineLean: 25 });
     }
     if (g.sub && g.sub.by !== f) {
       // Fighting the hold.
-      Object.assign(out, { lShF: 95, rShF: 95, lEl: 70, rEl: 70 });
-      out.spineSide = 10 * Math.sin(now * 9);
+      Object.assign(out, { lShF: 110, rShF: 110, lEl: 70, rEl: 70 });
+      out.spineSide = 12 * Math.sin(now * 9);
+      out.lHipF += 20 * Math.sin(now * 7);
     }
   }
   return out;

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { FighterParams } from './config';
 import { MOVES, MOVE_BY_ID, FOLLOW, type Move, type Striker } from './moves';
 import { makeFeet, resetFeet, updateFeet, legOverride, anchorFeet, measureBalance, type Foot } from './feet';
-import { DISCIPLINE_BY_ID, type Discipline, type Stance } from './disciplines';
+import { DISCIPLINE_BY_ID, styleStriking, styleGrappling, type Discipline, type Stance } from './disciplines';
 import { punchOverride, aimPointOf } from './strikes';
 import { makeMemory, type Memory, type PlanId } from './brain';
 import { schoolGenome, type Genome } from './genome';
@@ -14,7 +14,7 @@ import { react, think } from './ai';
 import { clonePose, STANCE, PELVIS_Y, type Pose } from './rig';
 import { targetPose } from './pose';
 import {
-  createRagdoll, drive, partPoint, segSegDist, collisionGroups, q, v,
+  createRagdoll, drive, partPoint, solveArmIK, segSegDist, collisionGroups, q, v,
   GROUP_ENV, STRIKERS, type Part, type PartName, type Ragdoll,
 } from './physics';
 
@@ -205,6 +205,11 @@ export interface Grapple {
   /** A choke or lock being cranked on: 0..1. */
   sub: { by: Fighter; kind: 'choke' | 'armbar' | 'triangle'; p: number; nextEscape: number } | null;
   covering: boolean;
+  /** Where the bottom man lies (pelvis) and which way his feet point. */
+  at: THREE.Vector3;
+  dir: THREE.Vector3;
+  /** World time the bodies began settling into the current roles. */
+  settleW: number;
 }
 
 /**
@@ -281,6 +286,8 @@ export class Fighter {
   wobbleUntilW = 0;
   /** Rising from the floor: tilt of the body when the getup began and pelvis height. */
   getupTilt = new THREE.Quaternion();
+  /** Pelvis orientation when the floor roles were (re)set, to turn smoothly into them. */
+  groundFrom = new THREE.Quaternion();
   fall: FallKind = 'back';
   /** Own time since the fall began. */
   fallT = 0;
@@ -427,6 +434,21 @@ export class Fighter {
     return this.p.skill;
   }
 
+  /** 0..1 how good a striker (slider, or his style's default). */
+  get striking(): number {
+    return this.p.striking ?? styleStriking(this.p.discipline);
+  }
+
+  /** 0..1 how good a grappler (slider, or his style's default). */
+  get grappling(): number {
+    return this.p.grappling ?? styleGrappling(this.p.discipline);
+  }
+
+  /** May take the fight to the floor: his style's rules, or he is a real grappler. */
+  get groundAllowed(): boolean {
+    return this.disc.groundAllowed || this.grappling >= 0.4;
+  }
+
   has(id: PowerId): boolean {
     return this.p.powers.includes(id);
   }
@@ -521,6 +543,10 @@ const tmpQ = new THREE.Quaternion();
 const UP = new THREE.Vector3(0, 1, 0);
 const IDENTITY = new THREE.Quaternion();
 const tmpQ2 = new THREE.Quaternion();
+const tmpQ3 = new THREE.Quaternion();
+const tmpQv = new THREE.Vector3();
+/** Lying on the back: the body tipped back a quarter turn, feet toward where he faced. */
+const SUPINE = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
 
 const ZONE_NAME: Record<string, string> = { head: 'в голову', body: 'в корпус', arm: 'в руку', leg: 'по ноге' };
 
@@ -967,7 +993,12 @@ export class Sim {
       rootTilt = tmpQ2.copy(f.getupTilt).slerp(IDENTITY, e);
       pelvisY = THREE.MathUtils.lerp(f.getupFromY, (PELVIS_Y - f.pose.crouch) * f.scale, e);
     }
-    if (f.state === 'ground' && this.grapple?.top === f) pelvisY = this.groundHeight(f);
+    let groundAimed = false;
+    if (f.state === 'ground' && this.grapple) {
+      pelvisY = this.groundHeight(f);
+      rootTilt = this.groundTilt(f, tmpQ2);
+      groundAimed = this.groundStrikeArm(f, this.override);
+    }
     const partTone: Partial<Record<PartName, number>> = {
       head: this.t < f.snapHeadW ? 0.06 : 1,
       chest: this.t < f.snapChestW || this.t < f.looseUntilW ? 0.4 : 1,
@@ -999,7 +1030,7 @@ export class Sim {
           : undefined,
         rootTilt,
         pelvisY,
-        override: aimed || standing ? this.override : undefined,
+        override: aimed || standing || groundAimed ? this.override : undefined,
         partTone,
       },
       h,
@@ -1107,11 +1138,24 @@ export class Sim {
   // ---------- Grappling ----------
 
   gripOf(f: Fighter): { shoot: number; ground: number; subs: number } {
-    const g = f.disc.grapple;
+    // The style gives the shape (a wrestler shoots, a BJJ man submits), the slider the level.
+    const d = f.disc.grapple;
+    const lv = f.grappling / Math.max(0.03, styleGrappling(f.p.discipline));
+    const g = { shoot: Math.min(1, d.shoot * lv), ground: Math.min(1, d.ground * lv), subs: Math.min(1, d.subs * lv) };
     // Technique carries over a little: a good athlete is not helpless on the floor.
     // Technique carries over: a trained striker has learned to stop shots and get back up.
     const k = 0.15 * f.tech;
     return { shoot: Math.min(1, g.shoot + 2 * k), ground: Math.min(1, g.ground + k), subs: Math.min(1, g.subs + k * 0.5) };
+  }
+
+  /**
+   * How much he wants the fight on the floor, about -1..1: the better grappler
+   * of the two who is also not the better striker wants it; a striker facing a
+   * real wrestler wants to stay up.
+   */
+  groundWish(f: Fighter): number {
+    const e = f.enemy;
+    return f.grappling - e.grappling + 0.6 * (e.striking - f.striking);
   }
 
   /** Fighters pass through each other on the floor, so their limbs do not fight the poses. */
@@ -1173,12 +1217,41 @@ export class Sim {
     bottom.balance = 0;
     top.say(why);
     this.setContact(false);
+    const at = v(bottom.rag.pelvis.body.translation(), new THREE.Vector3()).setY(0);
+    const dir = tmpA.subVectors(top.pos, at).setY(0);
+    if (dir.lengthSq() < 1e-4) dir.set(Math.sin(bottom.facing), 0, Math.cos(bottom.facing));
     this.grapple = {
       top, bottom, pos, since: this.t, quietSince: this.t,
       nextTop: this.t + 0.5 / top.mind, nextBottom: this.t + 0.6 / bottom.mind,
       strike: null, sub: null, covering: false,
+      at, dir: dir.clone().normalize(), settleW: this.t,
     };
     top.grapple = bottom.grapple = this.grapple;
+    this.settle();
+  }
+
+  /** Both bodies start turning from how they lie now into their floor roles. */
+  private settle(): void {
+    const g = this.grapple!;
+    g.settleW = this.t;
+    for (const f of [g.top, g.bottom]) q(f.rag.pelvis.body.rotation(), f.groundFrom);
+  }
+
+  /**
+   * Whole-body orientation for the floor: the bottom man on his back with his feet
+   * toward the top man, the top man upright (his trunk lean comes from the pose).
+   * Turns there from how the body lay when the roles were set.
+   */
+  private groundTilt(f: Fighter, out: THREE.Quaternion): THREE.Quaternion {
+    const g = this.grapple!;
+    const yaw = tmpQ.setFromAxisAngle(UP, f.facing);
+    const want = tmpQ3.copy(yaw);
+    if (f === g.bottom) want.multiply(SUPINE);
+    const k = Math.min(1, ((this.t - g.settleW) * f.body) / 0.45);
+    const e = k * k * (3 - 2 * k);
+    out.copy(f.groundFrom).slerp(want, e);
+    // drive() applies it as rootTilt * yaw.
+    return out.multiply(yaw.invert());
   }
 
   /** Back on the feet: both get up the usual way. */
@@ -1202,48 +1275,70 @@ export class Sim {
     if (why) g.bottom.say(why);
   }
 
-  /** Muscles and position on the floor: the top kneels or sits over him, the bottom holds his shape. */
+  /**
+   * Muscles and position on the floor. Both bodies are held in the world like a
+   * standing fighter, only the whole body is turned: the bottom man lies on his
+   * back where he went down, the top man kneels between his legs (guard), sits on
+   * his belly (mount) or lies across his chest (side control).
+   */
   private groundBody(f: Fighter): void {
     const g = this.grapple;
     if (!g) {
       f.state = 'down';
       return;
     }
+    const s = f.scale;
+    let target: THREE.Vector3;
     if (f === g.top) {
-      const b = g.bottom;
-      const P = v(b.rag.pelvis.body.translation(), tmpA);
-      const C = v(b.rag.byName.chest.body.translation(), tmpB);
-      const axis = tmpC.subVectors(C, P).setY(0);
-      if (axis.lengthSq() < 1e-4) axis.set(0, 0, 1);
-      axis.normalize();
-      const side = tmpP.set(axis.z, 0, -axis.x);
-      const target = P.clone().setY(0);
-      let face = axis.clone();
-      if (g.pos === 'guard') target.addScaledVector(axis, -0.28 * f.scale);
-      else if (g.pos === 'mount') target.addScaledVector(axis, 0.1 * f.scale);
+      target = tmpA.copy(g.at);
+      const side = tmpB.set(g.dir.z, 0, -g.dir.x);
+      let face = Math.atan2(-g.dir.x, -g.dir.z);
+      if (g.pos === 'guard') target.addScaledVector(g.dir, 0.4 * s);
+      else if (g.pos === 'mount') target.addScaledVector(g.dir, -0.1 * s);
       else {
-        target.addScaledVector(side, 0.42 * f.scale).addScaledVector(axis, 0.18 * f.scale);
-        face = side.clone().negate();
+        target.addScaledVector(g.dir, -0.32 * s).addScaledVector(side, 0.42 * s);
+        face = Math.atan2(-side.x, -side.z);
       }
-      const off = target.sub(f.pos);
-      f.self.copy(off.multiplyScalar(4)).clampLength(0, 2.2);
-      f.self.y = 0;
-      f.facing = Math.atan2(face.x, face.z);
-      f.balance = 1;
-      f.stability = 1;
-      f.tone = 1;
+      f.facing = face;
     } else {
-      f.balance = 0;
-      f.self.set(0, 0, 0);
-      f.tone = 0.85;
+      target = tmpA.copy(g.at);
+      f.facing = Math.atan2(g.dir.x, g.dir.z);
     }
+    const off = target.sub(f.pos).setY(0);
+    f.self.copy(off.multiplyScalar(4)).clampLength(0, 2);
+    f.balance = 1;
+    f.stability = 1;
+    f.tone = 1;
     f.fallT += 0.01;
   }
 
   /** Height of the top man's hips above the floor for his position. */
   private groundHeight(f: Fighter): number {
-    const pos = this.grapple!.pos;
-    return (pos === 'guard' ? 0.6 : pos === 'mount' ? 0.52 : 0.46) * f.scale;
+    const g = this.grapple!;
+    if (f === g.bottom) return 0.1 * f.scale;
+    return (g.pos === 'guard' ? 0.55 : g.pos === 'mount' ? 0.4 : 0.4) * f.scale;
+  }
+
+  /** A fist from the top: raised high over the face, then driven down into it. */
+  private groundStrikeArm(f: Fighter, out: Partial<Record<PartName, THREE.Quaternion>>): boolean {
+    const g = this.grapple;
+    const st = g?.strike;
+    if (!g || !st || g.top !== f) return false;
+    const s = f.scale;
+    const head = v(g.bottom.rag.byName.head.body.translation(), tmpB);
+    const u = THREE.MathUtils.clamp((this.t - st.start) / Math.max(1e-3, st.land - st.start), 0, 1);
+    const hand = tmpC.copy(head);
+    if (u < 0.65) {
+      // Cocked: up and back over the shoulder.
+      const k = u / 0.65;
+      const sh = v(f.rag.byName[st.hand === 'l' ? 'lUpper' : 'rUpper'].body.translation(), tmpP);
+      hand.lerpVectors(head, sh, 0.7).y += (0.2 + 0.25 * k) * s;
+    } else hand.y += 0.02 * s;
+    const sideSign = st.hand === 'l' ? 1 : -1;
+    const pole = tmpQv.set(Math.cos(f.facing) * sideSign, 0.6, -Math.sin(f.facing) * sideSign);
+    const side = st.hand === 'l' ? 'l' : 'r';
+    solveArmIK(f.rag, side, hand, pole, s, (out[`${side}Upper`] ??= new THREE.Quaternion()), (out[`${side}Fore`] ??= new THREE.Quaternion()));
+    return true;
   }
 
   /** The floor game, once per step. */
@@ -1313,7 +1408,8 @@ export class Sim {
         ['strike', (0.8 + top.p.aggression) * posK * (bottom.daze > 0.3 ? 1.8 : 1) * (top.stamina > 0.1 ? 1 : 0.2)],
         ['pass', g.pos === 'mount' ? 0 : 0.5 * tg.ground],
         ['sub', g.pos === 'guard' ? 0 : 0.45 * tg.subs * (bottom.daze > 0.3 ? 1.2 : 1)],
-        ['stand', tg.ground < 0.35 ? 0.5 * (1 - tg.ground) + 0.4 * bg.ground : 0.05],
+        // A striker on top of a man who is still fine would rather fight standing.
+        ['stand', (tg.ground < 0.35 ? 0.5 * (1 - tg.ground) + 0.4 * bg.ground : 0.05) + (bottom.daze < 0.45 ? 1.2 * Math.max(0, -this.groundWish(top)) : 0)],
         ['wait', 0.4],
       ];
       const pick = this.weighted(opts);
@@ -1347,7 +1443,7 @@ export class Sim {
       const opts: [string, number][] = [
         ['recover', g.pos === 'guard' ? 0 : 0.6 * bg.ground],
         ['sweep', 0.35 * bg.ground],
-        ['up', g.pos === 'guard' ? 0.4 + (bg.ground < 0.35 ? 0.5 : 0) : 0.1],
+        ['up', (g.pos === 'guard' ? 0.4 + (bg.ground < 0.35 ? 0.5 : 0) : 0.1) + 0.8 * Math.max(0, -this.groundWish(bottom))],
         ['sub', g.pos === 'guard' ? 0.45 * bg.subs : 0],
         ['wait', 0.5],
       ];
@@ -1362,6 +1458,10 @@ export class Sim {
         // Over: the bottom man comes up on top.
         g.top = bottom;
         g.bottom = top;
+        // The man who was on top rolls onto his back where he knelt, head the other way.
+        v(top.rag.pelvis.body.translation(), g.at).setY(0);
+        g.dir.negate();
+        this.settle();
         g.pos = g.pos === 'guard' ? 'mount' : 'guard';
         g.quietSince = now;
         g.strike = null;
@@ -1950,6 +2050,8 @@ export class Sim {
     let dmg = (8.8 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
     // A well placed blow lands on the point, a wild one spreads its force.
     dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
+    // A real striker hits harder and cleaner than his style's average, a poor one softer.
+    dmg *= (0.8 + 0.4 * att.striking) / (0.8 + 0.4 * styleStriking(att.p.discipline));
     if (fromBehind) dmg *= 1.3;
     if (att.action?.shaken) dmg *= 0.6;
     // Dodging: the wrong way walks into the blow, the right way it only grazes.

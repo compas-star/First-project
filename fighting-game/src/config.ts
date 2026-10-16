@@ -31,6 +31,10 @@ export interface FighterParams {
   skill: number;
   /** 0..1 elusiveness: how much and how well he slips, ducks and rolls instead of blocking. */
   evasion: number;
+  /** 0..1 how good a striker; missing = what his style makes of him. */
+  striking?: number;
+  /** 0..1 how good a wrestler and ground fighter; missing = what his style makes of him. */
+  grappling?: number;
   /** Fighting style: which strikes, what stance, what range. */
   discipline: DisciplineId;
   powers: PowerId[];

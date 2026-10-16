@@ -5,7 +5,7 @@ import { Sim, LIMB_NAME, QUICK, bout, type Limb } from './sim';
 import { POWERS } from './powers';
 import { PLAN_SHORT, fadeMemory, bestStrike, type Memory } from './brain';
 import { MOVE_BY_ID } from './moves';
-import { DISCIPLINES, DISCIPLINE_BY_ID } from './disciplines';
+import { DISCIPLINES, DISCIPLINE_BY_ID, styleStriking, styleGrappling } from './disciplines';
 import { train, type TrainProgress } from './train';
 import { schoolGenome, describeGenome, genesFor, type Genome } from './genome';
 
@@ -238,6 +238,7 @@ function startFight(): void {
   remember();
   sim?.dispose();
   sim = new Sim(params[0], params[1], (Math.random() * 1e9) | 0, MAP_BY_ID[mapId], rounds ? bout(rounds) : QUICK);
+  (window as unknown as { __sim: Sim }).__sim = sim;
   roundShownAt = -1;
   $('round').hidden = true;
   remembered = false;
@@ -474,6 +475,8 @@ const SLIDERS: SliderDef[] = [
   { key: 'aggression', label: 'Агрессия', hint: 'Атаковать или ждать момента.', min: 0, max: 1, step: 0.01, unit: (v) => `${Math.round(v * 100)}%`, live: true },
   { key: 'evasion', label: 'Вертлявость', hint: 'Как много и как красиво уворачивается: уклоны, нырки, отклоны, и сразу контратака. Успевает, только если вовремя заметил удар (восприятие). Уворот не в ту сторону — нарвался.', min: 0, max: 1, step: 0.01, unit: (v) => `${Math.round(v * 100)}%`, live: true },
   { key: 'skill', label: 'Техника', hint: 'Высокая: держит дистанцию, входит выпадом и выходит, бьёт чисто. Низкая: лезет вплотную и машет.', min: 0, max: 1, step: 0.01, unit: (v) => `${Math.round(v * 100)}%`, live: true },
+  { key: 'striking', label: 'Ударка', hint: 'Насколько хорош в ударах: сила и чистота попаданий. Сильный ударник не полезет в партер к борцу. Ставится по стилю, можно поменять.', min: 0, max: 1, step: 0.01, unit: (v) => `${Math.round(v * 100)}%`, live: true },
+  { key: 'grappling', label: 'Борьба', hint: 'Проходы в ноги, защита от них, контроль внизу и болевые. Кто сильнее в борьбе и слабее в ударах — тянет в партер. Ставится по стилю, можно поменять.', min: 0, max: 1, step: 0.01, unit: (v) => `${Math.round(v * 100)}%`, live: true },
 ];
 
 let tab: 0 | 1 = 0;
@@ -511,7 +514,8 @@ function renderForm(): void {
         renderForm();
       });
     }
-    const value = p[d.key] as number;
+    const value =
+      d.key === 'striking' ? p.striking ?? styleStriking(p.discipline) : d.key === 'grappling' ? p.grappling ?? styleGrappling(p.discipline) : (p[d.key] as number);
     const field = document.createElement('div');
     const disabled = d.key === 'mindSpeed' && p.linkMind;
     field.className = `field${disabled ? ' disabled' : ''}`;
@@ -547,6 +551,9 @@ function renderForm(): void {
     b.innerHTML = `<b>${d.name}</b><span>${d.desc}</span>`;
     b.addEventListener('click', () => {
       p.discipline = d.id;
+      // A new style brings its own striking and wrestling level; the sliders can change it after.
+      delete p.striking;
+      delete p.grappling;
       save();
       renderForm();
     });

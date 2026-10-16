@@ -156,4 +156,17 @@ export const DISCIPLINES: Discipline[] = [
   },
 ];
 
+/** How good a striker each style makes by default, 0..1. */
+const STRIKING: Record<DisciplineId, number> = { mma: 0.65, boxing: 0.9, muaythai: 0.85, kickboxing: 0.85, karate: 0.8, street: 0.45, wrestling: 0.35, bjj: 0.3 };
+
+export function styleStriking(d: DisciplineId): number {
+  return STRIKING[d];
+}
+
+/** How good a grappler the style makes by default: the mean of its grappling skills. */
+export function styleGrappling(d: DisciplineId): number {
+  const g = DISCIPLINE_BY_ID[d].grapple;
+  return (g.shoot + g.ground + g.subs) / 3;
+}
+
 export const DISCIPLINE_BY_ID = Object.fromEntries(DISCIPLINES.map((d) => [d.id, d])) as Record<DisciplineId, Discipline>;

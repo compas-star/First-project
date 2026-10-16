@@ -130,7 +130,18 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   once they are apart (`contactOff`). Skill per style in `disc.grapple` (+ technique via
   `gripOf`). Styles `wrestling`, `bjj`; presets 4 (wrestler vs boxer) and 5 (BJJ vs Thai)
   on the cage, later presets shifted by 2. Tool: `ground`. Grapplers beat strikers most
-  of the time in tests; part-speed spikes ~21-28 m/s appear around grapple start/end.
+  of the time with style defaults.
+- Ground look: both bodies are held in the world like standing ones, the whole body
+  turned by `rootTilt` (`groundTilt`: bottom supine, feet toward the top man, slerped
+  in over 0.45 s from how he lay). Anchor `Grapple.at/dir`; top kneels in guard, sits
+  in mount, lies across in side control (`groundBody`, poses in `groundPose`); ground
+  strikes aimed by arm IK (`groundStrikeArm`). Part speeds now mostly <13 m/s.
+- Sliders "Ударка" (`striking`, scales strike damage vs the style's default) and "Борьба"
+  (`grappling`, scales `gripOf` vs the style's default); missing = style default
+  (`styleStriking/styleGrappling`), reset when the style changes. `groundWish` decides
+  who wants the floor: strikers shoot/pounce only to finish a hurt man who is no better
+  on the floor, and stand up / get up when the other is the better grappler.
+  `window.__sim` is exposed for Playwright checks (e.g. force `startGrapple`).
 
 ## Next steps (planned with the user)
 

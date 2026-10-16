@@ -1149,13 +1149,15 @@ export class Sim {
   }
 
   /**
-   * How much he wants the fight on the floor, about -1..1: the better grappler
-   * of the two who is also not the better striker wants it; a striker facing a
-   * real wrestler wants to stay up.
+   * How much he wants the fight on the floor, about -1.5..1.5: a grappler wants it
+   * (even against another grappler), more so against a worse one; a striker facing
+   * a real wrestler wants to stay up.
    */
   groundWish(f: Fighter): number {
     const e = f.enemy;
-    return f.grappling - e.grappling + 0.6 * (e.striking - f.striking);
+    // His own game first: a wrestler is at home on the floor even against another
+    // grappler; then the edge over this opponent there, and the danger of staying up.
+    return 0.8 * (f.grappling - f.striking) + f.grappling - e.grappling + 0.6 * (e.striking - f.striking);
   }
 
   /** Fighters pass through each other on the floor, so their limbs do not fight the poses. */

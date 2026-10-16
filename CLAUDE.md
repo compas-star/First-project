@@ -141,6 +141,8 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   (`styleStriking/styleGrappling`), reset when the style changes. `groundWish` decides
   who wants the floor: strikers shoot/pounce only to finish a hurt man who is no better
   on the floor, and stand up / get up when the other is the better grappler.
+  `groundWish` also counts his own game (grappling - striking), so two grapplers do go
+  to the floor. Tool: `gvs <styleA> <styleB> [n]`.
   `window.__sim` is exposed for Playwright checks (e.g. force `startGrapple`).
 
 ## Next steps (planned with the user)

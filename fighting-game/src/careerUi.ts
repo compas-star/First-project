@@ -13,6 +13,7 @@ import {
   type Career, type CareerFighter, type Tier, type FightResult, type StatKey, type Ev,
 } from './career';
 import { DISCIPLINE_BY_ID } from './disciplines';
+import { exportSave, importSave } from './saveCode';
 
 export interface CareerHooks {
   /** Show this fight in the arena; `done` gets the result when it is over. */
@@ -21,7 +22,7 @@ export interface CareerHooks {
   close(): void;
 }
 
-type Screen = 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
+type Screen = 'save' | 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -120,6 +121,7 @@ export class CareerUi {
       : this.screen === 'result' ? this.result()
       : this.screen === 'team' ? this.team()
       : this.screen === 'market' ? this.market()
+      : this.screen === 'save' ? this.saveView()
       : this.logView();
     const ask = this.asking
       ? `<div class="askbox"><div>${esc(this.asking.text)}</div><div class="row"><button type="button" class="primary" data-act="yes">Да</button><button type="button" data-act="no">Нет</button></div></div>`
@@ -158,6 +160,7 @@ export class CareerUi {
         <button type="button" data-act="to" data-s="market">Рынок</button>
         <button type="button" data-act="to" data-s="log">Журнал</button>
       </div>
+      <button type="button" data-act="to" data-s="save">💾 Перенести сохранение на другое устройство</button>
       <div class="newsbox"><div class="h2">Новости мира боёв</div>${(c.news ?? []).slice(0, 4).map((x) => `<div>${esc(x)}</div>`).join('')}<div class="fnote">Бойцы мира дерутся каждый день, даже когда игра закрыта.</div></div>`;
   }
 
@@ -503,7 +506,22 @@ export class CareerUi {
     return `<div class="h1">Журнал</div>
       <div class="newsbox"><div class="h2">Новости</div>${(this.c.news ?? []).map((x) => `<div>${esc(x)}</div>`).join('')}</div>
       <div class="log">${this.c.log.map((s) => `<div>${esc(s)}</div>`).join('')}</div>
+      <button type="button" data-act="to" data-s="save">💾 Перенести сохранение</button>
       <button type="button" data-act="reset">Начать карьеру заново</button>`;
+  }
+
+  /** Copy the save out as a code, or paste one in from another device. */
+  private saveView(): string {
+    return `<div class="h1">Перенос сохранения</div>
+      <div class="fnote">Код — это вся игра: карьера, бойцы, деньги, связки, нарисованные удары, настройки.</div>
+      <div class="h2">1. На этом устройстве</div>
+      <button type="button" class="primary wide" data-act="savemake">Сделать код</button>
+      <textarea id="saveOut" class="savecode" readonly placeholder="Здесь появится код"></textarea>
+      <button type="button" data-act="savecopy">Скопировать</button>
+      <div class="h2">2. На другом устройстве</div>
+      <div class="fnote">Открой игру там, зайди сюда же, вставь код и нажми «Загрузить». Игра там заменится этой.</div>
+      <textarea id="saveIn" class="savecode" placeholder="Вставь код СЕЙВ1:…"></textarea>
+      <button type="button" class="primary wide" data-act="saveload">Загрузить</button>`;
   }
 
   // ---------- Actions ----------
@@ -534,6 +552,60 @@ export class CareerUi {
       }
       case 'no':
         return say(null);
+      case 'savemake':
+        save(c);
+        exportSave().then((code) => {
+          const ta = document.getElementById('saveOut') as HTMLTextAreaElement | null;
+          if (!ta) return;
+          ta.value = code;
+          ta.focus();
+          ta.select();
+        });
+        return;
+      case 'savecopy': {
+        const ta = document.getElementById('saveOut') as HTMLTextAreaElement | null;
+        if (!ta?.value) return say('Сначала нажми «Сделать код»');
+        ta.focus();
+        ta.select();
+        const done = () => {
+          this.toast = `Код скопирован (${Math.round(ta.value.length / 1000)} тыс. знаков). Отправь его себе и вставь на другом устройстве.`;
+          const keep = ta.value;
+          this.render();
+          const again = document.getElementById('saveOut') as HTMLTextAreaElement | null;
+          if (again) again.value = keep;
+        };
+        // The clipboard can be closed inside the artifact: then the code stays selected to copy by hand.
+        let copied = false;
+        try {
+          copied = document.execCommand('copy');
+        } catch {
+          copied = false;
+        }
+        if (copied) return done();
+        navigator.clipboard?.writeText(ta.value).then(done, () => {
+          this.toast = 'Браузер не дал скопировать сам: код выделен, скопируй его вручную (долгое нажатие → Копировать)';
+          const keep = ta.value;
+          this.render();
+          const again = document.getElementById('saveOut') as HTMLTextAreaElement | null;
+          if (again) {
+            again.value = keep;
+            again.select();
+          }
+        });
+        return;
+      }
+      case 'saveload': {
+        const code = (document.getElementById('saveIn') as HTMLTextAreaElement | null)?.value.trim() ?? '';
+        if (!code) return say('Вставь код в поле');
+        return ask('Заменить игру на этом устройстве игрой из кода?', () => {
+          importSave(code).then((err) => {
+            if (err) return say(err);
+            this.c = load() ?? newCareer();
+            this.toast = 'Сохранение загружено. Связки и удары подхватятся после перезапуска страницы.';
+            this.go('home');
+          });
+        });
+      }
       case 'cheat': {
         // For testing: the player sets his own tokens and money, separately.
         const v = Number(b.dataset.v);

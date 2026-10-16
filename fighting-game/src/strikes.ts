@@ -23,10 +23,11 @@ export const SHAPES: Record<PunchPath, PathShape> = {
 export const KICKS: Record<KickPath, PathShape> = {
   // Knee up, then push the sole straight into the target.
   teep: { chamber: [0.32, -0.42, 0.02], via: null, pole: [0.6, 1, 0] },
-  // Knee up and out, the shin swings round onto the target.
-  round: { chamber: [0.22, -0.38, 0.4], via: [0.3, -0.1, 0.75], pole: [1, 0.3, 0.6] },
-  // Low arc into the thigh.
-  low: { chamber: [0.15, -0.58, 0.35], via: [0.28, -0.6, 0.6], pole: [1, 0, 0.5] },
+  // A wide swing: the foot leaves the floor out to the side, the hip turns over and the
+  // leg whips round in a big arc onto the target, knee pointing up and out.
+  round: { chamber: [0.02, -0.6, 0.38], via: [0.3, -0.22, 0.85], pole: [0.2, 0.8, 0.9] },
+  // Low arc into the thigh, swung from the side.
+  low: { chamber: [0.1, -0.5, 0.4], via: [0.32, -0.55, 0.62], pole: [0.35, 0.5, 0.9] },
   // Knee tucked, then the heel drives straight back (the body has spun round).
   back: { chamber: [0.02, -0.5, 0.04], via: null, pole: [0, -1, 0.2] },
 };
@@ -39,6 +40,8 @@ const AIM: Record<'head' | 'body' | 'leg', { part: PartName; at: [number, number
 };
 
 const KICK_BODY = { part: 'chest' as PartName, at: [0, -0.04, 0] as [number, number, number] };
+/** A kick to the head goes to the jaw and temple, not over the top of the head. */
+const KICK_HEAD = { part: 'head' as PartName, at: [0, 0.02, 0] as [number, number, number] };
 
 const fwd = new THREE.Vector3();
 const out = new THREE.Vector3();
@@ -73,7 +76,8 @@ function pathPoint(a: Action, shape: PathShape, start: THREE.Vector3, s: number,
   const u = a.t / a.dur;
   const [act0, act1] = m.active;
   const loadEnd = act0 * 0.5;
-  const reachEnd = act0 + (act1 - act0) * 0.35;
+  // A kick's foot is heavy and lags its target: aim it to arrive as the window opens.
+  const reachEnd = m.limb.endsWith('Foot') ? act0 : act0 + (act1 - act0) * 0.35;
   fromBasis(start, s, p0);
   if (straightLoad) fromBasis(start, s, p1).addScaledVector(fwd, (shape.chamber[0] - 0.2) * s).addScaledVector(up, shape.chamber[1] * s);
   else fromBasis(shape.chamber, s, p1);
@@ -113,7 +117,7 @@ export function strikeFrame(f: Fighter, m: Move, zone: 'head' | 'body' | 'leg'):
   const end = `${side}${kick ? 'Shin' : 'Fore'}` as PartName;
   basis(f, side, joint);
   const fist = partPoint(f.rag.byName[end], tmp.copy(kick ? ANKLE : FIST).multiplyScalar(f.scale), new THREE.Vector3());
-  const z = zone === 'body' && kick ? KICK_BODY : AIM[zone];
+  const z = kick && zone === 'body' ? KICK_BODY : kick && zone === 'head' ? KICK_HEAD : AIM[zone];
   const e = f.enemy;
   const target = partPoint(e.rag.byName[z.part], tmp.set(z.at[0], z.at[1], z.at[2]).multiplyScalar(e.scale), new THREE.Vector3());
   return { origin: shoulder.clone(), fwd: fwd.clone(), up: up.clone(), out: out.clone(), fist, target, s: f.scale };
@@ -122,7 +126,8 @@ export function strikeFrame(f: Fighter, m: Move, zone: 'head' | 'body' | 'leg'):
 /** Where this punch is aimed right now, in world space. */
 export function aimPointOf(f: Fighter, a: Action, res: THREE.Vector3): THREE.Vector3 {
   // Kicks to the body go to the ribs and liver, below the chest centre.
-  const z = a.zone === 'body' && /Foot$/.test(a.move!.limb) ? KICK_BODY : AIM[a.zone];
+  const kick = /Foot$/.test(a.move!.limb);
+  const z = kick && a.zone === 'body' ? KICK_BODY : kick && a.zone === 'head' ? KICK_HEAD : AIM[a.zone];
   const e = f.enemy;
   partPoint(e.rag.byName[z.part], tmp.set(z.at[0], z.at[1], z.at[2]).multiplyScalar(e.scale), res);
   return res.addScaledVector(a.jitter, f.scale);

@@ -34,6 +34,8 @@ const LEG = 0.88;
 export interface Pose {
   crouch: number;
   pelvisTwist: number;
+  /** Hips tipped sideways, degrees: positive raises the left hip (a kick turns the hip over). */
+  pelvisRoll: number;
   spineLean: number;
   spineTwist: number;
   spineSide: number;
@@ -56,7 +58,7 @@ export interface Pose {
 
 export type PoseKey = keyof Pose;
 export const POSE_KEYS = [
-  'crouch', 'pelvisTwist', 'spineLean', 'spineTwist', 'spineSide', 'headPitch',
+  'crouch', 'pelvisTwist', 'pelvisRoll', 'spineLean', 'spineTwist', 'spineSide', 'headPitch',
   'lShF', 'lShS', 'lEl', 'rShF', 'rShS', 'rEl',
   'lHipF', 'lHipS', 'lKn', 'rHipF', 'rHipS', 'rKn', 'bodyTilt',
 ] as const satisfies readonly PoseKey[];
@@ -64,6 +66,7 @@ export const POSE_KEYS = [
 export const STANCE: Pose = {
   crouch: 0.06,
   pelvisTwist: -15,
+  pelvisRoll: 0,
   spineLean: 10,
   spineTwist: -10,
   spineSide: 0,
@@ -201,9 +204,10 @@ export function applyPose(r: Rig, p: Pose): void {
 
   r.tilt.rotation.x = -D(p.bodyTilt);
   r.pelvis.position.y = PELVIS_Y - c;
-  r.pelvis.rotation.set(0, D(p.pelvisTwist), 0);
+  // Turn first, then tip sideways about the hips' own forward axis.
+  r.pelvis.rotation.set(0, D(p.pelvisTwist), D(p.pelvisRoll ?? 0), 'YXZ');
   r.spine.rotation.set(D(p.spineLean), D(p.spineTwist), D(p.spineSide));
-  r.head.rotation.set(D(p.headPitch), -D(p.spineTwist + p.pelvisTwist) * 0.85, -D(p.spineSide) * 0.5);
+  r.head.rotation.set(D(p.headPitch), -D(p.spineTwist + p.pelvisTwist) * 0.85, -D(p.spineSide * 0.5 + (p.pelvisRoll ?? 0) * 0.6));
 
   r.lSh.rotation.set(-D(p.lShF), 0, D(p.lShS));
   r.rSh.rotation.set(-D(p.rShF), 0, -D(p.rShS));

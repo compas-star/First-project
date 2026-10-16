@@ -135,6 +135,16 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   count for round/low kicks, kick balance is judged leniently. Landing rate 3% -> ~70%.
 - Small personal-style differences in hand speed (6%) decided mirror fights 20:4;
   speed dominates this game, keep "handwriting" spreads tiny.
+- Kicks rework (user: crooked, twisted leg, almost never land, want swung and whippy):
+  new pose key `pelvisRoll` (hips tip sideways, rig Euler 'YXZ'); round kicks turn the
+  hip over (roll ~-45..-55 for the rear leg) and lean the trunk away, the striking arm
+  swings back; kick path 'round' = wide swing from the side with the knee pointing up and
+  out (pole), foot arrives as the hit window opens (`reachEnd`), round kicks driven
+  harder (KICK_DRIVE x1.4), kick-to-head aims at the jaw (`KICK_HEAD`), thigh cone 135.
+  Skip-in for round kicks counts the horizontal distance from the hip (no more walking
+  into the clinch). Kicks faster (bodykick 0.54, headkick 0.6). Kick catches were caught
+  >50% of the time: now 0.04+0.14*tech. Tools: `kicklab` (dummy), `kickdbg`, `kickfate`
+  (outcome per kick in fights). Body kick clean in fights ~25-45% (was ~8-11%).
 - Feel of weight so far: hit-stop (view.hitStop), head/trunk snap (partTone dips), heavy
   legs (LIMB_MASS), kick catch + sweep.
 

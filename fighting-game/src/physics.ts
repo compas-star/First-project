@@ -318,8 +318,8 @@ const LIMITS: Partial<Record<PartName, { hinge?: [number, number]; cone?: number
   rUpper: { cone: 165 },
   lFore: { hinge: [-155, 4] },
   rFore: { hinge: [-155, 4] },
-  lThigh: { cone: 125 },
-  rThigh: { cone: 125 },
+  lThigh: { cone: 135 },
+  rThigh: { cone: 135 },
   lShin: { hinge: [-4, 150] },
   rShin: { hinge: [-4, 150] },
 };

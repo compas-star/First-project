@@ -1060,6 +1060,8 @@ export class Sim {
     }
     // The kicking leg is driven hard: a kick is the whole hip whipping the leg round.
     const kickLeg = f.state === 'ok' && f.action?.kind === 'attack' && f.action.move!.path ? FOOT_OF_STRIKER[f.action.move!.limb] : undefined;
+    // A round kick is a whip: the hip throws the leg, harder than any other strike.
+    const kickDrive = kickLeg !== undefined && f.action!.move!.path === 'round' ? KICK_DRIVE * 1.4 : KICK_DRIVE;
     const punchArm = f.state === 'ok' && f.action?.kind === 'attack' && f.action.move!.path && f.action.move!.limb.endsWith('Hand') ? f.action.move!.limb[0] : undefined;
     let rootTilt: THREE.Quaternion | undefined;
     let pelvisY: number | undefined;
@@ -1083,10 +1085,10 @@ export class Sim {
       lFore: f.broken.lArm ? 0.04 : punchArm === 'l' ? PUNCH_DRIVE : 1,
       rUpper: f.broken.rArm ? 0.04 : punchArm === 'r' ? PUNCH_DRIVE : 1,
       rFore: f.broken.rArm ? 0.04 : punchArm === 'r' ? PUNCH_DRIVE : 1,
-      lThigh: f.broken.lLeg ? 0.45 : kickLeg === 0 ? KICK_DRIVE : 1,
-      lShin: f.broken.lLeg ? 0.3 : kickLeg === 0 ? KICK_DRIVE : 1,
-      rThigh: f.broken.rLeg ? 0.45 : kickLeg === 1 ? KICK_DRIVE : 1,
-      rShin: f.broken.rLeg ? 0.3 : kickLeg === 1 ? KICK_DRIVE : 1,
+      lThigh: f.broken.lLeg ? 0.45 : kickLeg === 0 ? kickDrive : 1,
+      lShin: f.broken.lLeg ? 0.3 : kickLeg === 0 ? kickDrive : 1,
+      rThigh: f.broken.rLeg ? 0.45 : kickLeg === 1 ? kickDrive : 1,
+      rShin: f.broken.rLeg ? 0.3 : kickLeg === 1 ? kickDrive : 1,
     };
     this.loosen(f, partTone);
     drive(
@@ -1857,7 +1859,9 @@ export class Sim {
       if (f.stability < 0.5 && f.thought !== 'теряю равновесие' && this.rng() < 0.02) f.say('теряю равновесие');
       // Thrown off balance on one leg: abandon the kick and put the foot down to catch himself.
       const a = f.action;
-      if (a?.kind === 'attack' && FOOT_OF_STRIKER[a.move!.limb] !== undefined && this.t >= f.caughtUntilW && f.balanceErr > 0.55 * s && f.stability < 0.5) {
+      if (a?.kind === 'attack' && FOOT_OF_STRIKER[a.move!.limb] !== undefined && this.t >= f.caughtUntilW && f.balanceErr > (a.move!.path === 'round' ? 0.75 : 0.55) * s && f.stability < 0.5 &&
+          // A round kick already swinging is put down halfway only if he is really going over.
+          !(a.move!.path === 'round' && a.t / a.dur > a.move!.active[0] * 0.6 && f.balanceErr < 0.95 * s)) {
         f.action = null;
         f.combo = null;
         f.comboLeft = 0;
@@ -1951,7 +1955,12 @@ export class Sim {
         if (kickSide && m.path && u > m.active[0] * 0.35 && u < m.active[1]) {
           const hip = v(f.rag.byName[kickSide].body.translation(), tmpA);
           const aim = aimPointOf(f, a, tmpC);
-          const short = hip.distanceTo(aim) - 0.8 * f.scale;
+          // Round kicks come from the side: what counts is how far off the target is
+          // across the floor; the hip turning over and the trunk leaning away give the height.
+          const round = m.path === 'round' || m.path === 'low';
+          const dy = Math.max(0, aim.y - hip.y - 0.15 * f.scale);
+          const across = Math.sqrt(Math.max(0.04 * f.scale * f.scale, (0.92 * f.scale) ** 2 - dy * dy));
+          const short = round ? Math.hypot(aim.x - hip.x, aim.z - hip.z) - Math.min(0.74 * f.scale, across) : hip.distanceTo(aim) - 0.8 * f.scale;
           const room = f.pos.distanceTo(f.enemy.pos) - (f.radius + f.enemy.radius + 0.1 * f.scale);
           if (short > 0 && room > 0) {
             const left = Math.max(0.05, (m.active[0] + (m.active[1] - m.active[0]) * 0.4 - u) * a.dur);

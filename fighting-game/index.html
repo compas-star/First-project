@@ -52,6 +52,19 @@
         <button id="btnCareer" type="button" class="primary">Карьера</button>
       </nav>
 
+      <button id="btnRec" type="button" hidden>Записать последние секунды</button>
+      <div id="rec" hidden>
+        <div class="ko-card">
+          <div class="ko-title">Запись боя</div>
+          <div class="ko-stats" id="recInfo"></div>
+          <input id="recNote" type="text" placeholder="что не так (необязательно)" />
+          <textarea id="recCode" rows="4" readonly></textarea>
+          <div class="row">
+            <button id="recCopy" type="button" class="primary">Скопировать код</button>
+            <button id="recClose" type="button">Закрыть</button>
+          </div>
+        </div>
+      </div>
       <section id="career" hidden></section>
       <section id="lab" hidden></section>
 
@@ -88,6 +101,7 @@
             <button id="koAgain" type="button" class="primary">Ещё раз</button>
             <button id="koSetup" type="button">Настроить</button>
           </div>
+          <button id="koRec" type="button">Записать бой для Claude</button>
         </div>
       </div>
 

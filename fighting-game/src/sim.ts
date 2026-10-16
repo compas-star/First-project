@@ -793,10 +793,16 @@ export class Sim {
   }
 
   /** Simulates up to worldDt seconds; returns how much was actually simulated. */
+  /** Called after every physics step of advance() (the fight recorder listens here). */
+  onStep?: () => void;
+
   advance(worldDt: number, maxSteps = 160): number {
     const h = this.stepSize();
     const n = Math.min(maxSteps, Math.ceil(worldDt / h - 1e-9));
-    for (let i = 0; i < n; i++) this.step(h);
+    for (let i = 0; i < n; i++) {
+      this.step(h);
+      this.onStep?.();
+    }
     return n * h;
   }
 
@@ -814,6 +820,13 @@ export class Sim {
       if (a.pos.distanceTo(b.pos) > a.radius + b.radius + 0.35 * Math.max(a.scale, b.scale)) {
         this.contactOff = false;
         this.setContact(true);
+      } else if (a.state === 'ok' && b.state === 'ok') {
+        // Both up but still inside each other: ease them apart so contact can come back.
+        const away = tmpA.subVectors(b.pos, a.pos).setY(0);
+        if (away.lengthSq() < 1e-6) away.set(1, 0, 0);
+        away.normalize();
+        for (const p of a.rag.parts) p.body.applyImpulse({ x: -away.x * p.mass * 1.5 * h, y: 0, z: -away.z * p.mass * 1.5 * h }, true);
+        for (const p of b.rag.parts) p.body.applyImpulse({ x: away.x * p.mass * 1.5 * h, y: 0, z: away.z * p.mass * 1.5 * h }, true);
       }
     }
     this.world.timestep = h;

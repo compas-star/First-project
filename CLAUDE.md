@@ -78,6 +78,17 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   big Train / Fight buttons, how-to card once), gym (pick stat row, then intensity with
   the gain shown), fight ladder, preview (side-by-side stats, odds) before each fight,
   result screen after. Start: $300 and 100 tokens; old saves got a one-off +100 (`gifts`).
+  Tournaments are real brackets (`Tour.rounds: Match[][]`, ids; 8 for the lower tiers, 16
+  from the club league): screen 'bracket' lists the round's fights; ours "На бой", others
+  "Смотреть" (played in the arena as AI vs AI, `settle(c, m, winner)`) or "Пропустить"
+  (`settle` by `odds`), "Пропустить все чужие бои" (`settleOthers`). A loss knocks ours out,
+  the rest can be watched or "Досчитать" (`closeTour`). Test buttons +◆ / ±$ in the top bar.
+- "Записать бой" (`recorder.ts`): the last 12 s at 15 fps (via `Sim.onStep`), body segments
+  in cm as deltas + actions + hits, gzip+base64 code `БОЙ1:` (~16k chars). Button shows when
+  paused (#btnRec) and on the KO card. Decode: `tools/run.sh replay code.txt out.json`, then
+  `python3 tools/watch.py out.json sheet.png`.
+- After a ground exchange, fighters standing up inside each other are eased apart so
+  contact comes back (was: they fought passing through each other). Tool: `contact`.
 
 - `labUi.ts` + `combos.ts`: combination lab ("Лаборатория связок" at the top of the setup
   sheet; the user rejected the slider strike editor: "миллион ползунков"). Tap blows in

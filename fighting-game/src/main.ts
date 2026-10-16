@@ -16,6 +16,7 @@ import { SKINS, defaultSkin } from './skins';
 import { CareerUi } from './careerUi';
 import { LabUi } from './labUi';
 import { loadEdits } from './moveEdits';
+import { Recorder } from './recorder';
 import { toParams, type FightResult } from './career';
 import type { Rules } from './sim';
 
@@ -472,6 +473,8 @@ function frame(now: number): void {
   }
 
   if (lab.active) lab.update();
+  recorder.watch(sim);
+  $('btnRec').hidden = !paused || lab.active || !$('career').hidden;
   view.render(realDt, worldDt, viewScale);
   updateHud();
   requestAnimationFrame(frame);
@@ -840,6 +843,46 @@ function finishCareerFight(): void {
   paused = true;
   cf.done(r);
 }
+
+// ---------- Recording a fight for Claude ----------
+
+const recorder = new Recorder();
+
+async function openRecording(): Promise<void> {
+  const wasPaused = paused;
+  paused = true;
+  $('btnPause').textContent = 'Дальше';
+  $('rec').hidden = false;
+  $('recInfo').textContent = 'Упаковываю…';
+  const make = async () => {
+    const code = await recorder.code(($('recNote') as HTMLInputElement).value);
+    ($('recCode') as HTMLTextAreaElement).value = code;
+    $('recInfo').innerHTML = `Последние <b>${recorder.seconds.toFixed(1)} с</b> боя, код ${Math.round(code.length / 1000)} тыс. знаков. Скопируй и пришли в чат, напиши, что не так.`;
+    return code;
+  };
+  await make();
+  $('recCopy').onclick = async () => {
+    const code = await make();
+    const ta = $('recCode') as HTMLTextAreaElement;
+    ta.select();
+    try {
+      await navigator.clipboard.writeText(code);
+      $('recInfo').innerHTML += '<br><b>Скопировано</b>';
+    } catch {
+      document.execCommand('copy');
+    }
+  };
+  $('recClose').onclick = () => {
+    $('rec').hidden = true;
+    if (!wasPaused) {
+      paused = false;
+      $('btnPause').textContent = 'Пауза';
+    }
+  };
+}
+
+$('btnRec').addEventListener('click', () => void openRecording());
+$('koRec').addEventListener('click', () => void openRecording());
 
 // ---------- Strike lab ----------
 

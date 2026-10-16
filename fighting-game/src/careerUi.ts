@@ -6,6 +6,7 @@ import {
   STAT_KEYS, STAT_INFO, INTENSITY, TIERS, TIER_BY_ID, MAX_ROSTER,
   load, save, reset, newCareer, tick, startTraining, gainOf, busy, skip, skipCost, refreshMarket, buy, sell,
   rating, talentWord, value, opponent, canEnter, enterTour, afterFight, tourFight, roundName, short, odds,
+  person, current, myMatch, settle, settleOthers, finished, closeTour,
   type Career, type CareerFighter, type Tier, type FightResult, type StatKey,
 } from './career';
 import { DISCIPLINE_BY_ID } from './disciplines';
@@ -17,7 +18,7 @@ export interface CareerHooks {
   close(): void;
 }
 
-type Screen = 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
+type Screen = 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -105,6 +106,7 @@ export class CareerUi {
       : this.screen === 'gym' ? this.gym()
       : this.screen === 'fights' ? this.fights()
       : this.screen === 'preview' ? this.preview()
+      : this.screen === 'bracket' ? this.bracket()
       : this.screen === 'result' ? this.result()
       : this.screen === 'team' ? this.team()
       : this.screen === 'market' ? this.market()
@@ -130,12 +132,7 @@ export class CareerUi {
           </ol>
           <button type="button" data-act="help">Понятно</button>
         </div>`;
-    const tour = c.tour
-      ? `<button type="button" class="banner" data-act="tourgo">
-          <b>Турнир «${esc(TIER_BY_ID[c.tour.tier].name)}» · ${roundName(TIER_BY_ID[c.tour.tier].size, c.tour.round)}</b>
-          <span>${esc(short(c.roster.find((x) => x.id === c.tour!.fighter)!))} против ${esc(c.tour.next.name)} · нажми, чтобы выйти на бой</span>
-        </button>`
-      : '';
+    const tour = this.tourBanner();
     return `${help}${tour}
       ${this.hero(f)}
       <div class="big2">
@@ -220,7 +217,7 @@ export class CareerUi {
     const why0 = busy(f) ? (f.session ? 'Боец сейчас в зале.' : 'Боец восстанавливается.') : '';
     let html = `<div class="h1">Бои · ${esc(short(f))}</div>
       <div class="fnote">Рейтинг твоего бойца: <b>${rating(f)}</b>, известность <b>${f.fame}</b>. ${why0 ? `<b>${why0}</b> Подожди или закончи жетонами на главном экране.` : 'Разовый бой — быстрые деньги. Турнир — взнос, несколько боёв подряд и большой приз.'}</div>`;
-    if (c.tour) html += `<button type="button" class="banner" data-act="tourgo"><b>Идёт турнир «${esc(TIER_BY_ID[c.tour.tier].name)}»</b><span>${roundName(TIER_BY_ID[c.tour.tier].size, c.tour.round)} · против ${esc(c.tour.next.name)}</span></button>`;
+    html += this.tourBanner();
     TIERS.forEach((t, i) => {
       const open = f.fame >= t.fame;
       const why = canEnter(c, f, t);
@@ -250,7 +247,7 @@ export class CareerUi {
       const cls = (x: number, y: number) => (x > y * 1.03 ? 'better' : x < y * 0.97 ? 'worse' : '');
       return `<div class="vrow"><b class="${cls(a, z)}">${fmtStat(k, a)}</b><span>${STAT_INFO[k].name}</span><b class="${cls(z, a)}">${fmtStat(k, z)}</b></div>`;
     }).join('');
-    const title = b.tour ? `Турнир «${b.tier.name}», ${roundName(b.tier.size, this.c.tour!.round)}` : `Разовый бой · ${b.tier.name}`;
+    const title = b.tour ? `Турнир «${b.tier.name}», ${roundName(current(this.c.tour!).length)}` : `Разовый бой · ${b.tier.name}`;
     return `<div class="h1">${esc(title)}</div>
       <div class="vs">
         <div class="vside red"><b>${esc(short(me))}</b><span>${esc(DISCIPLINE_BY_ID[me.discipline].name)} · ${me.height.toFixed(2)} м · ${me.weight} кг</span><span>рейтинг ${rating(me)} · ${me.record.w}–${me.record.l}</span></div>
@@ -264,6 +261,64 @@ export class CareerUi {
       ${b.tour ? '' : '<button type="button" data-act="reroll">Другой соперник</button>'}`;
   }
 
+  private tourBanner(): string {
+    const c = this.c;
+    if (!c.tour) return '';
+    const t = c.tour;
+    const me = t.fighter;
+    const out = t.rounds.some((r) => r.some((m) => (m.a === me || m.b === me) && m.w && m.w !== me));
+    const mine = myMatch(t);
+    const status = finished(t)
+      ? 'турнир окончен, посмотри итог'
+      : out
+        ? 'твой боец выбыл, турнир идёт'
+        : mine && !mine.w
+          ? `${roundName(current(t).length)}: против ${short(person(c, mine.a === me ? mine.b : mine.a))}`
+          : 'прошёл дальше, ждёт следующего раунда';
+    return `<button type="button" class="banner" data-act="tourgo"><b>Турнир «${esc(TIER_BY_ID[t.tier].name)}»</b><span>${esc(status)} · открыть сетку</span></button>`;
+  }
+
+  /** The bracket: every fight of the round, ours to fight, the others to watch or skip. */
+  private bracket(): string {
+    const c = this.c;
+    const t = c.tour;
+    if (!t) return '<div class="fnote">Турнира сейчас нет.</div>';
+    const tier = TIER_BY_ID[t.tier];
+    const round = current(t);
+    const me = t.fighter;
+    const alive = !t.rounds.some((r) => r.some((m) => (m.a === me || m.b === me) && m.w && m.w !== me));
+    const name = (id: string) => {
+      const p = person(c, id);
+      return `<span class="${id === me ? 'mine' : ''}">${esc(short(p))} <small>${rating(p)}</small></span>`;
+    };
+    const rows = round
+      .map((m, i) => {
+        const ours = m.a === me || m.b === me;
+        const res = m.w ? `<b class="bw">→ ${esc(short(person(c, m.w)))}</b>` : '';
+        const btns = m.w
+          ? ''
+          : ours
+            ? `<button type="button" class="primary" data-act="myfight">На бой</button>`
+            : `<button type="button" data-act="watch" data-i="${i}">Смотреть</button><button type="button" data-act="skipone" data-i="${i}">Пропустить</button>`;
+        return `<div class="bmatch${ours ? ' ours' : ''}"><div class="bpair">${name(m.a)}<i>—</i>${name(m.b)}</div>${res}<div class="bbtn">${btns}</div></div>`;
+      })
+      .join('');
+    const past = t.rounds.slice(0, -1)
+      .map((r) => `<details><summary>${roundName(r.length)}</summary>${r.map((m) => `<div class="bpast">${esc(short(person(c, m.a)))} — ${esc(short(person(c, m.b)))}: <b>${esc(short(person(c, m.w!)))}</b></div>`).join('')}</details>`)
+      .reverse()
+      .join('');
+    const othersLeft = round.some((m) => !m.w && m.a !== me && m.b !== me);
+    const done = finished(t);
+    return `<div class="h1">Турнир «${esc(tier.name)}»</div>
+      <div class="fnote">${tier.size} бойцов · приз $${tier.prize} и ${tier.tokens} ◆ · ${alive ? 'твой боец в сетке' : done ? '' : 'твой боец выбыл'}</div>
+      ${done ? `<div class="pill gold">Победитель турнира: ${esc(person(c, round[0].w!).name)}</div><button type="button" class="primary wide" data-act="closetour">Завершить турнир</button>` : ''}
+      ${done ? '' : `<div class="h2">${roundName(round.length)}</div>`}
+      <div class="bracket">${rows}</div>
+      ${othersLeft ? '<button type="button" data-act="skipall">Пропустить все чужие бои</button>' : ''}
+      ${!alive && !done ? '<button type="button" data-act="closetour">Досчитать турнир до конца</button>' : ''}
+      ${past}`;
+  }
+
   private result(): string {
     const o = this.outcome!;
     return `<div class="resbox ${o.won ? 'win' : 'loss'}">
@@ -271,8 +326,9 @@ export class CareerUi {
         <div class="fnote">${esc(o.title)}</div>
         <ul>${o.lines.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>
       </div>
+      ${this.c.tour ? '<button type="button" class="primary wide" data-act="to" data-s="bracket">К турнирной сетке</button>' : ''}
       ${this.hero(this.me(), true)}
-      <button type="button" class="primary wide" data-act="to" data-s="home">На главную</button>`;
+      <button type="button" class="${this.c.tour ? '' : 'primary '}wide" data-act="to" data-s="home">На главную</button>`;
   }
 
   // ---------- Team, market, log ----------
@@ -345,7 +401,7 @@ export class CareerUi {
       case 'sandbox':
         return this.hide();
       case 'back':
-        return this.go(this.screen === 'preview' ? (this.bill?.tour ? 'home' : 'fights') : 'home');
+        return this.go(this.screen === 'preview' ? (this.bill?.tour ? 'bracket' : 'fights') : 'home');
       case 'to':
         return this.go(b.dataset.s as Screen);
       case 'help':
@@ -403,15 +459,45 @@ export class CareerUi {
         const t = TIER_BY_ID[b.dataset.t!];
         const why = enterTour(c, me, t);
         if (why) return say(why);
-        this.bill = { tier: t, opp: c.tour!.next, tour: true };
-        return this.go('preview');
+        this.toast = `Жеребьёвка прошла: ${t.size} бойцов. Смотри сетку.`;
+        return this.go('bracket');
       }
-      case 'tourgo': {
+      case 'tourgo':
+        return this.go('bracket');
+      case 'myfight': {
         const tour = c.tour!;
         const f = c.roster.find((x) => x.id === tour.fighter)!;
         if (busy(f)) return say(`${short(f)} ещё восстанавливается`);
-        this.bill = { tier: TIER_BY_ID[tour.tier], opp: tour.next, tour: true };
+        const m = myMatch(tour)!;
+        this.bill = { tier: TIER_BY_ID[tour.tier], opp: person(c, m.a === f.id ? m.b : m.a), tour: true };
         return this.go('preview');
+      }
+      case 'watch': {
+        const tour = c.tour!;
+        const m = current(tour)[Number(b.dataset.i)];
+        const t = TIER_BY_ID[tour.tier];
+        const A = person(c, m.a);
+        const B = person(c, m.b);
+        $('career').hidden = true;
+        clearInterval(this.timer);
+        this.hooks.fight(A, B, t, `${t.name}, ${roundName(current(tour).length)}: ${short(A)} против ${short(B)}`, (r) => {
+          settle(c, m, r.won ? m.a : m.b);
+          this.toast = `Победил ${person(c, r.won ? m.a : m.b).name}${r.ko ? ' досрочно' : ''}`;
+          this.screen = 'bracket';
+          this.show();
+        });
+        return;
+      }
+      case 'skipone':
+        settle(c, current(c.tour!)[Number(b.dataset.i)]);
+        return say(null);
+      case 'skipall':
+        settleOthers(c);
+        return say('Чужие бои раунда прошли');
+      case 'closetour': {
+        const line = closeTour(c);
+        this.toast = line;
+        return this.go('home');
       }
       case 'fight':
         return this.fight();
@@ -422,7 +508,7 @@ export class CareerUi {
     const b = this.bill!;
     const c = this.c;
     const me = b.tour ? c.roster.find((x) => x.id === c.tour!.fighter)! : this.me();
-    const title = b.tour ? `${b.tier.name}, ${roundName(b.tier.size, c.tour!.round)}` : `${b.tier.name}: ${short(me)} против ${short(b.opp)}`;
+    const title = b.tour ? `${b.tier.name}, ${roundName(current(c.tour!).length)}` : `${b.tier.name}: ${short(me)} против ${short(b.opp)}`;
     $('career').hidden = true;
     clearInterval(this.timer);
     this.hooks.fight(me, b.opp, b.tier, title, (r) => {

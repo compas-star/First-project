@@ -55,27 +55,34 @@ export interface Tier {
   fee: number;
   prize: number;
   tokens: number;
-  size: 4 | 8;
+  size: 8 | 16;
 }
 
 export const TIERS: Tier[] = [
-  { id: 'basement', name: 'Подвал', desc: 'Подпольные бои в подворотне. Три коротких раунда, судит толпа, деньги наличкой.', map: 'alley', rules: { roundLen: 90, rounds: 3, tough: 1, standing: true }, level: [0, 0.12], fame: 0, purse: [70, 15], fee: 40, prize: 300, tokens: 2, size: 4 },
-  { id: 'roof', name: 'Крыши', desc: 'Бои на крышах для богатых зевак. Три раунда по две минуты, соперники злее.', map: 'roof', rules: { roundLen: 120, rounds: 3, tough: 1.2, standing: true }, level: [0.12, 0.28], fame: 6, purse: [150, 35], fee: 90, prize: 700, tokens: 3, size: 4 },
-  { id: 'club', name: 'Клубная лига', desc: 'Додзё и залы. Три раунда по две минуты, судьи.', map: 'dojo', rules: { roundLen: 120, rounds: 3, tough: 1.6, standing: true }, level: [0.28, 0.45], fame: 18, purse: [320, 80], fee: 200, prize: 1600, tokens: 4, size: 8 },
-  { id: 'city', name: 'Городской ринг', desc: 'Настоящий ринг и зрители. Три раунда по три минуты.', map: 'ring', rules: { roundLen: 180, rounds: 3, tough: 2, standing: true }, level: [0.45, 0.63], fame: 40, purse: [700, 170], fee: 450, prize: 3800, tokens: 6, size: 8 },
-  { id: 'nation', name: 'Чемпионат страны', desc: 'Лучшие бойцы страны в клетке. Пять раундов по три минуты.', map: 'cage', rules: { roundLen: 180, rounds: 5, tough: 2.4, standing: true }, level: [0.63, 0.82], fame: 80, purse: [1600, 400], fee: 1000, prize: 9000, tokens: 9, size: 8 },
-  { id: 'world', name: 'Мировой титул', desc: 'Лучшие из лучших. Пять раундов по три минуты, пояс.', map: 'ring', rules: { roundLen: 180, rounds: 5, tough: 2.6, standing: true }, level: [0.82, 1], fame: 140, purse: [4000, 900], fee: 2500, prize: 25000, tokens: 15, size: 8 },
+  { id: 'basement', name: 'Подвал', desc: 'Подпольные бои в подворотне. Три коротких раунда, судит толпа, деньги наличкой.', map: 'alley', rules: { roundLen: 90, rounds: 3, tough: 1, standing: true }, level: [0, 0.12], fame: 0, purse: [70, 15], fee: 40, prize: 400, tokens: 3, size: 8 },
+  { id: 'roof', name: 'Крыши', desc: 'Бои на крышах для богатых зевак. Три раунда по две минуты, соперники злее.', map: 'roof', rules: { roundLen: 120, rounds: 3, tough: 1.2, standing: true }, level: [0.12, 0.28], fame: 6, purse: [150, 35], fee: 90, prize: 900, tokens: 4, size: 8 },
+  { id: 'club', name: 'Клубная лига', desc: 'Додзё и залы. Три раунда по две минуты, судьи.', map: 'dojo', rules: { roundLen: 120, rounds: 3, tough: 1.6, standing: true }, level: [0.28, 0.45], fame: 18, purse: [320, 80], fee: 200, prize: 2200, tokens: 5, size: 16 },
+  { id: 'city', name: 'Городской ринг', desc: 'Настоящий ринг и зрители. Три раунда по три минуты.', map: 'ring', rules: { roundLen: 180, rounds: 3, tough: 2, standing: true }, level: [0.45, 0.63], fame: 40, purse: [700, 170], fee: 450, prize: 5200, tokens: 7, size: 16 },
+  { id: 'nation', name: 'Чемпионат страны', desc: 'Лучшие бойцы страны в клетке. Пять раундов по три минуты.', map: 'cage', rules: { roundLen: 180, rounds: 5, tough: 2.4, standing: true }, level: [0.63, 0.82], fame: 80, purse: [1600, 400], fee: 1000, prize: 12000, tokens: 10, size: 16 },
+  { id: 'world', name: 'Мировой титул', desc: 'Лучшие из лучших. Пять раундов по три минуты, пояс.', map: 'ring', rules: { roundLen: 180, rounds: 5, tough: 2.6, standing: true }, level: [0.82, 1], fame: 140, purse: [4000, 900], fee: 2500, prize: 32000, tokens: 16, size: 16 },
 ];
 export const TIER_BY_ID = Object.fromEntries(TIERS.map((t) => [t.id, t])) as Record<string, Tier>;
 
+/** One pairing in the bracket, by fighter id; `w` is the winner's id once decided. */
+export interface Match {
+  a: string;
+  b: string;
+  w: string | null;
+}
+
 export interface Tour {
   tier: string;
+  /** Our fighter's id. */
   fighter: string;
-  /** Opponents in the bracket, round by round: ours is decided by the fight, the rest by the odds. */
+  /** Everyone else in the draw. */
   field: CareerFighter[];
-  round: number;
-  /** Opponent our man meets in the current round. */
-  next: CareerFighter;
+  /** The bracket, round by round; the last round is the one being fought. */
+  rounds: Match[][];
 }
 
 export interface Career {
@@ -430,8 +437,16 @@ export function enterTour(c: Career, f: CareerFighter, t: Tier): string | null {
   if (c.money < t.fee) return 'Не хватает на взнос';
   c.money -= t.fee;
   const field = Array.from({ length: t.size - 1 }, () => opponent(t));
-  c.tour = { tier: t.id, fighter: f.id, field, round: 0, next: field[0] };
-  c.log.unshift(`${short(f)} заявлен на турнир «${t.name}» ($${t.fee})`);
+  // The draw: everyone shuffled into pairs.
+  const ids = [f.id, ...field.map((x) => x.id)];
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  const first: Match[] = [];
+  for (let i = 0; i < ids.length; i += 2) first.push({ a: ids[i], b: ids[i + 1], w: null });
+  c.tour = { tier: t.id, fighter: f.id, field, rounds: [first] };
+  c.log.unshift(`${short(f)} заявлен на турнир «${t.name}» на ${t.size} человек ($${t.fee})`);
   save(c);
   return null;
 }
@@ -441,47 +456,92 @@ export function odds(a: CareerFighter, b: CareerFighter): number {
   return 1 / (1 + Math.exp(-(rating(a) - rating(b)) / 7));
 }
 
-export const roundName = (size: number, round: number) => {
-  const left = size >> round;
-  return left === 2 ? 'финал' : left === 4 ? 'полуфинал' : 'четвертьфинал';
-};
+/** Name of a round by how many fights are in it. */
+export const roundName = (fights: number) =>
+  fights === 1 ? 'финал' : fights === 2 ? 'полуфинал' : fights === 4 ? 'четвертьфинал' : `1/${fights} финала`;
 
-/**
- * Our man's fight in the bracket is over. On a win the others' fights are decided by
- * the odds and the next opponent comes out; a loss or the final ends the tournament.
- */
+export function person(c: Career, id: string): CareerFighter {
+  return c.roster.find((x) => x.id === id) ?? c.tour!.field.find((x) => x.id === id)!;
+}
+
+export const current = (t: Tour) => t.rounds[t.rounds.length - 1];
+
+/** Our man's fight in this round, if he is still in. */
+export function myMatch(t: Tour): Match | null {
+  return current(t).find((m) => m.a === t.fighter || m.b === t.fighter) ?? null;
+}
+
+/** A fight between two others: watched (winner given) or decided by the odds. */
+export function settle(c: Career, m: Match, winner?: string): void {
+  if (m.w) return;
+  m.w = winner ?? (Math.random() < odds(person(c, m.a), person(c, m.b)) ? m.a : m.b);
+  // The winner's record grows; the loser's too.
+  const w = person(c, m.w);
+  const l = person(c, m.w === m.a ? m.b : m.a);
+  if (!c.roster.includes(w)) w.record.w++;
+  if (!c.roster.includes(l)) l.record.l++;
+  advance(c);
+  save(c);
+}
+
+/** All fights of the round decided: the winners are paired for the next one. */
+function advance(c: Career): void {
+  const t = c.tour!;
+  const round = current(t);
+  if (round.some((m) => !m.w) || round.length === 1) return;
+  const next: Match[] = [];
+  for (let i = 0; i < round.length; i += 2) next.push({ a: round[i].w!, b: round[i + 1].w!, w: null });
+  t.rounds.push(next);
+}
+
+/** The tournament is over: the final is decided. */
+export const finished = (t: Tour) => current(t).length === 1 && !!current(t)[0].w;
+
+/** Settle every fight of the round except ours (watch only your own). */
+export function settleOthers(c: Career): void {
+  const t = c.tour!;
+  for (const m of [...current(t)]) if (m.a !== t.fighter && m.b !== t.fighter) settle(c, m);
+}
+
+/** Our man's fight in the bracket is over. A loss knocks him out; the rest plays out. */
 export function tourFight(c: Career, f: CareerFighter, r: FightResult): string[] {
   const tour = c.tour!;
   const t = TIER_BY_ID[tour.tier];
-  const opp = tour.next;
-  const out = [`${roundName(t.size, tour.round)}: ` + afterFight(c, f, t, opp, r, true).join('. ')];
-  const rounds = Math.log2(t.size);
+  const m = myMatch(tour)!;
+  const name = roundName(current(tour).length);
+  const opp = person(c, m.a === f.id ? m.b : m.a);
+  const out = [`${name}: ` + afterFight(c, f, t, opp, r, true).join('. ')];
+  m.w = r.won ? f.id : opp.id;
+  opp.record[r.won ? 'l' : 'w']++;
+  advance(c);
   if (!r.won) {
-    out.push(`Турнир окончен. Вылет: ${roundName(t.size, tour.round)}`);
-    c.tour = null;
-  } else if (tour.round + 1 >= rounds) {
+    out.push(`Вылет: ${name}. Остальные бои можно досмотреть или пропустить.`);
+  } else if (finished(tour)) {
     c.money += t.prize;
     c.tokens += t.tokens;
     f.fame += 4 + Math.round(t.fame / 6);
     out.push(`ЧЕМПИОН турнира «${t.name}»! Приз $${t.prize}, жетонов +${t.tokens}`);
-    c.tour = null;
   } else {
-    // The rest of the bracket: the survivors of the other fights of this round.
-    const others = tour.field.filter((x) => x !== opp);
-    const alive: CareerFighter[] = [];
-    for (let i = 0; i + 1 < others.length; i += 2) alive.push(Math.random() < odds(others[i], others[i + 1]) ? others[i] : others[i + 1]);
-    if (others.length % 2) alive.push(others[others.length - 1]);
-    tour.field = alive;
-    tour.round++;
-    tour.next = alive.reduce((a, b) => (Math.random() < odds(a, b) ? a : b));
     // Between rounds of a tournament night there is no time to heal properly, only a short rest.
     f.busyUntil = Date.now();
     f.busyWhat = '';
-    out.push(`Дальше ${roundName(t.size, tour.round)}: ${tour.next.name}`);
+    out.push('Прошёл дальше. Остальные бои раунда — в турнирной сетке: смотри или пропускай.');
   }
   c.log.unshift(...out.slice(1));
   save(c);
   return out;
+}
+
+/** Closes a finished tournament (or one our man is out of) after the bracket is played out. */
+export function closeTour(c: Career): string {
+  const t = c.tour!;
+  while (!finished(t)) for (const m of [...current(t)]) settle(c, m);
+  const champ = person(c, current(t)[0].w!);
+  c.tour = null;
+  const line = `Турнир «${TIER_BY_ID[t.tier].name}» выиграл ${champ.name}`;
+  c.log.unshift(line);
+  save(c);
+  return line;
 }
 
 // ---------- Save ----------
@@ -501,6 +561,12 @@ export function load(): Career | null {
     const c = JSON.parse(raw) as Career;
     // A gift for saves made before the start went up to 100 tokens.
     c.gifts ??= [];
+    // A tournament from before the brackets: give the fee back.
+    if (c.tour && !(c.tour as Partial<Tour>).rounds) {
+      c.money += TIER_BY_ID[c.tour.tier]?.fee ?? 0;
+      c.tour = null;
+      c.log.unshift('Старый турнир отменён, взнос возвращён');
+    }
     if (!c.gifts.includes('tokens100')) {
       c.gifts.push('tokens100');
       c.tokens += 100;

@@ -81,7 +81,8 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   (`startTour` draws the bracket, all rounds that day). Days without ours: the world fights
   (`worldDay`: 6 bouts, the title on title days, NPC tournaments `npcTour`). Screen 'cal':
   4-week grid + the chosen day's events (`evCard`); home shows the day bar and ours'
-  bookings. Market refreshes every `MARKET_DAYS` (5). Tools: `tourtest`, `worldtest`.
+  bookings. Market refreshes every `MARKET_DAYS` (5). No `confirm()` in the career UI: the
+  artifact sandbox blocks it (selling did nothing); questions use `CareerUi.asking` (Да / Нет box). Tools: `tourtest`, `worldtest`.
   Tiers Подвал → Мировой титул: single fights (purse) and 4/8-man
   tournaments (other bracket fights decided by `rating` odds). Stand-up only (`Rules.standing` turns off shots and pounces). Saved in localStorage
   `arena-career-v1`. `FighterParams.cardio` scales stamina costs and regen.

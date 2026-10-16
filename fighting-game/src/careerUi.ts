@@ -35,6 +35,8 @@ export class CareerUi {
   private bill: { tier: Tier; opp: CareerFighter; tour: boolean; title?: boolean; ev?: Ev } | null = null;
   /** The day open in the calendar. */
   private calDay = 0;
+  /** A question waiting for Да / Нет (the browser's confirm() is blocked inside the artifact). */
+  private asking: { text: string; run: () => void } | null = null;
   /** The fighter shown on the profile screen. */
   private profileId = '';
   /** What happened in the last fight (result screen). */
@@ -118,7 +120,10 @@ export class CareerUi {
       : this.screen === 'team' ? this.team()
       : this.screen === 'market' ? this.market()
       : this.logView();
-    $('career').innerHTML = top + (this.toast ? `<div class="toast">${esc(this.toast)}</div>` : '') + body;
+    const ask = this.asking
+      ? `<div class="askbox"><div>${esc(this.asking.text)}</div><div class="row"><button type="button" class="primary" data-act="yes">Да</button><button type="button" data-act="no">Нет</button></div></div>`
+      : '';
+    $('career').innerHTML = top + ask + (this.toast ? `<div class="toast">${esc(this.toast)}</div>` : '') + body;
     this.toast = '';
   }
 
@@ -511,7 +516,23 @@ export class CareerUi {
       if (msg) this.toast = msg;
       this.render();
     };
+    // Any other tap drops an unanswered question.
+    if (b.dataset.act !== 'yes') this.asking = null;
+    const ask = (text: string, run: () => void) => {
+      this.asking = { text, run };
+      this.render();
+      $('career').scrollTop = 0;
+    };
     switch (b.dataset.act) {
+      case 'yes': {
+        const run = this.asking?.run;
+        this.asking = null;
+        if (run) run();
+        else this.render();
+        return;
+      }
+      case 'no':
+        return say(null);
       case 'cheat': {
         // For testing: the player sets his own tokens and money, separately.
         const v = Number(b.dataset.v);
@@ -547,15 +568,16 @@ export class CareerUi {
         return this.go('home');
       }
       case 'nextday': {
-        let err = nextDay(c);
-        if (err === 'tour' || err === 'fight') {
-          if (!confirm(err === 'tour' ? 'Твой боец ещё в турнире. Сняться и закончить день?' : 'Сегодня у твоего бойца бой. Не выходить на бой и закончить день? (известность −1)')) return;
-          err = nextDay(c, true);
-        }
-        if (err) return say(err);
-        this.calDay = c.day;
-        this.toast = `Новый день: ${dayName(c.day)}, ${weekday(c.day)}`;
-        return this.go(this.screen === 'cal' ? 'cal' : 'home');
+        const done = (err: string | null) => {
+          if (err) return say(err);
+          this.calDay = c.day;
+          this.toast = `Новый день: ${dayName(c.day)}, ${weekday(c.day)}`;
+          return this.go(this.screen === 'cal' ? 'cal' : 'home');
+        };
+        const err = nextDay(c);
+        if (err === 'tour' || err === 'fight')
+          return ask(err === 'tour' ? 'Твой боец ещё в турнире. Сняться и закончить день?' : 'Сегодня у твоего бойца бой. Не выходить на бой и закончить день? (известность −1)', () => done(nextDay(c, true)));
+        return done(err);
       }
       case 'calday':
         this.calDay = Number(b.dataset.d);
@@ -570,9 +592,10 @@ export class CareerUi {
         return say(null);
       case 'evdrop': {
         const e = evById(c, Number(b.dataset.ev))!;
-        if (!confirm(e.kind === 'tour' ? 'Сняться с турнира? Взнос не вернут.' : 'Отказаться от боя?')) return;
-        unbook(c, e);
-        return say(null);
+        return ask(e.kind === 'tour' ? 'Сняться с турнира? Взнос не вернут.' : 'Отказаться от боя?', () => {
+          unbook(c, e);
+          say('Заявка снята');
+        });
       }
       case 'evgo': {
         const e = evById(c, Number(b.dataset.ev))!;
@@ -592,8 +615,7 @@ export class CareerUi {
       }
       case 'sell': {
         const f = c.roster.find((x) => x.id === b.dataset.id)!;
-        if (!confirm(`Продать контракт ${f.name}?`)) return;
-        return say(sell(c, f));
+        return ask(`Продать контракт ${f.name} за $${Math.round(value(f) * 0.6)}?`, () => say(sell(c, f) ?? `${short(f)} продан`));
       }
       case 'buy': {
         const err = buy(c, c.market[Number(b.dataset.i)]);
@@ -608,9 +630,10 @@ export class CareerUi {
         save(c);
         return say(null);
       case 'reset':
-        if (!confirm('Стереть карьеру и начать сначала?')) return;
-        this.c = reset();
-        return this.go('home');
+        return ask('Стереть карьеру и начать сначала?', () => {
+          this.c = reset();
+          this.go('home');
+        });
       case 'profile':
         this.profileId = b.dataset.id!;
         return this.go('profile');

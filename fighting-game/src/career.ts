@@ -532,6 +532,11 @@ export function sell(c: Career, f: CareerFighter): string | null {
   c.money += price;
   c.roster = c.roster.filter((x) => x !== f);
   if (c.pick === f.id) c.pick = c.roster[0].id;
+  // His bookings go with him.
+  for (const e of c.events) if (e.f === f.id && !e.done) {
+    e.f = undefined;
+    e.opp = undefined;
+  }
   c.log.unshift(`Контракт ${f.name} продан за $${price}`);
   save(c);
   return null;

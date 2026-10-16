@@ -459,6 +459,10 @@ export const POSES = {
   /** Weave: down and across, under a hook. */
   weaveL: { crouch: 0.3, spineLean: 30, spineSide: -26, spineTwist: -14, headPitch: 14 },
   weaveR: { crouch: 0.3, spineLean: 30, spineSide: 26, spineTwist: 14, headPitch: 14 },
+  /** Shot at the legs: level drops, head up, arms reaching for the thighs. */
+  shoot: { crouch: 0.42, spineLean: 48, headPitch: -15, lShF: 55, rShF: 55, lShS: 20, rShS: 20, lEl: 35, rEl: 35, lHipF: 70, lKn: 110 },
+  /** Sprawl: hips back and down onto him, legs kicked out behind. */
+  sprawl: { crouch: 0.3, spineLean: 62, headPitch: 20, lShF: 40, rShF: 40, lEl: 25, rEl: 25, lHipF: -25, rHipF: -25, lKn: 20, rKn: 20 },
   /** Pull: lean back from the waist, the blow passes in front of the chin. */
   pull: { spineLean: -32, crouch: 0.05, headPitch: -18 },
   air: { lShF: 120, lShS: 60, lEl: 30, rShF: 110, rShS: 60, rEl: 30, lHipF: 30, rHipF: 10, lKn: 40, rKn: 20 },

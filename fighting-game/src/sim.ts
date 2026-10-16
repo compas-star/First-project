@@ -51,7 +51,7 @@ export const FLOOR_R = 13.5;
 
 export type DodgePose = 'dodgeL' | 'dodgeR' | 'dodgeBack' | 'slipL' | 'slipR' | 'duck' | 'weaveL' | 'weaveR' | 'pull';
 
-export type ActionKind = 'attack' | 'dodge' | 'block' | 'stagger' | 'getup' | 'victory' | 'parry' | 'dash' | 'slam' | 'catch' | 'sweep';
+export type ActionKind = 'attack' | 'dodge' | 'block' | 'stagger' | 'getup' | 'victory' | 'parry' | 'dash' | 'slam' | 'catch' | 'sweep' | 'shoot' | 'sprawl';
 
 export type Limb = 'lArm' | 'rArm' | 'lLeg' | 'rLeg';
 
@@ -179,7 +179,33 @@ function makeStyle(p: FighterParams, team: number): FightStyle {
   };
 }
 
-export type FighterState = 'ok' | 'down' | 'ko';
+/** 'ground': rolling on the floor with the other man (see Grapple). */
+export type FighterState = 'ok' | 'down' | 'ko' | 'ground';
+
+export type GroundPos = 'guard' | 'side' | 'mount';
+
+/**
+ * Two men on the floor. The top one kneels in the bottom one's guard, lies
+ * across him (side control) or sits on him (mount); the bottom one holds him
+ * with his legs, frames and covers. Both decide on their own clock: strike
+ * from the top, pass, mount, choke or lock an arm; from the bottom cover,
+ * get back to guard, sweep, stand up, or catch a triangle or an armbar.
+ */
+export interface Grapple {
+  top: Fighter;
+  bottom: Fighter;
+  pos: GroundPos;
+  since: number;
+  /** World time with nothing happening, for the referee. */
+  quietSince: number;
+  nextTop: number;
+  nextBottom: number;
+  /** A strike from the top on its way: which hand and when it lands. */
+  strike: { hand: 'l' | 'r'; start: number; land: number; done: boolean } | null;
+  /** A choke or lock being cranked on: 0..1. */
+  sub: { by: Fighter; kind: 'choke' | 'armbar' | 'triangle'; p: number; nextEscape: number } | null;
+  covering: boolean;
+}
 
 /**
  * How a fighter goes down, chosen by the blow: rigid "timber" fall of a clean
@@ -326,6 +352,8 @@ export class Fighter {
   /** Side whose hand is out or still coming back from a punch, open until this world time. */
   openSide: 'l' | 'r' = 'l';
   openUntilW = 0;
+  /** The floor fight he is in, if any (read by the poses). */
+  grapple: Grapple | null = null;
   /** World time of his last dodge (a counter right after it is a highlight). */
   lastDodgeW = -9;
   /** Last few strikes thrown, newest last. */
@@ -506,6 +534,9 @@ export class Sim {
   winner: Fighter | null = null;
   /** The judges could not separate them. */
   draw = false;
+  private contactOff = false;
+  /** On the floor together, or null. */
+  grapple: Grapple | null = null;
   /** World time of the last clean blow by anyone. */
   lastHitW = 0;
   private eq = new RAPIER.EventQueue(true);
@@ -693,6 +724,14 @@ export class Sim {
       if (this.roundT >= this.rules.roundLen) this.endRound();
     }
     for (const f of this.fighters) this.preStep(f, h);
+    if (this.grapple) this.groundStep();
+    else if (this.contactOff) {
+      const [a, b] = this.fighters;
+      if (a.pos.distanceTo(b.pos) > a.radius + b.radius + 0.35 * Math.max(a.scale, b.scale)) {
+        this.contactOff = false;
+        this.setContact(true);
+      }
+    }
     this.world.timestep = h;
     this.world.step(this.eq);
     this.eq.drainCollisionEvents((h1, h2, started) => {
@@ -747,7 +786,7 @@ export class Sim {
       t: 0,
       dur,
       startW: this.t,
-      impactW: m ? this.t + (dur * m.active[0]) / f.body : kind === 'slam' ? this.t + (dur * 0.55) / f.body : this.t,
+      impactW: m ? this.t + (dur * m.active[0]) / f.body : kind === 'slam' || kind === 'shoot' ? this.t + (dur * 0.55) / f.body : this.t,
       move: m,
       hitDone: false,
       dir: opts.dir ? opts.dir.clone() : new THREE.Vector3(),
@@ -794,7 +833,7 @@ export class Sim {
     return f.stability > 0.85 && f.balanceErr < 0.1 * f.scale && f.groundSpeed < 0.9 * f.body * f.scale;
   }
 
-  private knockDown(f: Fighter, why: string, how: FallKind = 'back', side: 'l' | 'r' = 'l'): void {
+  knockDown(f: Fighter, why: string, how: FallKind = 'back', side: 'l' | 'r' = 'l'): void {
     f.fall = how;
     f.fallT = 0;
     f.fallSide = side;
@@ -867,6 +906,8 @@ export class Sim {
         const maxTurn = 11 * dl;
         f.facing += THREE.MathUtils.clamp(diff, -maxTurn, maxTurn);
       }
+    } else if (f.state === 'ground') {
+      this.groundBody(f);
     } else {
       f.balance = 0;
       f.fallT += dl;
@@ -926,6 +967,7 @@ export class Sim {
       rootTilt = tmpQ2.copy(f.getupTilt).slerp(IDENTITY, e);
       pelvisY = THREE.MathUtils.lerp(f.getupFromY, (PELVIS_Y - f.pose.crouch) * f.scale, e);
     }
+    if (f.state === 'ground' && this.grapple?.top === f) pelvisY = this.groundHeight(f);
     const partTone: Partial<Record<PartName, number>> = {
       head: this.t < f.snapHeadW ? 0.06 : 1,
       chest: this.t < f.snapChestW || this.t < f.looseUntilW ? 0.4 : 1,
@@ -1062,6 +1104,311 @@ export class Sim {
     f.say('рефери возвращает на ринг');
   }
 
+  // ---------- Grappling ----------
+
+  gripOf(f: Fighter): { shoot: number; ground: number; subs: number } {
+    const g = f.disc.grapple;
+    // Technique carries over a little: a good athlete is not helpless on the floor.
+    // Technique carries over: a trained striker has learned to stop shots and get back up.
+    const k = 0.15 * f.tech;
+    return { shoot: Math.min(1, g.shoot + 2 * k), ground: Math.min(1, g.ground + k), subs: Math.min(1, g.subs + k * 0.5) };
+  }
+
+  /** Fighters pass through each other on the floor, so their limbs do not fight the poses. */
+  private setContact(on: boolean): void {
+    for (const f of this.fighters) {
+      const self = f.team === 0 ? 0x0001 : 0x0002;
+      const other = f.team === 0 ? 0x0002 : 0x0001;
+      const groups = collisionGroups(self, (on ? other : 0) | GROUP_ENV);
+      for (const h of f.rag.colliders.keys()) this.world.getCollider(h).setCollisionGroups(groups);
+    }
+  }
+
+  /** The shot reaches the hips: a takedown, unless he sprawled or it was too far. */
+  private shootLands(f: Fighter): void {
+    const e = f.enemy;
+    if (e.state !== 'ok' || this.grapple) return;
+    const reach = f.pos.distanceTo(e.pos) < f.radius + e.radius + 0.5 * f.scale;
+    if (e.action?.kind === 'sprawl' || !reach) {
+      // Stuffed: he ends up on his knees, head low, open.
+      f.action = null;
+      this.startAction(f, 'stagger', { dur: 0.9 });
+      f.say(e.action?.kind === 'sprawl' ? 'проход не прошёл: спрол' : 'не дотянулся');
+      e.say('отбил проход');
+      return;
+    }
+    const a = this.gripOf(f);
+    const d = this.gripOf(e);
+    const busy = e.action?.kind === 'attack' ? 0.2 : 0;
+    const p = THREE.MathUtils.clamp(0.55 + 0.45 * (a.shoot - d.shoot) + 0.25 * (f.mass / e.mass - 1) + busy + 0.2 * e.fatigue, 0.1, 0.95);
+    if (this.rng() > p) {
+      f.action = null;
+      this.startAction(f, 'stagger', { dur: 0.7 });
+      f.say('не смог перевести');
+      return;
+    }
+    // Over he goes, on his back; the shooter lands on top.
+    const away = tmpA.subVectors(e.pos, f.pos).setY(0).normalize();
+    for (const part of e.rag.parts) part.body.applyImpulse({ x: away.x * part.mass * 2.4, y: part.mass * 0.6, z: away.z * part.mass * 2.4 }, true);
+    this.startGrapple(f, e, this.rng() < 0.3 * a.ground ? 'side' : 'guard', 'тейкдаун');
+    this.moment('ТЕЙКДАУН!', e);
+  }
+
+  /** Jump on a man who is down and finish him there. */
+  pounce(f: Fighter): void {
+    const e = f.enemy;
+    if (this.grapple || e.state !== 'down' || e.out) return;
+    const r = this.rng();
+    const g = this.gripOf(f).ground;
+    this.startGrapple(f, e, r < 0.1 + 0.3 * g ? 'mount' : r < 0.55 + 0.2 * g ? 'side' : 'guard', 'прыгнул сверху');
+  }
+
+  private startGrapple(top: Fighter, bottom: Fighter, pos: GroundPos, why: string): void {
+    for (const f of [top, bottom]) {
+      f.action = null;
+      f.combo = null;
+      f.comboLeft = 0;
+      f.state = 'ground';
+    }
+    bottom.balance = 0;
+    top.say(why);
+    this.setContact(false);
+    this.grapple = {
+      top, bottom, pos, since: this.t, quietSince: this.t,
+      nextTop: this.t + 0.5 / top.mind, nextBottom: this.t + 0.6 / bottom.mind,
+      strike: null, sub: null, covering: false,
+    };
+    top.grapple = bottom.grapple = this.grapple;
+  }
+
+  /** Back on the feet: both get up the usual way. */
+  private endGrapple(why: string): void {
+    const g = this.grapple;
+    if (!g) return;
+    this.grapple = null;
+    g.top.grapple = g.bottom.grapple = null;
+    // Contact comes back once they are apart; switched on overlapping, it would blow them apart.
+    this.contactOff = true;
+    for (const f of [g.top, g.bottom]) {
+      if (f.out) {
+        f.state = 'ko';
+        continue;
+      }
+      f.state = 'down';
+      f.balance = 0;
+      f.downLeft = f === g.top ? 0.05 : 0.35 + f.daze;
+      f.fallT = 1;
+    }
+    if (why) g.bottom.say(why);
+  }
+
+  /** Muscles and position on the floor: the top kneels or sits over him, the bottom holds his shape. */
+  private groundBody(f: Fighter): void {
+    const g = this.grapple;
+    if (!g) {
+      f.state = 'down';
+      return;
+    }
+    if (f === g.top) {
+      const b = g.bottom;
+      const P = v(b.rag.pelvis.body.translation(), tmpA);
+      const C = v(b.rag.byName.chest.body.translation(), tmpB);
+      const axis = tmpC.subVectors(C, P).setY(0);
+      if (axis.lengthSq() < 1e-4) axis.set(0, 0, 1);
+      axis.normalize();
+      const side = tmpP.set(axis.z, 0, -axis.x);
+      const target = P.clone().setY(0);
+      let face = axis.clone();
+      if (g.pos === 'guard') target.addScaledVector(axis, -0.28 * f.scale);
+      else if (g.pos === 'mount') target.addScaledVector(axis, 0.1 * f.scale);
+      else {
+        target.addScaledVector(side, 0.42 * f.scale).addScaledVector(axis, 0.18 * f.scale);
+        face = side.clone().negate();
+      }
+      const off = target.sub(f.pos);
+      f.self.copy(off.multiplyScalar(4)).clampLength(0, 2.2);
+      f.self.y = 0;
+      f.facing = Math.atan2(face.x, face.z);
+      f.balance = 1;
+      f.stability = 1;
+      f.tone = 1;
+    } else {
+      f.balance = 0;
+      f.self.set(0, 0, 0);
+      f.tone = 0.85;
+    }
+    f.fallT += 0.01;
+  }
+
+  /** Height of the top man's hips above the floor for his position. */
+  private groundHeight(f: Fighter): number {
+    const pos = this.grapple!.pos;
+    return (pos === 'guard' ? 0.6 : pos === 'mount' ? 0.52 : 0.46) * f.scale;
+  }
+
+  /** The floor game, once per step. */
+  private groundStep(): void {
+    const g = this.grapple!;
+    const { top, bottom } = g;
+    if (this.winner) return;
+    const tg = this.gripOf(top);
+    const bg = this.gripOf(bottom);
+    const now = this.t;
+
+    // A strike from the top lands.
+    if (g.strike && !g.strike.done && now >= g.strike.land) {
+      g.strike.done = true;
+      this.groundHit(top, bottom, g.covering ? 0.35 : 1, g.pos);
+    }
+    if (g.strike && now > g.strike.land + 0.25 / top.body) g.strike = null;
+
+    // A submission being cranked on.
+    if (g.sub) {
+      const s = g.sub;
+      const att = s.by;
+      const def = att.enemy;
+      const ag = this.gripOf(att);
+      const dg = this.gripOf(def);
+      s.p += (this.stepSize() * att.body * 0.17 * (0.5 + ag.subs) * (1 + def.daze)) / (0.6 + 0.6 * dg.ground);
+      g.quietSince = now;
+      att.stamina -= this.stepSize() * 0.02;
+      def.stamina -= this.stepSize() * 0.04;
+      if (now >= s.nextEscape) {
+        s.nextEscape = now + 0.6 / def.mind;
+        const p = 0.1 + 0.35 * dg.ground - 0.2 * ag.subs + 0.15 * Math.max(0, def.stamina) - 0.25 * def.daze;
+        if (this.rng() < p) {
+          def.say('вырвался');
+          att.say('не дожал');
+          g.sub = null;
+          // Escaping a lock from the top costs the top man his position.
+          if (att === top && g.pos !== 'guard') g.pos = 'guard';
+          return;
+        }
+      }
+      if (s.p >= 1) {
+        def.out = true;
+        def.koReason = s.kind === 'choke' ? 'сдался: удушающий' : s.kind === 'triangle' ? 'сдался: треугольник' : 'сдался: рычаг локтя';
+        if (s.kind === 'armbar' && this.rng() < 0.3) {
+          const arm = this.rng() < 0.5 ? 'lArm' : 'rArm';
+          def.broken[arm] = true;
+          this.events.push({ type: 'break', pos: v(def.rag.byName[arm === 'lArm' ? 'lFore' : 'rFore'].body.translation(), new THREE.Vector3()), target: def, limb: arm });
+        }
+        this.winner = att;
+        this.moment('СДАЛСЯ!', def);
+        this.endGrapple('');
+      }
+      return;
+    }
+
+    // The referee stands them up when nothing happens.
+    if (now - g.quietSince > 14) {
+      this.endGrapple('рефери поднял');
+      return;
+    }
+
+    if (now >= g.nextTop) {
+      g.nextTop = now + (0.45 + 0.5 * this.rng()) / top.mind;
+      const posK = g.pos === 'mount' ? 1.6 : g.pos === 'side' ? 1 : 0.55;
+      const opts: [string, number][] = [
+        ['strike', (0.8 + top.p.aggression) * posK * (bottom.daze > 0.3 ? 1.8 : 1) * (top.stamina > 0.1 ? 1 : 0.2)],
+        ['pass', g.pos === 'mount' ? 0 : 0.5 * tg.ground],
+        ['sub', g.pos === 'guard' ? 0 : 0.45 * tg.subs * (bottom.daze > 0.3 ? 1.2 : 1)],
+        ['stand', tg.ground < 0.35 ? 0.5 * (1 - tg.ground) + 0.4 * bg.ground : 0.05],
+        ['wait', 0.4],
+      ];
+      const pick = this.weighted(opts);
+      if (pick === 'strike' && !g.strike) {
+        const land = now + (0.35 + 0.15 * this.rng()) / top.body;
+        g.strike = { hand: this.rng() < 0.5 ? 'l' : 'r', start: now, land, done: false };
+        top.stamina -= 0.012;
+        // He sees it coming and covers, if he can.
+        g.covering = this.rng() < 0.3 + 0.4 * bg.ground + 0.2 * bottom.tech - 0.5 * bottom.daze;
+      } else if (pick === 'pass') {
+        const p = THREE.MathUtils.clamp(0.35 + 0.5 * (tg.ground - bg.ground) + 0.3 * bottom.fatigue, 0.08, 0.85);
+        top.stamina -= 0.03;
+        if (this.rng() < p) {
+          g.pos = g.pos === 'guard' ? 'side' : 'mount';
+          g.quietSince = now;
+          top.say(g.pos === 'side' ? 'прошёл гард' : 'взял маунт');
+        } else top.say('не прошёл гард');
+      } else if (pick === 'sub') {
+        g.sub = { by: top, kind: g.pos === 'mount' && this.rng() < 0.5 ? 'armbar' : 'choke', p: 0, nextEscape: now + 0.5 / bottom.mind };
+        top.say(g.sub.kind === 'choke' ? 'удушающий' : 'рычаг локтя');
+      } else if (pick === 'stand') {
+        top.say('встаю, не хочу в партер');
+        this.endGrapple('');
+        return;
+      }
+    }
+
+    if (now >= g.nextBottom) {
+      g.nextBottom = now + (0.55 + 0.5 * this.rng()) / bottom.mind;
+      if (bottom.daze > 0.75) return;
+      const opts: [string, number][] = [
+        ['recover', g.pos === 'guard' ? 0 : 0.6 * bg.ground],
+        ['sweep', 0.35 * bg.ground],
+        ['up', g.pos === 'guard' ? 0.4 + (bg.ground < 0.35 ? 0.5 : 0) : 0.1],
+        ['sub', g.pos === 'guard' ? 0.45 * bg.subs : 0],
+        ['wait', 0.5],
+      ];
+      const pick = this.weighted(opts);
+      const edge = bg.ground - tg.ground;
+      bottom.stamina -= pick === 'wait' ? 0 : 0.03;
+      if (pick === 'recover' && this.rng() < THREE.MathUtils.clamp(0.3 + 0.5 * edge + 0.2 * top.fatigue, 0.06, 0.8)) {
+        g.pos = g.pos === 'mount' ? 'side' : 'guard';
+        g.quietSince = now;
+        bottom.say('вернул гард');
+      } else if (pick === 'sweep' && this.rng() < THREE.MathUtils.clamp(0.18 + 0.5 * edge, 0.04, 0.7)) {
+        // Over: the bottom man comes up on top.
+        g.top = bottom;
+        g.bottom = top;
+        g.pos = g.pos === 'guard' ? 'mount' : 'guard';
+        g.quietSince = now;
+        g.strike = null;
+        bottom.say('перевернул');
+        this.moment('ПЕРЕВОРОТ!', top);
+      } else if (pick === 'up' && this.rng() < THREE.MathUtils.clamp(0.22 + 0.4 * edge + 0.2 * top.fatigue, 0.05, 0.75)) {
+        this.endGrapple('встал');
+      } else if (pick === 'sub' && this.rng() < 0.5 + 0.4 * edge) {
+        g.sub = { by: bottom, kind: this.rng() < 0.5 ? 'triangle' : 'armbar', p: 0, nextEscape: now + 0.5 / top.mind };
+        bottom.say(g.sub.kind === 'triangle' ? 'треугольник' : 'рычаг из гарда');
+      }
+    }
+  }
+
+  private weighted(opts: [string, number][]): string {
+    const total = opts.reduce((a, [, w]) => a + w, 0);
+    let r = this.rng() * total;
+    for (const [k, w] of opts) {
+      r -= w;
+      if (r <= 0) return k;
+    }
+    return opts[opts.length - 1][0];
+  }
+
+  /** A strike from the top position lands on the man below. */
+  private groundHit(att: Fighter, def: Fighter, k: number, pos: GroundPos): void {
+    const zone = this.rng() < 0.75 ? 'head' : 'body';
+    const posK = pos === 'mount' ? 1.25 : pos === 'side' ? 1 : 0.7;
+    const dmg = 5 * Math.sqrt(att.p.strength) * (0.7 + 0.5 * att.tech) * (0.7 + 0.6 * this.rng()) * posK * k * (1 - 0.3 * att.fatigue);
+    const move = MOVE_BY_ID.overhand;
+    this.hurt(def, move, zone, dmg, k < 0.5, k < 0.5);
+    def.flash = false;
+    const part = def.rag.byName[zone === 'head' ? 'head' : 'chest'];
+    part.body.applyImpulse({ x: 0, y: -part.mass * 1.5 * k, z: 0 }, true);
+    if (zone === 'head' && k >= 0.5) def.snapHeadW = this.t + 0.15 / def.body;
+    att.hits++;
+    if (k >= 0.5) this.lastHitW = this.t;
+    this.grapple!.quietSince = this.t;
+    const at = v(part.body.translation(), new THREE.Vector3());
+    this.events.push({ type: 'hit', pos: at, power: dmg * 0.3, blocked: k < 0.5, dmg, target: def, fromBehind: false, zone: ZONE_NAME[zone], stone: def.has('stone'), part: part.name });
+    if (def.out && !this.winner) {
+      this.winner = att;
+      def.koReason ||= 'нокаут в партере';
+      this.endGrapple('');
+    }
+  }
+
   /** The bell: score the round, then a break (the view resumes with nextRound) or the decision. */
   private endRound(): void {
     const d = this.roundDealt;
@@ -1123,7 +1470,7 @@ export class Sim {
    * wind and can fold him a moment later (the liver). An arm or a leg never
    * knocks a man out; they suffer on their own (see limbDmg).
    */
-  private hurt(def: Fighter, m: Move, zone: string, dmg: number, blocked: boolean, seen: boolean): void {
+  hurt(def: Fighter, m: Move, zone: string, dmg: number, blocked: boolean, seen: boolean): void {
     const stone = def.has('stone') ? 2 : 1;
     // Judges count clean, effective blows: the head most, the body next, arms barely.
     this.roundDealt[1 - def.team] += blocked ? 0.1 * dmg : dmg * (zone === 'head' ? 1.3 : zone === 'arm' ? 0.25 : 1);
@@ -1381,6 +1728,25 @@ export class Sim {
         break;
       case 'block':
         break;
+      case 'shoot': {
+        // Level change and a drive at the hips; the body is carried, balance is not judged.
+        f.dashGraceW = this.t + 0.2 / f.body;
+        const toward = tmpA.subVectors(f.enemy.pos, f.pos).setY(0).normalize();
+        if (u < 0.6) f.self.copy(toward).multiplyScalar(3.4 * Math.sqrt(f.scale));
+        else f.self.multiplyScalar(Math.max(0, 1 - 12 * dl));
+        if (!a.hitDone && u >= 0.55) {
+          a.hitDone = true;
+          this.shootLands(f);
+        }
+        break;
+      }
+      case 'sprawl': {
+        f.dashGraceW = this.t + 0.2 / f.body;
+        const away = tmpA.subVectors(f.pos, f.enemy.pos).setY(0).normalize();
+        if (u < 0.4) f.self.copy(away).multiplyScalar(1.4 * Math.sqrt(f.scale));
+        else f.self.multiplyScalar(Math.max(0, 1 - 15 * dl));
+        break;
+      }
       case 'sweep': {
         f.self.multiplyScalar(Math.max(0, 1 - 15 * dl));
         const e = f.enemy;
@@ -1689,6 +2055,11 @@ export class Sim {
       def.combo = null;
       def.action = null;
       def.say('ноги подкосились');
+    } else if (!blocked && def.action?.kind === 'shoot' && dmg > 4) {
+      // Met coming in: the shot dies there.
+      def.action = null;
+      this.startAction(def, 'stagger', { dur: (0.4 + dmg / 30) / sturdy });
+      this.moment('ВСТРЕТИЛ КОЛЕНОМ!', def);
     } else if (!blocked && dmg > 3.5 * sturdy) {
       def.combo = null;
       def.comboLeft = 0;

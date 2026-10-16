@@ -121,6 +121,17 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   fighter reels). Highlights: `sim.moment()` -> banner + short slow-mo in main.ts.
 - Base damage 7.6 now that head shots land (fights ~50-90 s in tests).
 
+- Finishing: an AI that sees the enemy hurt (`e.dazed`) presses; hurt fighters cover up.
+- Grappling (`Sim.grapple`, state 'ground'): shoot (`shootLands`; knee meets it, sprawl
+  stops it), pounce on a downed man where `disc.groundAllowed`. `groundStep` is a small
+  state machine, not physics: positions guard/side/mount, top strikes (`groundHit`),
+  passes, chokes/armbars from top, triangle/armbar/sweep/stand-up from bottom, escape
+  rolls, referee stand-up after 14 s quiet. Fighter contact is off during it and back on
+  once they are apart (`contactOff`). Skill per style in `disc.grapple` (+ technique via
+  `gripOf`). Styles `wrestling`, `bjj`; presets 4 (wrestler vs boxer) and 5 (BJJ vs Thai)
+  on the cage, later presets shifted by 2. Tool: `ground`. Grapplers beat strikers most
+  of the time in tests; part-speed spikes ~21-28 m/s appear around grapple start/end.
+
 ## Next steps (planned with the user)
 
 1. Done: training (genome/train/school), memory across fights.

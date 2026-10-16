@@ -4,7 +4,7 @@ import type { Pose } from './rig';
 // stands and at what range he likes to fight. Technique (skill) still decides
 // how well he does it.
 
-export type DisciplineId = 'mma' | 'boxing' | 'muaythai' | 'kickboxing' | 'karate' | 'street';
+export type DisciplineId = 'mma' | 'boxing' | 'muaythai' | 'kickboxing' | 'karate' | 'street' | 'wrestling' | 'bjj';
 
 export interface Stance {
   /** Lead foot ahead of the pelvis, rear foot behind, half-width between feet (m for 1.8 m). */
@@ -27,6 +27,13 @@ export interface Discipline {
   /** Extra head movement and bounce. */
   headMove: number;
   bounce: number;
+  /**
+   * Grappling, 0..1: shooting for the legs and stopping it (shoot), control and
+   * position on the floor (ground), chokes and joint locks (subs).
+   */
+  grapple: { shoot: number; ground: number; subs: number };
+  /** May jump on a downed man and finish him there (MMA rules, the street). */
+  groundAllowed: boolean;
 }
 
 export const DISCIPLINES: Discipline[] = [
@@ -43,6 +50,8 @@ export const DISCIPLINES: Discipline[] = [
     range: 1,
     headMove: 1,
     bounce: 1,
+    grapple: { shoot: 0.55, ground: 0.6, subs: 0.5 },
+    groundAllowed: true,
   },
   {
     id: 'boxing',
@@ -56,6 +65,8 @@ export const DISCIPLINES: Discipline[] = [
     range: 0.95,
     headMove: 1.6,
     bounce: 1.3,
+    grapple: { shoot: 0.05, ground: 0.1, subs: 0.05 },
+    groundAllowed: false,
   },
   {
     id: 'muaythai',
@@ -72,6 +83,8 @@ export const DISCIPLINES: Discipline[] = [
     range: 0.95,
     headMove: 0.4,
     bounce: 0.5,
+    grapple: { shoot: 0.1, ground: 0.2, subs: 0.05 },
+    groundAllowed: false,
   },
   {
     id: 'kickboxing',
@@ -85,6 +98,8 @@ export const DISCIPLINES: Discipline[] = [
     range: 1,
     headMove: 0.9,
     bounce: 1.1,
+    grapple: { shoot: 0.1, ground: 0.15, subs: 0.05 },
+    groundAllowed: false,
   },
   {
     id: 'karate',
@@ -100,6 +115,8 @@ export const DISCIPLINES: Discipline[] = [
     range: 1.3,
     headMove: 0.3,
     bounce: 1.6,
+    grapple: { shoot: 0.15, ground: 0.2, subs: 0.1 },
+    groundAllowed: false,
   },
   {
     id: 'street',
@@ -110,6 +127,32 @@ export const DISCIPLINES: Discipline[] = [
     range: 0.7,
     headMove: 0.3,
     bounce: 0.2,
+    grapple: { shoot: 0.2, ground: 0.3, subs: 0.1 },
+    groundAllowed: true,
+  },
+  {
+    id: 'wrestling',
+    name: 'Борьба',
+    desc: 'Проходы в ноги, броски, контроль сверху и добивание в партере. Стоя бьёт мало и просто.',
+    weights: { jab: 1, cross: 1, hook: 0.6, overhand: 0.8, rknee: 0.4 },
+    stance: { footFwd: 0.16, footBack: 0.22, footWidth: 0.17, pose: { crouch: 0.2, spineLean: 22, lShF: 55, rShF: 55, lEl: 75, rEl: 75, headPitch: 10 } },
+    range: 0.9,
+    headMove: 0.5,
+    bounce: 0.5,
+    grapple: { shoot: 1, ground: 0.9, subs: 0.35 },
+    groundAllowed: true,
+  },
+  {
+    id: 'bjj',
+    name: 'Джиу-джитсу',
+    desc: 'Тянет в партер, играет из гарда снизу, удушающие и болевые. Стоя слабоват.',
+    weights: { jab: 1, cross: 0.8, teep: 0.6, hook: 0.4, lowkick: 0.3 },
+    stance: { footFwd: 0.17, footBack: 0.2, footWidth: 0.14, pose: { crouch: 0.12, spineLean: 12 } },
+    range: 1,
+    headMove: 0.4,
+    bounce: 0.4,
+    grapple: { shoot: 0.65, ground: 0.95, subs: 1 },
+    groundAllowed: true,
   },
 ];
 

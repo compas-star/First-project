@@ -79,7 +79,70 @@ function downPose(f: Fighter, out: Pose): Pose {
 
 const chain = { ...STANCE } as Pose;
 
+/**
+ * On the floor. Top: kneeling tall in the guard, sitting on him in the mount,
+ * lying across him in side control; a strike from the top is a hand raised and
+ * driven down. Bottom: legs wrapped round him in the guard, framing or covering
+ * the face. Submissions bend both into the hold.
+ */
+function groundPose(f: Fighter, out: Pose): Pose {
+  const g = f.grapple!;
+  Object.assign(out, STANCE);
+  out.crouch = 0;
+  out.pelvisTwist = 0;
+  out.spineTwist = 0;
+  const now = f.clock;
+  if (g.top === f) {
+    const p = g.pos;
+    Object.assign(out, {
+      lHipF: p === 'side' ? 50 : 15, rHipF: p === 'side' ? 50 : 15,
+      lKn: p === 'side' ? 100 : 120, rKn: p === 'side' ? 100 : 120,
+      lHipS: p === 'mount' ? 32 : 14, rHipS: p === 'mount' ? 32 : 14,
+      spineLean: p === 'guard' ? 22 : p === 'mount' ? 12 : 55,
+      headPitch: 25, spineSide: 0,
+      lShF: 55, lShS: 10, lEl: 50, rShF: 55, rShS: 10, rEl: 50,
+    });
+    // A strike: the fist goes up high, then is driven down.
+    const st = g.strike;
+    if (st) {
+      const left = st.hand === 'l';
+      const raise = !st.done ? 1 : 0;
+      if (left) {
+        out.lShF = raise ? 150 : 75;
+        out.lEl = raise ? 110 : 10;
+      } else {
+        out.rShF = raise ? 150 : 75;
+        out.rEl = raise ? 110 : 10;
+      }
+      out.spineTwist = left ? -15 : 15;
+    }
+    if (g.sub?.by === f) {
+      if (g.sub.kind === 'choke') Object.assign(out, { lShF: 75, lShS: -25, lEl: 125, rShF: 75, rShS: -25, rEl: 125, spineLean: 55, headPitch: 30 });
+      else Object.assign(out, { spineLean: -55, lShF: 30, rShF: 30, lEl: 40, rEl: 40, lHipF: 60, rHipF: 60, lKn: 40, rKn: 40 });
+    }
+  } else {
+    const guard = g.pos === 'guard';
+    Object.assign(out, {
+      lHipF: guard ? 88 : 25, rHipF: guard ? 88 : 30, lKn: guard ? 95 : 55, rKn: guard ? 95 : 60,
+      lHipS: guard ? 32 : 8, rHipS: guard ? 32 : 8, spineLean: 8, headPitch: 15,
+      lShF: 70, lShS: 15, lEl: 95, rShF: 70, rShS: 15, rEl: 95,
+    });
+    if (g.covering || f.daze > 0.4) Object.assign(out, { lShF: 115, lEl: 140, rShF: 115, rEl: 140, headPitch: 25 });
+    if (g.sub?.by === f) {
+      // Triangle or armbar from the guard: the legs go high.
+      Object.assign(out, { lHipF: 125, rHipF: 120, lKn: 85, rKn: 70, lHipS: 20, rHipS: 25, lShF: 60, rShF: 60, lEl: 60, rEl: 60 });
+    }
+    if (g.sub && g.sub.by !== f) {
+      // Fighting the hold.
+      Object.assign(out, { lShF: 95, rShF: 95, lEl: 70, rEl: 70 });
+      out.spineSide = 10 * Math.sin(now * 9);
+    }
+  }
+  return out;
+}
+
 export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
+  if (f.state === 'ground' && f.grapple) return groundPose(f, out);
   if (f.state !== 'ok') return downPose(f, out);
   // The fighter's own stance comes from the fighting style.
   const base = stanceOf(f);
@@ -203,6 +266,12 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
       }
       case 'block':
         lerpPose(out, out, withStance(POSES.block), smooth(u * 8));
+        break;
+      case 'shoot':
+        lerpPose(out, out, withStance(POSES.shoot), smooth(Math.min(u * 4, (1 - u) * 3)));
+        break;
+      case 'sprawl':
+        lerpPose(out, out, withStance(POSES.sprawl), smooth(Math.min(u * 6, (1 - u) * 2.5)));
         break;
       case 'catch':
       case 'sweep':

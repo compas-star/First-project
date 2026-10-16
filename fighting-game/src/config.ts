@@ -114,6 +114,22 @@ export const PRESETS: Preset[] = [
     blue: { discipline: 'kickboxing', skill: 0.8, aggression: 0.7 },
   },
   {
+    id: 'wrestler-vs-boxer',
+    map: 'cage',
+    name: 'Борец и боксёр',
+    desc: 'Красный: борец, проходы в ноги и удары сверху. Синий: боксёр, руки и уклоны.',
+    red: { discipline: 'wrestling', skill: 0.8, aggression: 0.65, weight: 84 },
+    blue: { discipline: 'boxing', skill: 0.85, aggression: 0.6, evasion: 0.7 },
+  },
+  {
+    id: 'bjj-vs-thai',
+    map: 'cage',
+    name: 'Джиу-джитсу и тайский бокс',
+    desc: 'Красный тянет в партер за болевым. Синий бьёт ногами и коленями.',
+    red: { discipline: 'bjj', skill: 0.85, aggression: 0.5 },
+    blue: { discipline: 'muaythai', skill: 0.85, aggression: 0.65 },
+  },
+  {
     id: 'quick',
     map: 'cage',
     name: 'Ртуть',

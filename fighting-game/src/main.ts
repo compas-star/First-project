@@ -303,6 +303,11 @@ function updateHud(): void {
 function stateWord(f: Sim['fighters'][number]): { text: string; color: string } {
   if (f.out) return { text: f.koReason === 'нокаут' ? 'без сознания' : 'остановлен', color: '#ff5a4a' };
   if (f.state === 'down') return { text: 'на полу', color: '#ff8a5a' };
+  if (f.state === 'ground' && f.grapple) {
+    const g = f.grapple;
+    const where = g.pos === 'guard' ? 'гард' : g.pos === 'mount' ? 'маунт' : 'сбоку';
+    return { text: g.top === f ? `сверху · ${where}` : `снизу · ${where}`, color: g.top === f ? '#7fd88f' : '#f2c14e' };
+  }
   if (f.daze > 0.75) return { text: 'на грани', color: '#ff5a4a' };
   if (f.daze > 0.42) return { text: 'плывёт', color: '#ff8a5a' };
   if (f.daze > 0.18) return { text: 'потрясён', color: '#f2c14e' };
@@ -316,6 +321,8 @@ function injuries(f: Sim['fighters'][number]): string {
     if (!f.broken[l] && f.limbDmg[l] > f.limbLimit * 0.5) list.push(`отбита: ${LIMB_NAME[l]}`);
   }
   if (f.knockdowns) list.unshift(`нокдаунов: ${f.knockdowns}`);
+  const sub = f.grapple?.sub;
+  if (sub) list.unshift(`${sub.by === f ? 'дожимает' : 'в захвате'}: ${sub.kind === 'choke' ? 'удушающий' : sub.kind === 'triangle' ? 'треугольник' : 'рычаг'} ${Math.round(sub.p * 100)}%`);
   if (f.bodyHurt > 0.5) list.unshift('корпус избит');
   if (f.fatigue > 0.5) list.unshift('выдохся');
   const plan = f.state === 'ok' && !sim.winner ? `<br><span class="plan">${PLAN_SHORT[f.plan]}</span>` : '';

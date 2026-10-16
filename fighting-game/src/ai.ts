@@ -70,7 +70,7 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
 
 function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
   const ea = e.action;
-  if (!ea || (ea.kind !== 'attack' && ea.kind !== 'slam') || e.state !== 'ok') return;
+  if (!ea || (ea.kind !== 'attack' && ea.kind !== 'slam' && ea.kind !== 'shoot') || e.state !== 'ok') return;
   if (f.handledThreat === ea.id) return;
   // Reaction time varies from blow to blow, so a slightly slower fighter still catches some.
   const jitter = 0.65 + 0.7 * (((Math.sin(ea.id * 12.9898 + f.team * 78.233) * 43758.5453) % 1 + 1) % 1);
@@ -95,6 +95,25 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
       sim.startAction(f, 'dodge', { dur: 0.35, dir: d.clone().negate(), pose: 'dodgeBack' });
       f.say('отскакиваю от волны');
     }
+    return;
+  }
+
+  // A shot at the legs: knee him as he comes in, or throw the legs back and sprawl.
+  if (ea.kind === 'shoot') {
+    if (f.action && f.action.kind !== 'block') return;
+    const g = sim.gripOf(f);
+    const knee = MOVE_BY_ID.rknee;
+    if (f.canUse(knee) && f.weightOf(knee) > 0 && tti > f.windupOf(knee) * 0.9 && sim.rng() < 0.1 + 0.3 * f.tech) {
+      sim.startAction(f, 'attack', { move: knee, reply: true, zone: 'head' });
+      f.say('колено навстречу');
+      return;
+    }
+    if (tti > 0.06 / f.body && sim.rng() < 0.15 + 0.6 * g.shoot + 0.2 * f.tech + 0.15 * f.p.evasion) {
+      sim.startAction(f, 'sprawl', { dur: 0.7 });
+      f.say('спрол');
+      return;
+    }
+    noted(f, 'none');
     return;
   }
 
@@ -390,6 +409,13 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   }
   f.flank = false;
 
+  // He is down: where the rules allow it, jump on him and finish it on the floor.
+  if (e.state === 'down' && !e.out && !sim.grapple && f.disc.groundAllowed && (e.daze > 0.3 || sim.gripOf(f).ground > 0.5) && f.stamina > 0.15) {
+    f.wantDist = 0;
+    if (dist < f.radius + e.radius + 0.6 * f.scale) sim.pounce(f);
+    else intent(f, 'добиваю в партере');
+    return;
+  }
   if (e.state !== 'ok') {
     f.wantDist = 1.6 * f.scale + e.radius;
     intent(f, e.state === 'ko' ? 'победа' : 'жду, пока встанет');
@@ -477,6 +503,15 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   if (go === null && sim.t >= f.initiativeW) f.initiativeW = sim.t + waitTime(f, sim);
 
   if (go === 'punish' && ea) f.punishedId = ea.id;
+  // A wrestler goes for the legs: best when the other man is busy throwing.
+  const shoot = sim.gripOf(f).shoot;
+  if (go && shoot >= 0.3 && !sim.grapple && dist < gap + 1.5 * f.scale && f.stamina > 0.2 &&
+      sim.rng() < shoot * (0.22 + (heAttacks || punish ? 0.3 : 0))) {
+    sim.startAction(f, 'shoot', { dur: 0.8 });
+    f.initiativeW = sim.t + waitTime(f, sim);
+    f.say('проход в ноги');
+    return;
+  }
   // Going in from a distance where only a long kick reaches: usually step closer first,
   // so the whole arsenal is in play, instead of always opening with the same long strike.
   const few = options.length > 0 && options.length < usable.length * 0.4;

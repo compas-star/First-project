@@ -14,7 +14,7 @@ import type { DisciplineId } from './disciplines';
 
 export type SkinId =
   | 'boxer' | 'mma' | 'kick' | 'nakmuay' | 'karateka' | 'luchador' | 'biker'
-  | 'ninja' | 'gladiator' | 'robot' | 'clerk' | 'sumo' | 'zombie';
+  | 'ninja' | 'gladiator' | 'robot' | 'clerk' | 'sumo' | 'zombie' | 'wrestler' | 'bjj';
 
 export interface Skin {
   id: SkinId;
@@ -28,6 +28,8 @@ export const SKINS: Skin[] = [
   { id: 'kick', name: 'Кикбоксер', desc: 'Длинные атласные штаны, перчатки, футы.' },
   { id: 'nakmuay', name: 'Тайский боксёр', desc: 'Монгкол на голове, повязки на руках, шорты с полосой.' },
   { id: 'karateka', name: 'Каратист', desc: 'Белое ги, чёрный пояс, повязка на лоб, босиком.' },
+  { id: 'wrestler', name: 'Борец', desc: 'Трико, наушники-защита, борцовки.' },
+  { id: 'bjj', name: 'Джиу-джитсер', desc: 'Плотное ги, цветной пояс, босиком.' },
   { id: 'luchador', name: 'Рестлер', desc: 'Маска лучадора, трико, наколенники, высокие сапоги.' },
   { id: 'biker', name: 'Байкер', desc: 'Кожаная куртка, джинсы, бандана, борода и очки.' },
   { id: 'ninja', name: 'Ниндзя', desc: 'Чёрный костюм, маска с прорезью, повязка с лентами.' },
@@ -42,7 +44,7 @@ export const SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s])) as Rec
 
 /** What a fighter of a style wears unless chosen otherwise. */
 export function defaultSkin(disc: DisciplineId): SkinId {
-  return ({ mma: 'mma', boxing: 'boxer', muaythai: 'nakmuay', kickboxing: 'kick', karate: 'karateka', street: 'biker' } as const)[disc];
+  return ({ mma: 'mma', boxing: 'boxer', muaythai: 'nakmuay', kickboxing: 'kick', karate: 'karateka', street: 'biker', wrestling: 'wrestler', bjj: 'bjj' } as const)[disc];
 }
 
 const TONES = [0xe8b896, 0xd19a72, 0xa86f4c, 0x7a4a30, 0xf0c8a8];
@@ -223,6 +225,31 @@ export function dress(r: Rig, id: SkinId, team: number, girth: number, seed: num
       t.box(r.pelvis, [0.035, 0.15, 0.01], belt, [-0.03, -0.01, 0.135 * girth], [0, 0, -0.2]);
       // Hachimaki in the team colour.
       t.add(H, new THREE.TorusGeometry(0.112, 0.012, 6, 24), t.mat(team, 0.6), [0, 0.18, 0], [Math.PI / 2, 0, 0], [Math.sqrt(girth), Math.sqrt(girth), 1]);
+      break;
+    }
+    case 'wrestler': {
+      t.eyes(eye);
+      t.cap(hair, 0.32, 1.03);
+      const sing = t.mat(team, 0.4, 0.1);
+      t.paint(['torso', 'hip'], sing);
+      for (const hip of [r.lHip, r.rHip]) t.tube(hip, 0.1, 0.02, -0.18, sing);
+      // Ear guards and the strap over the head.
+      const gear = t.mat(0x1a1a1e, 0.5);
+      for (const x of [0.105, -0.105]) t.ball(H, 0.045, gear, [x * Math.sqrt(girth), 0.13, 0], [0.5, 1, 0.9]);
+      t.add(H, new THREE.TorusGeometry(0.11, 0.01, 6, 20, Math.PI), gear, [0, 0.14, 0], [0, Math.PI / 2, 0], [Math.sqrt(girth), 1.15, 1]);
+      t.boots(t.teamDark, -0.2);
+      break;
+    }
+    case 'bjj': {
+      t.eyes(eye);
+      t.cap(hair, 0.4);
+      const gi = t.mat(team === 0xf0533e ? 0xf4f4f0 : 0x1d3c78, 0.85);
+      t.paint(['torso', 'hip', 'lUpper', 'rUpper', 'lFore', 'rFore', 'lThigh', 'rThigh', 'lShin', 'rShin'], gi);
+      for (const kn of [r.lKn, r.rKn]) t.tube(kn, 0.07, 0, -0.38, gi, 1.05);
+      const belt = t.mat([0x7a2fbf, 0x6b3a1e, 0x111111][Math.abs(seed) % 3], 0.6);
+      t.band(r.pelvis, 0.16 * girth, 0.024, belt, 0.08, 1.15, 0.85);
+      t.box(r.pelvis, [0.035, 0.15, 0.01], belt, [0.04, -0.01, 0.135 * girth], [0, 0, 0.15]);
+      t.band(r.spine, 0.1 * girth, 0.025, t.mat(team, 0.6), 0.44, 1.1, 1);
       break;
     }
     case 'luchador': {

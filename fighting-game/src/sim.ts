@@ -293,6 +293,8 @@ export class Fighter {
    * their own weight and swing a little), tight when he is close, threatened or busy.
    */
   tension = 0.6;
+  /** Out of breath: backs off and covers up until the wind comes back (hysteresis in think). */
+  winded = false;
   /** Where the hips point; they follow the shoulders a moment behind on a turn. */
   hipYaw = 0;
   /** Weight between the feet, -1 back .. 1 front, drifting irregularly. */
@@ -923,7 +925,7 @@ export class Sim {
       const busy = f.action?.kind === 'attack' ? 0 : 1;
       const moving = Math.min(1, f.groundSpeed / (f.stride * f.body + 1e-6));
       // Tense muscles burn the wind too: he gets it back only when he can let go.
-      f.stamina = Math.min(1, Math.max(0, f.stamina) + busy * (0.075 - 0.04 * moving) * (1 - 0.55 * f.tension) * dl);
+      f.stamina = Math.min(1, Math.max(0, f.stamina) + busy * (0.088 - 0.04 * moving) * (1 - 0.45 * f.tension) * dl);
       if (!this.winner) {
         react(f, f.enemy, this);
         if (this.t >= f.nextThinkW) {

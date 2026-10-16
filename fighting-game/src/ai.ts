@@ -154,6 +154,13 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
     return;
   }
 
+  // Out of breath: no dancing and no trading, just hands up and take it on the guard.
+  if (f.winded && tti > 0.05 / f.body && sim.rng() < 0.85) {
+    sim.startAction(f, 'block', { dur: 0.5 });
+    noted(f, 'block');
+    f.say('выдохся, закрываюсь');
+    return;
+  }
   // An elusive fighter goes to his head movement first, then counters off it.
   if (sim.rng() < f.p.evasion * 0.7 && tryDodge(f, e, m, ea, sim, tti, 0.15)) return;
 
@@ -482,9 +489,17 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   const steppedIn = !heAttacks && dist < myRange * 0.95;
   const tired = f.fatigue;
   if (tired > 0.5) f.wantDist = pref + 0.25 * tired * f.scale;
+  // Out of breath: get out of range, keep the guard up, and breathe until the wind is back.
+  if (f.stamina < 0.22) f.winded = true;
+  else if (f.stamina > 0.45) f.winded = false;
+  if (f.winded && !e.dazed) {
+    f.wantDist = Math.max(f.wantDist, enemyRange + 0.6 * f.scale);
+    f.initiativeW = Math.max(f.initiativeW, sim.t + 0.5 / f.mind);
+    intent(f, 'выдохся, отхожу отдышаться');
+  }
 
   // He is hurt: no more waiting, go and finish it. Hurt myself: cover up and get away.
-  const finishing = e.dazed && !f.dazed && f.stamina > 0.1;
+  const finishing = e.dazed && !f.dazed && f.stamina > 0.15;
   if (finishing) {
     if (f.plan !== 'finish') {
       f.plan = 'finish';
@@ -499,11 +514,11 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
 
   let go: 'bait' | 'punish' | 'answer' | 'entry' | 'meet' | null = null;
   if (bit) go = 'bait';
-  else if (opening && sim.rng() < (0.25 + 0.3 * tech) * Math.min(1.3, planEagerness(f, true) * 0.6)) go = 'punish';
-  else if (answering && sim.rng() < 0.12 + 0.2 * tech + (sim.t - f.lastDodgeW < 0.6 ? 0.6 * f.p.evasion : 0)) go = 'answer';
+  else if (opening && sim.rng() < (f.winded ? 0.3 : 1) * (0.25 + 0.3 * tech) * Math.min(1.3, planEagerness(f, true) * 0.6)) go = 'punish';
+  else if (answering && !f.winded && sim.rng() < 0.12 + 0.2 * tech + (sim.t - f.lastDodgeW < 0.6 ? 0.6 * f.p.evasion : 0)) go = 'answer';
   else if (behind && sim.rng() < 0.5) go = 'punish';
   else if (sim.t >= f.initiativeW) go = f.stamina < 0.12 ? null : 'entry';
-  else if (steppedIn && sim.rng() < 0.08 + 0.3 * tech) go = 'meet';
+  else if (steppedIn && !f.winded && sim.rng() < 0.08 + 0.3 * tech) go = 'meet';
   if (go === null && sim.t >= f.initiativeW) f.initiativeW = sim.t + waitTime(f, sim);
 
   if (go === 'punish' && ea) f.punishedId = ea.id;

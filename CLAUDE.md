@@ -160,6 +160,9 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
 - Fatigue x~1.6 (user: tire faster from everything): strikes, misses, dodges, blocks,
   shots/sprawls and body hits cost more; regen is lower while tense (`tension`).
   Quick fights: wind 0.2-0.5 after a minute. Bouts: wear reaches 1 by round 5.
+- Winded (`Fighter.winded`: on below 0.22 stamina, off above 0.45): backs out of range,
+  no entries/answers/meets, punishes rarely, blocks (85%) instead of dodging; regen
+  0.088/s (x(1-0.45 tension)). Tool: `winded` (time winded, strikes then, distance).
 
 
 

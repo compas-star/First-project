@@ -1212,9 +1212,14 @@ button:disabled {
 .wallet {
   align-items: center;
 }
-.addcoins {
-  padding: 4px 10px;
-  font: 700 16px/1 var(--mono);
-  color: var(--gold);
-  border-color: var(--gold);
+.cheats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.cheats button {
+  padding: 6px 9px;
+  font: 600 12px/1 var(--mono);
 }

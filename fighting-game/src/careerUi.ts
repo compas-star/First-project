@@ -92,7 +92,13 @@ export class CareerUi {
     const c = this.c;
     const top = `<div class="ctop">
       ${this.screen === 'home' ? '<button type="button" data-act="sandbox">← Песочница</button>' : '<button type="button" data-act="back">← Назад</button>'}
-      <div class="wallet"><span title="деньги">$<b>${c.money.toLocaleString('ru')}</b></span><span title="жетоны: ускоряют ожидание">◆ <b>${c.tokens}</b></span><button type="button" class="addcoins" data-act="cheat" title="для тестов: +100 жетонов и +$1000">+</button></div>
+      <div class="wallet"><span title="деньги">$<b>${c.money.toLocaleString('ru')}</b></span><span title="жетоны: ускоряют ожидание">◆ <b>${c.tokens}</b></span></div>
+    </div>
+    <div class="cheats">
+      <span>Тест:</span>
+      <button type="button" data-act="cheat" data-k="tokens" data-v="100">+100 ◆</button>
+      <button type="button" data-act="cheat" data-k="money" data-v="500">+$500</button>
+      <button type="button" data-act="cheat" data-k="money" data-v="-500">−$500</button>
     </div>`;
     const body =
       this.screen === 'home' ? this.home()
@@ -326,13 +332,16 @@ export class CareerUi {
       this.render();
     };
     switch (b.dataset.act) {
-      case 'cheat':
-        // For testing: the player tops himself up.
-        c.tokens += 100;
-        c.money += 1000;
-        c.log.unshift('Пополнение для тестов: +100 жетонов, +$1000');
+      case 'cheat': {
+        // For testing: the player sets his own tokens and money, separately.
+        const v = Number(b.dataset.v);
+        if (b.dataset.k === 'tokens') c.tokens = Math.max(0, c.tokens + v);
+        else c.money = Math.max(0, c.money + v);
+        const what = b.dataset.k === 'tokens' ? `${v > 0 ? '+' : '−'}${Math.abs(v)} жетонов` : `${v > 0 ? '+' : '−'}$${Math.abs(v)}`;
+        c.log.unshift(`Тест: ${what}`);
         save(c);
-        return say('+100 жетонов и +$1000');
+        return say(what);
+      }
       case 'sandbox':
         return this.hide();
       case 'back':

@@ -1960,7 +1960,11 @@ export class Sim {
         if (a.overcommit > 0 && u >= a1) {
           a.t -= dl * (1 - 1 / (1 + 0.9 * a.overcommit));
           const carry = 1 - (u - a1) / (1 - a1);
-          f.self.copy(fwd).multiplyScalar(0.9 * a.overcommit * Math.sqrt(f.scale) * Math.max(0, carry));
+          // A missed punch carries the body forward; a missed kick mostly turns him round
+          // on the standing foot, and nobody is carried through the other man.
+          const room = f.pos.distanceTo(f.enemy.pos) - (f.radius + f.enemy.radius + 0.15 * f.scale);
+          const ahead = (/Foot$/.test(m.limb) ? 0.25 : 1) * (room > 0 ? Math.min(1, room / (0.3 * f.scale)) : 0);
+          f.self.copy(fwd).multiplyScalar(0.9 * a.overcommit * Math.sqrt(f.scale) * Math.max(0, carry) * ahead);
         }
         // A kick reaches only as far as the leg from the hip: the kicker skips in on the
         // standing foot and turns the hip over until the target is within the leg's length.

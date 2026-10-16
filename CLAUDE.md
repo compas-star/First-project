@@ -87,6 +87,10 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   in cm as deltas + actions + hits, gzip+base64 code `БОЙ1:` (~16k chars). Button shows when
   paused (#btnRec) and on the KO card. Decode: `tools/run.sh replay code.txt out.json`, then
   `python3 tools/watch.py out.json sheet.png`.
+- Punch follow-through is level (`strikes.ts`: the "through" extension has no vertical part
+  except uppercuts): a hook at a man who ducks passes over him instead of tipping up into
+  the air when the puncher dips (seen in a recording). A missed kick's overcommit carries
+  only 25% forward and never into the other man (room-limited). Tool: `hookduck`.
 - After a ground exchange, fighters standing up inside each other are eased apart so
   contact comes back (was: they fought passing through each other). Tool: `contact`.
 

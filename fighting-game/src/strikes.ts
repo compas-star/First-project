@@ -168,7 +168,11 @@ export function punchOverride(
     if (!a.lockAim) a.lockAim = aim.clone();
     aim.lerpVectors(a.lockAim, aim, 0.08 + 0.07 * f.tech);
   }
-  tmp.subVectors(aim, shoulder).normalize();
+  tmp.subVectors(aim, shoulder);
+  // A punch drives through the target level: when the target ducks under a hook and the
+  // puncher dips, the follow-through must not tip up into the air.
+  if (!kick && m.path !== 'upper') tmp.y = 0;
+  tmp.normalize();
   aim.addScaledVector(tmp, (kick ? 0.1 : 0.14) * s);
 
   const shape = m.shape ?? (kick ? KICKS[m.path as KickPath] : SHAPES[m.path as PunchPath]);

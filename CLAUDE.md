@@ -94,7 +94,8 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   from the club league): screen 'bracket' lists the round's fights; ours "На бой", others
   "Смотреть" (played in the arena as AI vs AI, `settle(c, m, winner)`) or "Пропустить"
   (`settle` by `odds`), "Пропустить все чужие бои" (`settleOthers`). A loss knocks ours out,
-  the rest can be watched or "Досчитать" (`closeTour`). Test buttons +◆ / ±$ in the top bar.
+  the rest can be watched or "Досчитать" (`closeTour`). Test buttons +◆ / ±$ in the top bar,
+  "До пика" (chosen fighter: every stat = his cap).
   Living world (`Career.world`, 60 named fighters, `ensureWorld` also upgrades old saves):
   Elo ranking points (`recordBout` for every bout, ours and theirs), `rankings`/`rankOf`,
   a belt (`Career.champion`, changes only in title bouts; top-3 get a shot via `titleBout`,

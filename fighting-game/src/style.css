@@ -1217,6 +1217,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
   font-size: 11.5px;
   color: var(--muted);
 }

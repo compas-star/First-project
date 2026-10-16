@@ -107,6 +107,7 @@ export class CareerUi {
       <button type="button" data-act="cheat" data-k="tokens" data-v="100">+100 ◆</button>
       <button type="button" data-act="cheat" data-k="money" data-v="500">+$500</button>
       <button type="button" data-act="cheat" data-k="money" data-v="-500">−$500</button>
+      <button type="button" data-act="peak">До пика</button>
     </div>`;
     const body =
       this.screen === 'home' ? this.home()
@@ -542,6 +543,13 @@ export class CareerUi {
         c.log.unshift(`Тест: ${what}`);
         save(c);
         return say(what);
+      }
+      case 'peak': {
+        // For testing: the chosen fighter at the top of what he can ever become.
+        for (const k of STAT_KEYS) me.stats[k] = me.caps[k];
+        c.log.unshift(`Тест: ${short(me)} натренирован до пика`);
+        save(c);
+        return say(`${short(me)} на пике: все качества на его потолке (рейтинг ${rating(me)})`);
       }
       case 'sandbox':
         return this.hide();

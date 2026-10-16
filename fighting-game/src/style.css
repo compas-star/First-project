@@ -1383,3 +1383,104 @@ button:disabled {
   color: var(--gold);
   text-align: right;
 }
+/* Career calendar */
+.daybar {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel-solid);
+}
+.daybar .dtop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.daybar .dtop > b {
+  font: 17px/1.1 var(--display);
+}
+.daybar .dtop span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.cal {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.cwd {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+.cday {
+  display: grid;
+  gap: 2px;
+  min-height: 46px;
+  padding: 4px 2px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--fg);
+  text-align: center;
+  font-size: 12px;
+}
+.cday b {
+  font-size: 12px;
+  font-weight: 600;
+}
+.cday span {
+  font-size: 11px;
+  line-height: 1.1;
+  min-height: 12px;
+}
+.cday .mt {
+  font-style: normal;
+  color: var(--gold);
+  font-weight: 700;
+  margin: 0 1px;
+}
+.cday .mn {
+  font-style: normal;
+  color: var(--blue);
+  font-weight: 700;
+}
+.cday.past {
+  opacity: 0.4;
+}
+.cday.today {
+  background: rgba(63, 167, 255, 0.14);
+}
+.cday.ours {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+.cday.on {
+  outline: 2px solid var(--fg);
+  outline-offset: -1px;
+}
+.evcard {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+.evcard > b {
+  font-size: 15px;
+}
+.evcard > small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.evcard.title {
+  border-color: rgba(242, 193, 78, 0.6);
+}
+.evcard.ours {
+  border-color: var(--gold);
+  background: rgba(242, 193, 78, 0.07);
+}

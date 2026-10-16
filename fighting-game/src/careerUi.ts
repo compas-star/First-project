@@ -4,11 +4,13 @@
 // what you got.
 import {
   STAT_KEYS, STAT_INFO, INTENSITY, TIERS, TIER_BY_ID, MAX_ROSTER,
-  load, save, reset, newCareer, tick, startTraining, gainOf, busy, skip, skipCost, refreshMarket, buy, sell,
-  rating, talentWord, value, opponent, canEnter, enterTour, afterFight, tourFight, roundName, short, odds,
+  load, save, reset, newCareer, tick, startTraining, gainOf, busy, refreshMarket, buy, sell,
+  rating, talentWord, value, opponent, afterFight, tourFight, roundName, short, odds,
   person, current, myMatch, settle, settleOthers, finished, closeTour,
-  rankings, rankOf, relOf, relWord, rivalsOf, worldOpponent, titleBout, tierOf, TITLE_PURSE, NIGHT_MS,
-  type Career, type CareerFighter, type Tier, type FightResult, type StatKey,
+  rankings, rankOf, relOf, relWord, rivalsOf, titleBout, tierOf, TITLE_PURSE,
+  DAY_MS, MARKET_DAYS, dayName, weekday, weekStart, eventsOn, evById, dayCost, nextDay, canBook, book, unbook, rebook,
+  challenge, startTour, evTitle, bookedOn,
+  type Career, type CareerFighter, type Tier, type FightResult, type StatKey, type Ev,
 } from './career';
 import { DISCIPLINE_BY_ID } from './disciplines';
 
@@ -19,7 +21,7 @@ export interface CareerHooks {
   close(): void;
 }
 
-type Screen = 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
+type Screen = 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -30,7 +32,9 @@ export class CareerUi {
   private toast = '';
   private timer = 0;
   /** The fight about to happen (preview screen). */
-  private bill: { tier: Tier; opp: CareerFighter; tour: boolean; title?: boolean } | null = null;
+  private bill: { tier: Tier; opp: CareerFighter; tour: boolean; title?: boolean; ev?: Ev } | null = null;
+  /** The day open in the calendar. */
+  private calDay = 0;
   /** The fighter shown on the profile screen. */
   private profileId = '';
   /** What happened in the last fight (result screen). */
@@ -67,18 +71,15 @@ export class CareerUi {
       this.render();
       return;
     }
-    // Only the clocks move.
-    const now = Date.now();
-    document.querySelectorAll<HTMLElement>('#career [data-until]').forEach((el) => {
-      const until = Number(el.dataset.until);
-      const from = Number(el.dataset.from);
+    // Only the day's clock moves.
+    const left = this.c.dayAt + DAY_MS - Date.now();
+    document.querySelectorAll<HTMLElement>('#career .daybar').forEach((el) => {
       const t = el.querySelector('.cl');
-      if (t) t.textContent = clock(until - now);
+      if (t) t.textContent = clock(left);
       const bar = el.querySelector<HTMLElement>('.bar i');
-      if (bar) bar.style.width = `${Math.min(100, (100 * (now - from)) / Math.max(1, until - from))}%`;
-      const sk = el.querySelector<HTMLElement>('[data-act="skip"]');
-      const f = this.c.roster.find((x) => x.id === el.dataset.id);
-      if (sk && f) sk.innerHTML = `Закончить сейчас · <b>${skipCost(f, now)}</b> ◆`;
+      if (bar) bar.style.width = `${Math.min(100, 100 - (100 * left) / DAY_MS)}%`;
+      const nb = el.querySelector<HTMLElement>('[data-act="nextday"] b');
+      if (nb) nb.textContent = this.dayBtn();
     });
   }
 
@@ -88,6 +89,7 @@ export class CareerUi {
 
   private go(s: Screen): void {
     this.screen = s;
+    if (s === 'cal' && this.calDay < this.c.day) this.calDay = this.c.day;
     this.render();
     $('career').scrollTop = 0;
   }
@@ -107,7 +109,7 @@ export class CareerUi {
     const body =
       this.screen === 'home' ? this.home()
       : this.screen === 'gym' ? this.gym()
-      : this.screen === 'fights' ? this.fights()
+      : this.screen === 'fights' || this.screen === 'cal' ? this.calendar()
       : this.screen === 'preview' ? this.preview()
       : this.screen === 'bracket' ? this.bracket()
       : this.screen === 'rank' ? this.rankView()
@@ -130,19 +132,19 @@ export class CareerUi {
       : `<div class="help">
           <div class="h2">Как играть</div>
           <ol>
-            <li><b>Тренируй</b> бойца в зале. Тренировка идёт настоящее время, пока она идёт — боец занят. Прибавки маленькие, как в жизни.</li>
-            <li><b>Дерись</b>: победа даёт деньги, жетоны и известность. После боя бойцу нужно восстановиться.</li>
-            <li><b>Известность</b> открывает лиги выше: от подвала до мирового титула.</li>
-            <li><b>Жетоны ◆</b> заканчивают любое ожидание сразу. <b>Деньги $</b> — на тренировки, взносы и новых бойцов.</li>
+            <li>Карьера идёт <b>по дням</b>. Каждый день боец либо <b>тренируется</b>, либо <b>дерётся</b>, либо отдыхает.</li>
+            <li>В <b>календаре</b> — вечера боёв, турниры и бои за пояс. Запишись заранее; в день боя нажми «На бой».</li>
+            <li>День идёт ${DAY_MS / 60000} минуты настоящего времени. <b>Жетоны ◆</b> заканчивают его сразу. <b>Деньги $</b> — на тренировки, взносы и бойцов.</li>
+            <li>Победы дают деньги и <b>известность</b>; она открывает лиги выше. После тяжёлого боя боец несколько дней лечится.</li>
           </ol>
           <button type="button" data-act="help">Понятно</button>
         </div>`;
     const tour = this.tourBanner();
-    return `${help}${tour}
+    return `${help}${this.dayBar()}${tour}${this.today()}
       ${this.hero(f)}
       <div class="big2">
-        <button type="button" class="bigbtn" data-act="to" data-s="gym"><b>Тренировать</b><span>${busy(f) ? 'сейчас занят' : 'выбрать, что качать'}</span></button>
-        <button type="button" class="bigbtn primary" data-act="to" data-s="fights"><b>Драться</b><span>бои и турниры</span></button>
+        <button type="button" class="bigbtn" data-act="to" data-s="gym"><b>Тренировать</b><span>${busy(c, f) ? 'сегодня занят' : 'занимает день'}</span></button>
+        <button type="button" class="bigbtn primary" data-act="to" data-s="cal"><b>Календарь</b><span>бои, турниры, пояс</span></button>
       </div>
       <div class="nav4">
         <button type="button" data-act="to" data-s="rank">Рейтинг</button>
@@ -150,7 +152,31 @@ export class CareerUi {
         <button type="button" data-act="to" data-s="market">Рынок</button>
         <button type="button" data-act="to" data-s="log">Журнал</button>
       </div>
-      <div class="newsbox"><div class="h2">Новости мира боёв</div>${(c.news ?? []).slice(0, 4).map((x) => `<div>${esc(x)}</div>`).join('')}<div class="fnote">Бойцы мира дерутся между собой каждые ${NIGHT_MS / 60000} минуты, даже когда игра закрыта.</div></div>`;
+      <div class="newsbox"><div class="h2">Новости мира боёв</div>${(c.news ?? []).slice(0, 4).map((x) => `<div>${esc(x)}</div>`).join('')}<div class="fnote">Бойцы мира дерутся каждый день, даже когда игра закрыта.</div></div>`;
+  }
+
+  private dayBtn(): string {
+    const n = dayCost(this.c);
+    return n ? `Следующий день · ${n} ◆` : 'Следующий день';
+  }
+
+  /** Today's date, the day's clock, and the button that ends it. */
+  private dayBar(): string {
+    const c = this.c;
+    const left = c.dayAt + DAY_MS - Date.now();
+    return `<div class="daybar">
+      <div class="dtop"><b>📅 ${dayName(c.day)}, ${weekday(c.day)}</b><span>день ${c.day} · до конца дня <b class="cl">${clock(left)}</b></span></div>
+      <div class="bar"><i style="width:${Math.min(100, 100 - (100 * left) / DAY_MS)}%"></i></div>
+      <button type="button" data-act="nextday"><b>${this.dayBtn()}</b></button>
+    </div>`;
+  }
+
+  /** Our fights today, and the next ones booked. */
+  private today(): string {
+    const c = this.c;
+    const mine = c.events.filter((e) => e.f && !e.done && e.day >= c.day).sort((a, b) => a.day - b.day);
+    if (!mine.length) return '<div class="fnote">Боёв не назначено. Запишись на вечер боёв или турнир в календаре.</div>';
+    return mine.slice(0, 3).map((e) => this.evCard(e, true)).join('');
   }
 
   /** The fighter: who he is, what he can do now and how far he can go, what he is doing. */
@@ -173,16 +199,15 @@ export class CareerUi {
   }
 
   private status(f: CareerFighter): string {
-    if (!this.c.roster.includes(f)) return '';
-    if (!busy(f)) {
-      if (this.c.tour?.fighter === f.id) return `<div class="pill gold">На турнире, ждёт следующего боя</div>`;
-      return `<div class="pill green">Свободен: можно тренировать или драться</div>`;
+    const c = this.c;
+    if (!c.roster.includes(f)) return '';
+    if (!busy(c, f)) {
+      if (c.tour?.fighter === f.id) return `<div class="pill gold">На турнире, ждёт следующего боя</div>`;
+      const b = bookedOn(c, f, c.day);
+      return b ? `<div class="pill gold">Сегодня бой: ${esc(evTitle(b))}</div>` : `<div class="pill green">Сегодня свободен: можно тренировать или драться</div>`;
     }
-    return `<div class="busybox" data-until="${f.busyUntil}" data-from="${f.busyFrom}" data-id="${f.id}">
-      <div class="pill">${f.session ? 'В зале' : 'Отдыхает'}: ${esc(f.busyWhat)} · осталось <b class="cl">${clock(f.busyUntil - Date.now())}</b></div>
-      <div class="bar"><i style="width:0"></i></div>
-      <button type="button" data-act="skip" data-id="${f.id}" ${this.c.tokens < skipCost(f) ? 'disabled' : ''}>Закончить сейчас · <b>${skipCost(f)}</b> ◆</button>
-    </div>`;
+    const days = f.busyUntil - c.day;
+    return `<div class="pill">${f.session ? 'В зале' : 'Отдыхает'}: ${esc(f.busyWhat)} · ${days <= 1 ? 'свободен завтра' : `свободен с ${dayName(f.busyUntil)} (через ${days} дн.)`}</div>`;
   }
 
   // ---------- Gym ----------
@@ -190,7 +215,7 @@ export class CareerUi {
   private gym(): string {
     const f = this.me();
     const c = this.c;
-    const free = !busy(f) && c.tour?.fighter !== f.id;
+    const free = !busy(c, f) && c.tour?.fighter !== f.id;
     const rows = STAT_KEYS.map((k) => {
       const info = STAT_INFO[k];
       const room = f.caps[k] - f.stats[k];
@@ -202,17 +227,19 @@ export class CareerUi {
     }).join('');
     const its = INTENSITY.map((it) => {
       const g = gainOf(f, this.stat, it);
-      const no = !free ? 'боец занят' : c.money < it.cost ? 'мало денег' : '';
+      let fight = '';
+      for (let d = c.day; d < c.day + it.days; d++) if (bookedOn(c, f, d)) fight = d === c.day ? 'сегодня бой' : 'завтра бой';
+      const no = !free ? 'боец занят' : fight || (c.money < it.cost ? 'мало денег' : '');
       return `<button type="button" class="ibtn" data-act="train" data-it="${it.id}" ${no ? 'disabled' : ''}>
         <b>${it.name}</b>
         <span class="gain">+${fmtGain(this.stat, g)}</span>
-        <span>${it.minutes} мин · $${it.cost}</span>
+        <span>${it.days === 1 ? '1 день' : `${it.days} дня`} · $${it.cost}</span>
         <small>${it.injury ? `травма ${Math.round(it.injury * 100)}%` : 'без риска'}${no ? ` · ${no}` : ''}</small>
       </button>`;
     }).join('');
     return `<div class="h1">Зал · ${esc(short(f))}</div>
       ${this.status(f)}
-      <div class="fnote">1) Выбери, что качать. 2) Выбери тренировку. Она идёт настоящее время; можно закрыть игру и вернуться. Чем ближе к потолку, тем меньше даёт.</div>
+      <div class="fnote">1) Выбери, что качать. 2) Выбери тренировку. Она занимает день (тяжёлая — два), прибавка — когда день закончится. В дни тренировки драться нельзя. Чем ближе к потолку, тем меньше даёт.</div>
       <div class="trows">${rows}</div>
       <div class="h2">${STAT_INFO[this.stat].name}: какая тренировка?</div>
       <div class="ibtns">${its}</div>`;
@@ -220,37 +247,69 @@ export class CareerUi {
 
   // ---------- Fights ----------
 
-  private fights(): string {
+  /** Four weeks of the fight world; tap a day to see what is on and sign up. */
+  private calendar(): string {
     const c = this.c;
     const f = this.me();
-    const why0 = busy(f) ? (f.session ? 'Боец сейчас в зале.' : 'Боец восстанавливается.') : '';
-    let html = `<div class="h1">Бои · ${esc(short(f))}</div>
-      <div class="fnote">Рейтинг твоего бойца: <b>${rating(f)}</b>, известность <b>${f.fame}</b>. ${why0 ? `<b>${why0}</b> Подожди или закончи жетонами на главном экране.` : 'Разовый бой — быстрые деньги. Турнир — взнос, несколько боёв подряд и большой приз.'}</div>`;
-    html += this.tourBanner();
-    const tb = titleBout(c, f);
-    if (tb) {
-      const defend = c.champion === f.id;
-      html += `<div class="titlecard"><b>🏆 ${defend ? 'Защита пояса' : 'Бой за пояс чемпиона мира'}</b><span>${defend ? 'Лучший претендент' : 'Чемпион'}: ${esc(tb.name)} · рейтинг ${rating(tb)} · ${tb.record.w}–${tb.record.l}</span><span>Пять раундов. Гонорар $${TITLE_PURSE[0]} за победу, $${TITLE_PURSE[1]} за поражение.</span>
-        <button type="button" class="primary" data-act="title" ${busy(f) || c.tour ? 'disabled' : ''}>${defend ? 'Защищать пояс' : 'Драться за пояс'}</button></div>`;
-    } else if (c.champion && !c.roster.some((x) => x.id === c.champion)) {
-      html += `<div class="fnote">Пояс чемпиона: ${esc(person(c, c.champion).name)}. Право на бой за пояс дают первые три места рейтинга (у тебя #${rankOf(c, f)}).</div>`;
+    const open = (e: Ev) => e.kind === 'title' || f.fame >= TIER_BY_ID[e.tier].fame;
+    const start = weekStart(c.day);
+    let grid = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map((d) => `<span class="cwd">${d}</span>`).join('');
+    for (let d = start; d < start + 28; d++) {
+      const evs = eventsOn(c, d).filter(open);
+      const ours = evs.some((e) => e.f && !e.done);
+      const marks = (evs.some((e) => e.kind === 'title') ? '🏆' : '') + (evs.some((e) => e.kind === 'tour') ? '<i class="mt">Т</i>' : '') + (evs.some((e) => e.kind === 'night') ? '<i class="mn">•</i>' : '');
+      const cls = [d < c.day ? 'past' : '', d === c.day ? 'today' : '', d === this.calDay ? 'on' : '', ours ? 'ours' : ''].filter(Boolean).join(' ');
+      grid += `<button type="button" class="cday ${cls}" data-act="calday" data-d="${d}"><b>${dateOf1(d)}</b><span>${marks}</span></button>`;
     }
-    TIERS.forEach((t, i) => {
-      const open = f.fame >= t.fame;
-      const why = canEnter(c, f, t);
-      const rules = t.rules.rounds ? `${t.rules.rounds} раунда по ${t.rules.roundLen >= 120 ? `${t.rules.roundLen / 60} мин` : `${t.rules.roundLen} с`}` : 'до победы';
-      const tourNo = why || (c.tour ? 'уже идёт турнир' : c.money < t.fee ? 'мало денег на взнос' : '');
-      html += `<div class="tier${open ? '' : ' locked'}">
-        <div class="tier-top"><span class="step">${i + 1}</span><div><b>${esc(t.name)}</b><small>соперники: рейтинг ${tierRating(t)} · ${rules}</small></div></div>
-        ${open ? `<div class="fnote">${esc(t.desc)}</div>
-          <div class="row">
-            <button type="button" data-act="single" data-t="${t.id}" ${why ? 'disabled' : ''}><b>Разовый бой</b><br><small>победа +$${t.purse[0]} и 2 ◆ · поражение +$${t.purse[1]}</small></button>
-            <button type="button" data-act="tour" data-t="${t.id}" ${tourNo ? 'disabled' : ''}><b>Турнир на ${t.size}</b><br><small>взнос $${t.fee} · приз $${t.prize} и ${t.tokens} ◆</small></button>
-          </div>`
-        : `<div class="fnote">Откроется при известности <b>${t.fame}</b> (сейчас ${f.fame}).</div><div class="bar"><i style="width:${Math.min(100, (100 * f.fame) / t.fame)}%"></i></div>`}
-      </div>`;
-    });
-    return html;
+    const day = this.calDay;
+    const evs = eventsOn(c, day).sort((a, b) => order(a) - order(b));
+    const list = evs.filter(open).map((e) => this.evCard(e, false)).join('');
+    const locked = TIERS.find((t) => f.fame < t.fame);
+    return `<div class="h1">Календарь · ${esc(short(f))}</div>
+      ${this.dayBar()}
+      <div class="fnote">• вечер боёв (разовый бой) · <b>Т</b> турнир · 🏆 бой за пояс · рамка — твой бой. Показаны лиги, открытые твоему бойцу (рейтинг ${rating(f)}, известность ${f.fame}).</div>
+      <div class="cal">${grid}</div>
+      <div class="h2">${dayName(day)}, ${weekday(day)}${day === c.day ? ' · сегодня' : ''}</div>
+      ${list || '<div class="fnote">В этот день для твоего бойца ничего нет. Можно тренироваться.</div>'}
+      ${locked ? `<div class="fnote">Следующая лига «${esc(locked.name)}» откроется при известности <b>${locked.fame}</b>.</div>` : ''}`;
+  }
+
+  /** One event: what it is, whether ours is in, and what can be done about it. */
+  private evCard(e: Ev, withDate: boolean): string {
+    const c = this.c;
+    const t = TIER_BY_ID[e.tier];
+    const f = e.f ? c.roster.find((x) => x.id === e.f) ?? this.me() : this.me();
+    const when = withDate ? `${e.day === c.day ? 'Сегодня' : `${dayName(e.day)}, ${weekday(e.day)}`} · ` : '';
+    const rules = t.rules.rounds ? `${t.rules.rounds} раунда по ${t.rules.roundLen >= 120 ? `${t.rules.roundLen / 60} мин` : `${t.rules.roundLen} с`}` : '';
+    let head = '';
+    let info = '';
+    if (e.kind === 'night') {
+      head = `Вечер боёв · ${esc(t.name)}`;
+      info = `разовый бой · соперники ${tierRating(t)} · ${rules} · победа $${t.purse[0]} и 2 ◆ · поражение $${t.purse[1]}`;
+    } else if (e.kind === 'tour') {
+      head = `Турнир на ${t.size} · ${esc(t.name)}`;
+      info = `соперники ${tierRating(t)} · все раунды в один день · взнос $${t.fee} · приз $${t.prize} и ${t.tokens} ◆`;
+    } else {
+      const champ = c.champion ? person(c, c.champion) : null;
+      head = '🏆 Бой за пояс чемпиона мира';
+      info = `${champ ? `чемпион ${esc(short(champ))}` : ''} · 5 раундов · $${TITLE_PURSE[0]} за победу, $${TITLE_PURSE[1]} за поражение`;
+    }
+    let body = '';
+    if (e.done && e.f) body = `<div class="pill">${esc(short(f))}: бой проведён</div>`;
+    else if (e.f) {
+      const opp = e.kind === 'night' && e.opp ? person(c, e.opp) : e.kind === 'title' ? titleBout(c, f) : null;
+      const vs = opp ? ` против ${esc(short(opp))} <small>(рейтинг ${rating(opp)}, ${opp.record.w}–${opp.record.l})</small>` : '';
+      const today = e.day === c.day;
+      const go = !today ? '' : e.kind === 'tour'
+        ? (c.tour ? '<button type="button" class="primary" data-act="tourgo">К сетке</button>' : `<button type="button" class="primary" data-act="evgo" data-ev="${e.id}">На турнир</button>`)
+        : `<button type="button" class="primary" data-act="evgo" data-ev="${e.id}">На бой</button>`;
+      body = `<div class="pill gold">Записан ${esc(short(f))}${vs}</div>
+        <div class="row">${go}${e.kind === 'night' && !today ? `<button type="button" data-act="evre" data-ev="${e.id}">Другой соперник</button>` : ''}${c.tour && today && e.kind === 'tour' ? '' : `<button type="button" data-act="evdrop" data-ev="${e.id}">Сняться${e.kind === 'tour' ? ' (взнос сгорит)' : ''}</button>`}</div>`;
+    } else if (e.day >= c.day) {
+      const why = canBook(c, f, e);
+      body = `<button type="button" class="${why ? '' : 'primary'}" data-act="evbook" data-ev="${e.id}" ${why ? 'disabled' : ''}>Записать ${esc(short(f))}${e.kind === 'tour' ? ` · $${t.fee}` : ''}${why ? ` · ${why}` : ''}</button>`;
+    }
+    return `<div class="evcard ${e.kind}${e.f && !e.done ? ' ours' : ''}"><b>${when}${head}</b><small>${info}</small>${body}</div>`;
   }
 
   private preview(): string {
@@ -278,7 +337,7 @@ export class CareerUi {
       <div class="vtable">${rows}</div>
       <div class="pill ${p >= 55 ? 'green' : p <= 45 ? 'red' : 'gold'}">Букмекеры дают тебе примерно ${p}%</div>
       <button type="button" class="primary wide" data-act="fight">В бой</button>
-      ${b.tour ? '' : '<button type="button" data-act="reroll">Другой соперник</button>'}`;
+`;
   }
 
   private tourBanner(): string {
@@ -348,7 +407,8 @@ export class CareerUi {
       </div>
       ${this.c.tour ? '<button type="button" class="primary wide" data-act="to" data-s="bracket">К турнирной сетке</button>' : ''}
       ${this.hero(this.me(), true)}
-      <button type="button" class="${this.c.tour ? '' : 'primary '}wide" data-act="to" data-s="home">На главную</button>`;
+      <button type="button" class="${this.c.tour ? '' : 'primary '}wide" data-act="to" data-s="home">На главную</button>
+      ${this.c.tour ? '' : '<div class="fnote">Бой занял день. Нажми «Следующий день» на главной, когда будешь готов.</div>'}`;
   }
 
   // ---------- Team, market, log ----------
@@ -359,7 +419,7 @@ export class CareerUi {
       .map((f) => {
         const main = f.id === c.pick;
         return `<div class="tcard${main ? ' on' : ''}">
-          <div class="hero-top"><div><div class="fname">${esc(f.name)}</div><div class="fmeta">${esc(DISCIPLINE_BY_ID[f.discipline].name)} · бои ${f.record.w}–${f.record.l} · ${busy(f) ? 'занят' : 'свободен'}</div></div><div class="rate"><b>${rating(f)}</b><span>рейтинг</span></div></div>
+          <div class="hero-top"><div><div class="fname">${esc(f.name)}</div><div class="fmeta">${esc(DISCIPLINE_BY_ID[f.discipline].name)} · бои ${f.record.w}–${f.record.l} · ${busy(c, f) ? 'занят' : 'свободен'}</div></div><div class="rate"><b>${rating(f)}</b><span>рейтинг</span></div></div>
           <div class="row">
             ${main ? '<div class="pill gold">Сейчас выбран</div>' : `<button type="button" class="primary" data-act="pick" data-id="${f.id}">Выбрать</button>`}
             ${c.roster.length > 1 ? `<button type="button" data-act="sell" data-id="${f.id}">Продать · $${Math.round(value(f) * 0.6)}</button>` : '<span></span>'}
@@ -375,7 +435,7 @@ export class CareerUi {
 
   private market(): string {
     const c = this.c;
-    const next = Math.max(0, c.marketAt + 20 * 60000 - Date.now());
+    const next = Math.max(1, c.marketAt + MARKET_DAYS - c.day);
     const full = c.roster.length >= MAX_ROSTER;
     const list = c.market
       .map((f, i) => {
@@ -385,7 +445,7 @@ export class CareerUi {
       })
       .join('');
     return `<div class="h1">Рынок</div>
-      <div class="fnote">Свободные бойцы. Смотри не только на рейтинг: потолок (белая чёрточка) показывает, кем он может стать. Новые появятся через ${clock(next)}.</div>
+      <div class="fnote">Свободные бойцы. Смотри не только на рейтинг: потолок (белая чёрточка) показывает, кем он может стать. Новые появятся через ${next} дн.</div>
       <button type="button" data-act="refresh" ${c.tokens < 2 ? 'disabled' : ''}>Обновить сейчас · 2 ◆</button>
       ${list || '<div class="fnote">Пока никого.</div>'}`;
   }
@@ -465,7 +525,7 @@ export class CareerUi {
       case 'sandbox':
         return this.hide();
       case 'back':
-        return this.go(this.screen === 'preview' ? (this.bill?.tour ? 'bracket' : 'fights') : this.screen === 'profile' ? 'rank' : 'home');
+        return this.go(this.screen === 'preview' ? (this.bill?.tour ? 'bracket' : 'cal') : this.screen === 'profile' ? 'rank' : 'home');
       case 'to':
         return this.go(b.dataset.s as Screen);
       case 'help':
@@ -483,12 +543,52 @@ export class CareerUi {
         const it = INTENSITY.find((x) => x.id === b.dataset.it)!;
         const err = startTraining(c, me, this.stat, it);
         if (err) return say(err);
-        this.toast = `${short(me)} в зале: ${STAT_INFO[this.stat].name.toLowerCase()}, ${it.minutes} мин`;
+        this.toast = `${short(me)} в зале: ${STAT_INFO[this.stat].name.toLowerCase()}, ${it.days === 1 ? 'до конца дня' : `${it.days} дня`}`;
         return this.go('home');
       }
-      case 'skip': {
-        const f = c.roster.find((x) => x.id === b.dataset.id)!;
-        return say(skip(c, f));
+      case 'nextday': {
+        let err = nextDay(c);
+        if (err === 'tour' || err === 'fight') {
+          if (!confirm(err === 'tour' ? 'Твой боец ещё в турнире. Сняться и закончить день?' : 'Сегодня у твоего бойца бой. Не выходить на бой и закончить день? (известность −1)')) return;
+          err = nextDay(c, true);
+        }
+        if (err) return say(err);
+        this.calDay = c.day;
+        this.toast = `Новый день: ${dayName(c.day)}, ${weekday(c.day)}`;
+        return this.go(this.screen === 'cal' ? 'cal' : 'home');
+      }
+      case 'calday':
+        this.calDay = Number(b.dataset.d);
+        return say(null);
+      case 'evbook': {
+        const e = evById(c, Number(b.dataset.ev))!;
+        const err = book(c, me, e);
+        return say(err ?? `${short(me)} записан: ${evTitle(e)}, ${dayName(e.day)}`);
+      }
+      case 'evre':
+        rebook(c, evById(c, Number(b.dataset.ev))!);
+        return say(null);
+      case 'evdrop': {
+        const e = evById(c, Number(b.dataset.ev))!;
+        if (!confirm(e.kind === 'tour' ? 'Сняться с турнира? Взнос не вернут.' : 'Отказаться от боя?')) return;
+        unbook(c, e);
+        return say(null);
+      }
+      case 'evgo': {
+        const e = evById(c, Number(b.dataset.ev))!;
+        const f = c.roster.find((x) => x.id === e.f)!;
+        if (busy(c, f)) return say(`${short(f)} не готов к бою: ${f.busyWhat}`);
+        if (e.kind === 'tour') {
+          const err = startTour(c, f, e);
+          if (err) return say(err);
+          this.toast = `Жеребьёвка прошла: ${TIER_BY_ID[e.tier].size} бойцов. Смотри сетку.`;
+          return this.go('bracket');
+        }
+        const opp = e.kind === 'title' ? titleBout(c, f) : person(c, e.opp!);
+        if (!opp) return say('Права на бой за пояс больше нет: ты выпал из тройки');
+        this.bill = { tier: e.kind === 'title' ? TIERS[5] : TIER_BY_ID[e.tier], opp, tour: false, title: e.kind === 'title', ev: e };
+        c.pick = f.id;
+        return this.go('preview');
       }
       case 'sell': {
         const f = c.roster.find((x) => x.id === b.dataset.id)!;
@@ -511,44 +611,23 @@ export class CareerUi {
         if (!confirm('Стереть карьеру и начать сначала?')) return;
         this.c = reset();
         return this.go('home');
-      case 'title': {
-        const opp = titleBout(c, me);
-        if (!opp) return say(null);
-        this.bill = { tier: TIERS[5], opp, tour: false, title: true };
-        return this.go('preview');
-      }
       case 'profile':
         this.profileId = b.dataset.id!;
         return this.go('profile');
       case 'challenge': {
-        const opp = person(c, this.profileId);
-        const t = tierOf(opp);
-        if (me.fame < t.fame) return say(`Чтобы вызвать его, нужна известность ${t.fame} (лига «${t.name}»)`);
-        if (busy(me)) return say(`${short(me)} занят`);
-        this.bill = { tier: t, opp, tour: false };
-        return this.go('preview');
-      }
-      case 'single': {
-        const t = TIER_BY_ID[b.dataset.t!];
-        this.bill = { tier: t, opp: worldOpponent(c, t, me), tour: false };
-        return this.go('preview');
-      }
-      case 'reroll':
-        if (this.bill) this.bill.opp = worldOpponent(c, this.bill.tier, this.me());
-        return say(null);
-      case 'tour': {
-        const t = TIER_BY_ID[b.dataset.t!];
-        const why = enterTour(c, me, t);
-        if (why) return say(why);
-        this.toast = `Жеребьёвка прошла: ${t.size} бойцов. Смотри сетку.`;
-        return this.go('bracket');
+        const err = challenge(c, me, person(c, this.profileId));
+        if (err) return say(err);
+        const e = c.events.find((x) => x.f === me.id && x.opp === this.profileId && !x.done)!;
+        this.calDay = e.day;
+        this.toast = `Вызов принят: бой ${dayName(e.day)}, ${evTitle(e)}`;
+        return this.go('cal');
       }
       case 'tourgo':
         return this.go('bracket');
       case 'myfight': {
         const tour = c.tour!;
         const f = c.roster.find((x) => x.id === tour.fighter)!;
-        if (busy(f)) return say(`${short(f)} ещё восстанавливается`);
+        if (busy(c, f)) return say(`${short(f)} ещё восстанавливается`);
         const m = myMatch(tour)!;
         this.bill = { tier: TIER_BY_ID[tour.tier], opp: person(c, m.a === f.id ? m.b : m.a), tour: true };
         return this.go('preview');
@@ -593,6 +672,7 @@ export class CareerUi {
     $('career').hidden = true;
     clearInterval(this.timer);
     this.hooks.fight(me, b.opp, b.tier, title, (r) => {
+      if (b.ev) b.ev.done = true;
       const lines = b.tour ? tourFight(c, me, r) : afterFight(c, me, b.tier, b.opp, r, false, !!b.title);
       this.outcome = { won: r.won, title: `${title} · ${r.won ? (r.ko ? 'досрочно' : 'по очкам') : r.reason}`, lines };
       this.bill = null;
@@ -632,6 +712,14 @@ const clock = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
+
+/** Day of the month, with the month's short name on the 1st. */
+function dateOf1(day: number): string {
+  const s = dayName(day);
+  return s.startsWith('1 ') ? s.slice(0, 5) : s.split(' ')[0];
+}
+
+const order = (e: Ev) => (e.kind === 'title' ? 0 : e.kind === 'tour' ? 1 : 2);
 
 const pct = (k: StatKey) => k === 'skill' || k === 'evasion';
 

@@ -68,11 +68,22 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
 - `main.ts`: HUD, time scale ("eyes"), setup sheet, presets.
 - `career.ts` + `careerUi.ts`: manager mode ("Карьера" button; the sandbox stays as is).
   Fighters with a story, stats (`bodySpeed, strength, mindSpeed, skill, evasion, cardio`)
-  and hidden caps (talent). Real-time training sessions (2/6/15 min, small gains that shrink
-  near the cap, injury risk on hard), recovery after fights, tokens ("жетоны") skip timers
-  (1 per 3 min). Tiers Подвал → Мировой титул: single fights (purse) and 4/8-man
-  tournaments (other bracket fights decided by `rating` odds). Market refreshes every 20
-  min. Stand-up only (`Rules.standing` turns off shots and pounces). Saved in localStorage
+  and hidden caps (talent). **Calendar** (user's request): the career runs by days
+  (`Career.day`, day 1 = Monday 3 March; a day lasts `DAY_MS` 3 min real time, passes by
+  itself in `tick`, also while closed, max 10 at once; "Следующий день" ends it now for
+  1 ◆ per minute left). The day does not pass while ours has an unfought booking today
+  (`waiting`) or a tournament open. Each day a fighter trains (light/normal 1 day, hard 2;
+  gain applied at midnight in `endDay`) or fights; `busyUntil` = first free day; recovery
+  after a fight in days. `Career.events` (`plan`, 5 weeks ahead): per league fight nights
+  and tournaments on fixed cycles (`SCHEDULE`), title bout every 10 days. Ours signs up in
+  advance (`book`: tour fee paid then, single fight gets its opponent; `rebook`, `unbook`,
+  `challenge` = next night of that league); on the day "На бой" / "На турнир"
+  (`startTour` draws the bracket, all rounds that day). Days without ours: the world fights
+  (`worldDay`: 6 bouts, the title on title days, NPC tournaments `npcTour`). Screen 'cal':
+  4-week grid + the chosen day's events (`evCard`); home shows the day bar and ours'
+  bookings. Market refreshes every `MARKET_DAYS` (5). Tools: `tourtest`, `worldtest`.
+  Tiers Подвал → Мировой титул: single fights (purse) and 4/8-man
+  tournaments (other bracket fights decided by `rating` odds). Stand-up only (`Rules.standing` turns off shots and pounces). Saved in localStorage
   `arena-career-v1`. `FighterParams.cardio` scales stamina costs and regen.
   UI is screen-based (user: the first tabbed version was unclear): home (fighter card +
   big Train / Fight buttons, how-to card once), gym (pick stat row, then intensity with
@@ -86,10 +97,8 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   Living world (`Career.world`, 60 named fighters, `ensureWorld` also upgrades old saves):
   Elo ranking points (`recordBout` for every bout, ours and theirs), `rankings`/`rankOf`,
   a belt (`Career.champion`, changes only in title bouts; top-3 get a shot via `titleBout`,
-  ours defends against the best contender; purse `TITLE_PURSE`). Fight nights every
-  `NIGHT_MS` (4 min real time, caught up on load, max 6 at once): 8 bouts by odds, a title
-  defence every 3rd night, one trash-talk event (sometimes at ours), the world creeps toward
-  its caps. Single fights and tournament fields come from the world (`worldOpponent`,
+  ours defends against the best contender; purse `TITLE_PURSE`). The world fights every
+  calendar day (see Calendar), with trash talk (sometimes at ours); it creeps toward its caps. Single fights and tournament fields come from the world (`worldOpponent`,
   `worldField`, new faces if a league runs short). Feelings `Career.rel` (-100..100 per
   pair): KOs breed bad blood, close fights respect; <= -50 = sworn enemies: purse x1.5,
   fame x2, both fight angrier (`toParams(..., angry)`: aggression +0.25, skill x0.93).

@@ -85,6 +85,8 @@ export interface Tour {
   field: CareerFighter[];
   /** The bracket, round by round; the last round is the one being fought. */
   rounds: Match[][];
+  /** The calendar event it belongs to. */
+  ev?: number;
 }
 
 export interface Career {
@@ -109,9 +111,32 @@ export interface Career {
   rel?: Record<string, number>;
   /** What happened in the fight world, newest first. */
   news?: string[];
-  /** When the world last had a fight night. */
+  /** When the world last had a fight night (before the calendar). */
   worldAt?: number;
   nights?: number;
+  /** Today's number in the calendar (day 1 is a Monday) and when it began, real time. */
+  day: number;
+  dayAt: number;
+  /** What is on in the fight world, day by day: fight nights, tournaments, title bouts. */
+  events: Ev[];
+  /** Days already filled with events. */
+  planned: number;
+  nextEv: number;
+}
+
+export type EvKind = 'night' | 'tour' | 'title';
+
+/** Something on the calendar. Ours can sign up for it; the rest of the world fights anyway. */
+export interface Ev {
+  id: number;
+  day: number;
+  kind: EvKind;
+  tier: string;
+  /** Our fighter signed up, and for a single fight whom he meets. */
+  f?: string;
+  opp?: string;
+  /** Our part in it is over. */
+  done?: boolean;
 }
 
 const KEY = 'arena-career-v1';
@@ -248,16 +273,17 @@ export function toParams(f: CareerFighter, team: 0 | 1, angry = false): FighterP
 export interface Intensity {
   id: 'light' | 'normal' | 'hard';
   name: string;
-  minutes: number;
+  /** Days it takes: he does nothing else then. */
+  days: number;
   cost: number;
   k: number;
   injury: number;
 }
 
 export const INTENSITY: Intensity[] = [
-  { id: 'light', name: 'Лёгкая', minutes: 2, cost: 10, k: 0.35, injury: 0 },
-  { id: 'normal', name: 'Обычная', minutes: 6, cost: 30, k: 1, injury: 0.02 },
-  { id: 'hard', name: 'Тяжёлая', minutes: 15, cost: 75, k: 2.3, injury: 0.1 },
+  { id: 'light', name: 'Лёгкая', days: 1, cost: 10, k: 0.45, injury: 0 },
+  { id: 'normal', name: 'Обычная', days: 1, cost: 30, k: 1, injury: 0.02 },
+  { id: 'hard', name: 'Тяжёлая', days: 2, cost: 75, k: 2.4, injury: 0.1 },
 ];
 
 /** What a session would add: small, and less the closer he is to his ceiling. */
@@ -267,29 +293,129 @@ export function gainOf(f: CareerFighter, k: StatKey, it: Intensity): number {
   return Math.max(0, info.base * it.k * Math.min(1, 0.15 + 1.6 * room) * (room > 0 ? 1 : 0));
 }
 
-export const busy = (f: CareerFighter, now = Date.now()) => f.busyUntil > now;
+/** Busy today (training, getting over a fight); `busyUntil` is the first day he is free. */
+export const busy = (c: Career, f: CareerFighter, day = c.day) => f.busyUntil > day;
+
+/** His fight booked on that day, if any. */
+export const bookedOn = (c: Career, f: CareerFighter, day: number) => c.events.find((e) => e.f === f.id && e.day === day && !e.done) ?? null;
 
 export function startTraining(c: Career, f: CareerFighter, k: StatKey, it: Intensity): string | null {
-  if (busy(f)) return 'Боец занят';
+  if (busy(c, f)) return 'Боец занят';
   if (c.tour?.fighter === f.id) return 'Боец на турнире';
+  for (let d = c.day; d < c.day + it.days; d++) if (bookedOn(c, f, d)) return `В ${dayName(d)} у него бой`;
   if (c.money < it.cost) return 'Не хватает денег';
   c.money -= it.cost;
-  const now = Date.now();
   // Real rounds of real work: a hard week can also leave him hurt.
   const hurt = Math.random() < it.injury ? 1 : 0;
   f.session = { stat: k, gain: gainOf(f, k, it) * (0.75 + 0.5 * Math.random()), injury: hurt };
-  f.busyFrom = now;
-  f.busyUntil = now + it.minutes * 60000;
+  f.busyFrom = c.day;
+  f.busyUntil = c.day + it.days;
   f.busyWhat = `${STAT_INFO[k].drill} (${it.name.toLowerCase()})`;
   save(c);
   return null;
 }
 
-/** Sessions and recoveries that have run out: apply them. Returns what happened. */
+// ---------- The calendar ----------
+
+/** Real time a day lasts; it can be ended sooner with tokens. */
+export const DAY_MS = 3 * 60000;
+const BASE = new Date(2025, 2, 3);
+const WD = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+
+export const dateOf = (day: number) => new Date(BASE.getFullYear(), BASE.getMonth(), BASE.getDate() + day - 1);
+/** '12 марта' */
+export const dayName = (day: number) => dateOf(day).toLocaleDateString('ru', { day: 'numeric', month: 'long' });
+export const weekday = (day: number) => WD[(day - 1) % 7];
+export const weekStart = (day: number) => day - ((day - 1) % 7);
+
+/** How often each league holds what, in days (and on which day of the cycle). */
+const SCHEDULE: Record<string, { night: [number, number]; tour: [number, number] }> = {
+  basement: { night: [2, 0], tour: [5, 2] },
+  roof: { night: [3, 1], tour: [6, 3] },
+  club: { night: [3, 2], tour: [7, 5] },
+  city: { night: [4, 0], tour: [9, 6] },
+  nation: { night: [5, 3], tour: [12, 8] },
+  world: { night: [6, 4], tour: [14, 12] },
+};
+const TITLE_EVERY = 10;
+
+/** Fills the calendar four weeks ahead and forgets what is long past. */
+export function plan(c: Career): void {
+  for (let d = c.planned + 1; d <= c.day + 34; d++) {
+    for (const t of TIERS) {
+      const s = SCHEDULE[t.id];
+      if ((d + s.night[1]) % s.night[0] === 0) c.events.push({ id: c.nextEv++, day: d, kind: 'night', tier: t.id });
+      if ((d + s.tour[1]) % s.tour[0] === 0) c.events.push({ id: c.nextEv++, day: d, kind: 'tour', tier: t.id });
+    }
+    if (d % TITLE_EVERY === 0) c.events.push({ id: c.nextEv++, day: d, kind: 'title', tier: 'world' });
+    c.planned = d;
+  }
+  c.events = c.events.filter((e) => e.day >= weekStart(c.day) - 7);
+}
+
+export const eventsOn = (c: Career, day: number) => c.events.filter((e) => e.day === day);
+export const evById = (c: Career, id: number) => c.events.find((e) => e.id === id) ?? null;
+
+/** Our fight waiting today: the day does not end by itself until it is fought or dropped. */
+export function waiting(c: Career): Ev | null {
+  return c.events.find((e) => e.day === c.day && e.f && !e.done) ?? null;
+}
+
+/** Tokens to end the day now: one per started minute left. */
+export function dayCost(c: Career, now = Date.now()): number {
+  return Math.max(0, Math.ceil((c.dayAt + DAY_MS - now) / 60000));
+}
+
+/** Days that have run out in real time: they pass (while the game was closed too). */
 export function tick(c: Career, now = Date.now()): string[] {
   const out: string[] = [];
+  let n = 0;
+  while (now - c.dayAt >= DAY_MS && !waiting(c) && !c.tour && n++ < 10) {
+    c.dayAt += DAY_MS;
+    out.push(...endDay(c));
+  }
+  // Away for long, or a fight waiting today: the next day starts when this one is done.
+  if (now - c.dayAt > DAY_MS) c.dayAt = now - DAY_MS;
+  if (out.length) {
+    c.log.unshift(...out);
+    c.log.length = Math.min(c.log.length, 40);
+  }
+  if (n) save(c);
+  return out;
+}
+
+/** The player ends the day: tokens if its time is not up; a fight left today is dropped. */
+export function nextDay(c: Career, force = false): string | null {
+  const w = waiting(c);
+  if (c.tour) {
+    const t = c.tour;
+    const alive = !!myMatch(t) && !myMatch(t)!.w;
+    if (alive && !finished(t) && !force) return 'tour';
+    if (alive && !finished(t)) {
+      const m = myMatch(t)!;
+      settle(c, m, m.a === t.fighter ? m.b : m.a);
+      c.log.unshift('Снялся с турнира');
+    }
+    closeTour(c);
+  } else if (w && !force) return 'fight';
+  else if (w) unbook(c, w);
+  const cost = dayCost(c);
+  if (c.tokens < cost) return 'Не хватает жетонов';
+  c.tokens -= cost;
+  c.dayAt = Date.now();
+  const out = endDay(c);
+  c.log.unshift(...out);
+  c.log.length = Math.min(c.log.length, 40);
+  save(c);
+  return null;
+}
+
+/** Midnight: the world's fights of the day, sessions finished, a new day planned. */
+function endDay(c: Career): string[] {
+  const out = worldDay(c, c.day);
+  c.day++;
   for (const f of c.roster) {
-    if (f.session && f.busyUntil <= now) {
+    if (f.session && f.busyUntil <= c.day) {
       const s = f.session;
       f.session = undefined;
       const before = f.stats[s.stat];
@@ -298,53 +424,93 @@ export function tick(c: Career, now = Date.now()): string[] {
       const shown = s.stat === 'skill' || s.stat === 'evasion' ? `${(d * 100).toFixed(1)}%` : `×${d.toFixed(3)}`;
       out.push(`${short(f)}: ${STAT_INFO[s.stat].name} +${shown}${d < 1e-4 ? ' — упёрся в потолок' : ''}`);
       if (s.injury) {
-        f.busyFrom = now;
-        f.busyUntil = now + 10 * 60000;
+        f.busyFrom = c.day;
+        f.busyUntil = c.day + 3;
         f.busyWhat = 'потянул мышцу на тренировке';
-        out.push(`${short(f)} потянул мышцу: 10 минут отдыха`);
+        out.push(`${short(f)} потянул мышцу: 3 дня отдыха`);
       } else f.busyWhat = '';
-    } else if (!f.session && f.busyWhat && f.busyUntil <= now) {
+    } else if (!f.session && f.busyWhat && f.busyUntil <= c.day) {
       out.push(`${short(f)} восстановился`);
       f.busyWhat = '';
     }
   }
-  if (now - c.marketAt > 20 * 60000) refreshMarket(c, now);
-  out.push(...worldTick(c, now));
-  if (out.length) {
-    c.log.unshift(...out);
-    c.log.length = Math.min(c.log.length, 30);
-    save(c);
-  }
+  if (c.day - c.marketAt >= MARKET_DAYS) refreshMarket(c);
+  plan(c);
+  out.unshift(`— ${dayName(c.day)}, ${weekday(c.day)} —`);
   return out;
 }
 
-/** Tokens to finish what he is doing now: one per started three minutes. */
-export function skipCost(f: CareerFighter, now = Date.now()): number {
-  return Math.max(1, Math.ceil((f.busyUntil - now) / 180000));
+/** Can he sign up for this? Null if yes. */
+export function canBook(c: Career, f: CareerFighter, e: Ev): string | null {
+  const t = TIER_BY_ID[e.tier];
+  if (e.day < c.day || e.done) return 'уже прошло';
+  if (e.f) return e.f === f.id ? 'уже записан' : 'записан другой твой боец';
+  if (bookedOn(c, f, e.day)) return 'в этот день у него уже бой';
+  if (busy(c, f, e.day)) return e.day === c.day ? (f.session ? 'сегодня он в зале' : 'восстанавливается') : 'ещё не восстановится';
+  if (e.kind === 'title') return titleBout(c, f) ? null : 'нужно быть в тройке рейтинга';
+  if (f.fame < t.fame) return `нужна известность ${t.fame}`;
+  if (e.kind === 'tour' && c.money < t.fee) return 'мало денег на взнос';
+  return null;
 }
 
-export function skip(c: Career, f: CareerFighter): string | null {
-  if (!busy(f)) return null;
-  const n = skipCost(f);
-  if (c.tokens < n) return 'Не хватает жетонов';
-  c.tokens -= n;
-  f.busyUntil = Date.now();
-  tick(c);
+/** Signs him up: a tournament's fee is paid now; a single fight gets its opponent now. */
+export function book(c: Career, f: CareerFighter, e: Ev, opp?: CareerFighter): string | null {
+  const why = canBook(c, f, e);
+  if (why) return why;
+  const t = TIER_BY_ID[e.tier];
+  if (e.kind === 'tour') c.money -= t.fee;
+  if (e.kind === 'night') e.opp = (opp ?? worldOpponent(c, t, f)).id;
+  e.f = f.id;
+  c.log.unshift(`${short(f)} записан: ${evTitle(e)}, ${dayName(e.day)}`);
   save(c);
   return null;
 }
 
+/** Drops out. A tournament's fee is not returned; a no-show on the day costs a little name. */
+export function unbook(c: Career, e: Ev): void {
+  const f = c.roster.find((x) => x.id === e.f);
+  if (f && e.day === c.day) f.fame = Math.max(0, f.fame - 1);
+  if (f) c.log.unshift(`${short(f)} снялся: ${evTitle(e)}`);
+  e.f = undefined;
+  e.opp = undefined;
+  save(c);
+}
+
+/** Another opponent for a booked single fight. */
+export function rebook(c: Career, e: Ev): void {
+  const f = c.roster.find((x) => x.id === e.f);
+  if (f) e.opp = worldOpponent(c, TIER_BY_ID[e.tier], f).id;
+  save(c);
+}
+
+/** A call-out: the next fight night of his league that ours is free for. */
+export function challenge(c: Career, f: CareerFighter, opp: CareerFighter): string | null {
+  const t = tierOf(opp);
+  if (f.fame < t.fame) return `Чтобы вызвать его, нужна известность ${t.fame} (лига «${t.name}»)`;
+  const e = c.events.find((x) => x.kind === 'night' && x.tier === t.id && !canBook(c, f, x));
+  if (!e) return 'Ближайшие вечера боёв заняты';
+  return book(c, f, e, opp);
+}
+
+export function evTitle(e: Ev): string {
+  const t = TIER_BY_ID[e.tier];
+  return e.kind === 'title' ? 'бой за пояс чемпиона мира' : e.kind === 'tour' ? `турнир «${t.name}» на ${t.size}` : `вечер боёв «${t.name}»`;
+}
+
 // ---------- Market ----------
 
-export function refreshMarket(c: Career, now = Date.now()): void {
+export function refreshMarket(c: Career): void {
   const best = Math.max(0, ...c.roster.map((f) => rating(f)));
   c.market = Array.from({ length: 4 }, (_, i) => {
     // Mostly people around your level, now and then someone a step up, and a raw talent.
     const L = clamp(best / 100 - 0.05 + rnd(-0.1, 0.12) + (i === 3 ? 0.12 : 0), 0, 0.85);
     return makeFighter(i === 0 ? Math.max(0, L - 0.15) : L, i === 0 ? rnd(0.55, 0.95) : rnd(0.1, 0.8));
   });
-  c.marketAt = now;
+  c.marketAt = c.day;
 }
+
+/** Days between new faces on the market. */
+export const MARKET_DAYS = 5;
 
 export function buy(c: Career, f: CareerFighter): string | null {
   if (c.roster.length >= MAX_ROSTER) return `В команде максимум ${MAX_ROSTER} бойца`;
@@ -380,13 +546,6 @@ export function opponent(t: Tier): CareerFighter {
   return f;
 }
 
-export function canEnter(c: Career, f: CareerFighter, t: Tier): string | null {
-  if (busy(f)) return f.session ? 'Боец на тренировке' : 'Боец восстанавливается';
-  if (c.tour && c.tour.fighter !== f.id) return 'Идёт турнир другого бойца';
-  if (f.fame < t.fame) return `Нужна известность ${t.fame}`;
-  return null;
-}
-
 export interface FightResult {
   won: boolean;
   ko: boolean;
@@ -398,9 +557,9 @@ export interface FightResult {
   seconds: number;
 }
 
-/** How long he is out after a fight, minutes. */
+/** Days he is out after a fight, besides the fight day itself. */
 function recovery(r: FightResult): number {
-  return Math.round(2 + 12 * r.trauma + 5 * r.body + 10 * r.broken + (!r.won && r.ko ? 3 : 0));
+  return Math.round((12 * r.trauma + 5 * r.body + 10 * r.broken + (!r.won && r.ko ? 3 : 0)) / 5);
 }
 
 /** After the fight: money, name, experience, the doctor. Returns lines for the screen. */
@@ -445,24 +604,23 @@ export function afterFight(c: Career, f: CareerFighter, t: Tier, opp: CareerFigh
   learn('skill', 0.012);
   learn('mindSpeed', 0.004);
   out.push(...recordBout(c, r.won ? f : opp, r.won ? opp : f, r.ko, title));
-  const mins = recovery(r);
-  f.busyFrom = Date.now();
-  f.busyUntil = Date.now() + mins * 60000;
+  const days = recovery(r);
+  f.busyFrom = c.day;
+  f.busyUntil = c.day + 1 + days;
   f.busyWhat = r.broken ? 'лечит перелом' : 'восстанавливается после боя';
-  out.push(`Восстановление: ${mins} мин`);
+  out.push(days ? `Восстановление: ${days} дн., в строю с ${dayName(f.busyUntil)}` : 'Цел, завтра снова в строю');
   c.log.unshift(...out.map((s) => `${short(f)}: ${s}`));
   c.log.length = Math.min(c.log.length, 30);
   save(c);
   return out;
 }
 
-/** Signs him up: the fee, and the bracket drawn. */
-export function enterTour(c: Career, f: CareerFighter, t: Tier): string | null {
-  const why = canEnter(c, f, t);
-  if (why) return why;
+/** Tournament day: the bracket is drawn (the fee was paid when he signed up). */
+export function startTour(c: Career, f: CareerFighter, e: Ev): string | null {
   if (c.tour) return 'Уже идёт турнир';
-  if (c.money < t.fee) return 'Не хватает на взнос';
-  c.money -= t.fee;
+  if (e.day !== c.day || e.f !== f.id) return 'Турнир не сегодня';
+  if (busy(c, f)) return `${short(f)} не готов к бою`;
+  const t = TIER_BY_ID[e.tier];
   const field = worldField(c, t, t.size - 1);
   // The draw: everyone shuffled into pairs.
   const ids = [f.id, ...field.map((x) => x.id)];
@@ -472,8 +630,8 @@ export function enterTour(c: Career, f: CareerFighter, t: Tier): string | null {
   }
   const first: Match[] = [];
   for (let i = 0; i < ids.length; i += 2) first.push({ a: ids[i], b: ids[i + 1], w: null });
-  c.tour = { tier: t.id, fighter: f.id, field, rounds: [first] };
-  c.log.unshift(`${short(f)} заявлен на турнир «${t.name}» на ${t.size} человек ($${t.fee})`);
+  c.tour = { tier: t.id, fighter: f.id, field, rounds: [first], ev: e.id };
+  c.log.unshift(`${short(f)} на турнире «${t.name}», ${t.size} бойцов`);
   save(c);
   return null;
 }
@@ -545,7 +703,7 @@ export function tourFight(c: Career, f: CareerFighter, r: FightResult): string[]
     out.push(`ЧЕМПИОН турнира «${t.name}»! Приз $${t.prize}, жетонов +${t.tokens}`);
   } else {
     // Between rounds of a tournament night there is no time to heal properly, only a short rest.
-    f.busyUntil = Date.now();
+    f.busyUntil = c.day;
     f.busyWhat = '';
     out.push('Прошёл дальше. Остальные бои раунда — в турнирной сетке: смотри или пропускай.');
   }
@@ -560,6 +718,8 @@ export function closeTour(c: Career): string {
   while (!finished(t)) for (const m of [...current(t)]) settle(c, m);
   const champ = person(c, current(t)[0].w!);
   c.tour = null;
+  const e = t.ev !== undefined ? evById(c, t.ev) : null;
+  if (e) e.done = true;
   const line = `Турнир «${TIER_BY_ID[t.tier].name}» выиграл ${champ.name}`;
   c.log.unshift(line);
   save(c);
@@ -569,8 +729,6 @@ export function closeTour(c: Career): string {
 // ---------- The world: rankings, the belt, feelings ----------
 
 const WORLD_SIZE = 60;
-/** Real time between the world's fight nights. */
-export const NIGHT_MS = 4 * 60000;
 export const TITLE_PURSE: [number, number] = [15000, 3000];
 
 const eloOf = (f: CareerFighter) => 900 + 12 * rating(f);
@@ -731,27 +889,14 @@ export function titleBout(c: Career, f: CareerFighter): CareerFighter | null {
   return rankOf(c, f) <= 3 ? champ : null;
 }
 
-/** The world's fight nights since last time: bouts, a title defence, bad blood, growth. */
-export function worldTick(c: Career, now = Date.now()): string[] {
+/** The world's side of a day: bouts, the title fight and tournaments ours were not in, bad blood, growth. */
+function worldDay(c: Career, day: number): string[] {
   ensureWorld(c);
-  const out: string[] = [];
-  let n = 0;
-  while (now - c.worldAt! >= NIGHT_MS && n++ < 6) {
-    c.worldAt! += NIGHT_MS;
-    c.nights = (c.nights ?? 0) + 1;
-    out.push(...fightNight(c));
-  }
-  if (n > 6) c.worldAt = now;
-  if (out.length) save(c);
-  return out;
-}
-
-function fightNight(c: Career): string[] {
   const out: string[] = [];
   const inTour = new Set(c.tour ? c.tour.field.map((x) => x.id) : []);
   const npcs = c.world!.filter((x) => !inTour.has(x.id) && x.id !== c.champion).sort((a, b) => b.elo! - a.elo!);
-  // Eight bouts between men of about the same standing.
-  for (let k = 0; k < 8 && npcs.length > 2; k++) {
+  // Bouts between men of about the same standing.
+  for (let k = 0; k < 6 && npcs.length > 2; k++) {
     const i = Math.floor(Math.random() * (npcs.length - 1));
     const a = npcs[i];
     const b = npcs[i + 1];
@@ -759,22 +904,26 @@ function fightNight(c: Career): string[] {
     const aWins = Math.random() < odds(a, b);
     const ko = Math.random() < 0.4;
     out.push(...recordBout(c, aWins ? a : b, aWins ? b : a, ko));
-    if (k < 2) news(c, `Бой: ${short(a)} — ${short(b)}, победил ${short(aWins ? a : b)}${ko ? ' нокаутом' : ''}`);
+    if (k < 1) news(c, `Бой: ${short(a)} — ${short(b)}, победил ${short(aWins ? a : b)}${ko ? ' нокаутом' : ''}`);
   }
-  // Every third night the champion defends against the best contender of the world.
-  const champ = c.champion ? person(c, c.champion) : null;
-  if (champ && !c.roster.includes(champ) && (c.nights ?? 0) % 3 === 0) {
-    const contender = rankings(c).find((x) => x !== champ && !c.roster.includes(x) && !inTour.has(x.id));
-    if (contender) {
-      const cWins = Math.random() < odds(contender, champ);
-      out.push(...recordBout(c, cWins ? contender : champ, cWins ? champ : contender, Math.random() < 0.45, true));
+  for (const e of eventsOn(c, day)) {
+    if (e.f && e.done) continue;
+    // The title night without ours: the champion defends against the best contender.
+    const champ = c.champion ? person(c, c.champion) : null;
+    if (e.kind === 'title' && champ && !c.roster.includes(champ)) {
+      const contender = rankings(c).find((x) => x !== champ && !c.roster.includes(x) && !inTour.has(x.id));
+      if (contender) {
+        const cWins = Math.random() < odds(contender, champ);
+        out.push(...recordBout(c, cWins ? contender : champ, cWins ? champ : contender, Math.random() < 0.45, true));
+      }
     }
+    if (e.kind === 'tour') npcTour(c, TIER_BY_ID[e.tier]);
   }
   // Bad blood: someone calls someone out, now and then one of yours.
   const all = everyone(c);
   const a = pickOf(all.filter((x) => !c.roster.includes(x)));
   const near = all.filter((x) => x !== a && Math.abs((x.elo ?? 0) - (a.elo ?? 0)) < 120);
-  if (near.length) {
+  if (near.length && Math.random() < 0.8) {
     const mine = near.filter((x) => c.roster.includes(x));
     const b = mine.length && Math.random() < 0.35 ? pickOf(mine) : pickOf(near);
     addRel(c, a, b, -(c.roster.includes(b) ? rnd(30, 55) : rnd(20, 40)));
@@ -784,17 +933,41 @@ function fightNight(c: Career): string[] {
     if (relOf(c, a, b) <= -50) news(c, `${short(a)} и ${short(b)} теперь заклятые враги`);
   }
   // The world trains too: everyone creeps toward his ceiling.
-  for (const f of c.world!) for (const k of STAT_KEYS) f.stats[k] += (f.caps[k] - f.stats[k]) * 0.012;
+  for (const f of c.world!) for (const k of STAT_KEYS) f.stats[k] += (f.caps[k] - f.stats[k]) * 0.01;
   return out;
+}
+
+/** A league's tournament without ours: played out by the odds, the winner in the news. */
+function npcTour(c: Career, t: Tier): void {
+  const inTour = new Set(c.tour ? c.tour.field.map((x) => x.id) : []);
+  let pool = c.world!.filter((x) => tierOf(x) === t && x.id !== c.champion && !inTour.has(x.id));
+  const n = pool.length >= 8 ? 8 : pool.length >= 4 ? 4 : 0;
+  if (!n) return;
+  pool = pool.sort(() => Math.random() - 0.5).slice(0, n);
+  while (pool.length > 1) {
+    const next: CareerFighter[] = [];
+    for (let i = 0; i < pool.length; i += 2) {
+      const [a, b] = [pool[i], pool[i + 1]];
+      const aWins = Math.random() < odds(a, b);
+      recordBout(c, aWins ? a : b, aWins ? b : a, Math.random() < 0.4);
+      next.push(aWins ? a : b);
+    }
+    pool = next;
+  }
+  news(c, `Турнир «${t.name}» выиграл ${short(pool[0])}`);
 }
 
 // ---------- Save ----------
 
 export function newCareer(): Career {
   const first = makeFighter(0.02, rnd(0.45, 0.85));
-  const c: Career = { money: 300, tokens: 100, roster: [first], market: [], marketAt: 0, tour: null, log: ['Карьера началась. У тебя один боец и немного денег.'], pick: first.id };
+  const c: Career = {
+    money: 300, tokens: 100, roster: [first], market: [], marketAt: 1, tour: null, log: ['Карьера началась. У тебя один боец и немного денег.'], pick: first.id,
+    day: 1, dayAt: Date.now(), events: [], planned: 0, nextEv: 1,
+  };
   c.gifts = ['tokens100'];
   ensureWorld(c);
+  plan(c);
   refreshMarket(c);
   return c;
 }
@@ -812,6 +985,29 @@ export function load(): Career | null {
       c.money += TIER_BY_ID[c.tour.tier]?.fee ?? 0;
       c.tour = null;
       c.log.unshift('Старый турнир отменён, взнос возвращён');
+    }
+    // A save from before the calendar: today is day 1, real-time waits are over.
+    if (!c.day) {
+      c.day = 1;
+      c.dayAt = Date.now();
+      c.events = [];
+      c.planned = 0;
+      c.nextEv = 1;
+      c.marketAt = 1;
+      for (const f of c.roster) {
+        f.busyFrom = 1;
+        f.busyUntil = f.session ? 2 : 0;
+        if (!f.session) f.busyWhat = '';
+      }
+      plan(c);
+      if (c.tour) {
+        const e = c.events.find((x) => x.day === 1 && x.kind === 'tour') ?? { id: c.nextEv++, day: 1, kind: 'tour' as const, tier: c.tour.tier };
+        if (!c.events.includes(e)) c.events.push(e);
+        e.tier = c.tour.tier;
+        e.f = c.tour.fighter;
+        c.tour.ev = e.id;
+      }
+      c.log.unshift('Карьера теперь идёт по календарю');
     }
     if (!c.gifts.includes('tokens100')) {
       c.gifts.push('tokens100');

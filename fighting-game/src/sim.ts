@@ -108,6 +108,9 @@ export interface Action {
   delayT?: number;
   /** A dodge toward where the blow comes from: if it lands, it lands far harder. */
   into?: boolean;
+  /** A lean back with the whole body, and the local time to fire back from it (while he is still missing). */
+  lean?: boolean;
+  counterAt?: number;
   /** Facing when the action started; spinning techniques turn from here. */
   baseFacing: number;
   /** How far an attack steps in during its wind-up, meters. */
@@ -929,6 +932,48 @@ export class Sim {
 
   usableMoves(f: Fighter): Move[] {
     return MOVES.filter((m) => f.canUse(m) && f.weightOf(m) > 0 && this.footReady(f, m));
+  }
+
+  /**
+   * The answer from a lean back: the weight is on the back foot, the leg is loaded, so a
+   * kick to the head is the natural shot (if his style kicks); otherwise the hardest blow
+   * that reaches. Balance is judged leniently: the lean was planned.
+   */
+  counterFromDodge(f: Fighter): boolean {
+    if (f.stability < 0.6 || f.stamina < 0.15) return false;
+    const e = f.enemy;
+    // More is coming from him (a combination goes on): firing now walks into the next blow.
+    if (e.comboLeft > 0 || (e.script && e.script.i < e.script.steps.length)) return false;
+    // Only a blow that lands before he is back: a kick needs a big miss, a jab fits anywhere.
+    const ea = e.action;
+    const freeIn = ea?.kind === 'attack' ? ((ea.dur - ea.t) / e.body) * (1 + 0.9 * ea.overcommit) : 0;
+    const slack = 0.12 + 0.15 / e.mind;
+    const dist = tmpA.subVectors(e.pos, f.pos).setY(0).length();
+    const room = Math.max(0, dist - f.radius - e.radius - 0.1);
+    let best: Move | null = null;
+    let bestScore = 0;
+    let bestLunge = 0;
+    for (const m of MOVES) {
+      const w = f.weightOf(m);
+      if (!w || !f.canUse(m) || m.spin || m.id === 'shove' || !m.path) continue;
+      const r = this.attackRange(f, m);
+      const lunge = Math.min(Math.max(m.lunge * f.scale, dist - r * 0.85 + 0.05), room);
+      if (dist > r + lunge + 0.05) continue;
+      if (f.windupOf(m) > freeIn + slack) continue;
+      const score = m.power * (0.6 + w) * (m.id === 'headkick' ? 1.8 : 1) * (0.8 + 0.4 * this.rng());
+      if (score > bestScore) {
+        bestScore = score;
+        best = m;
+        bestLunge = lunge;
+      }
+    }
+    if (!best) return false;
+    const zone = best.zones.includes('head') ? 'head' : best.zones[0];
+    this.startAction(f, 'attack', { move: best, zone, lunge: bestLunge, reply: true });
+    f.answerUntilW = 0;
+    f.comboLeft = 0;
+    f.say(`отклон → ${best.name}`);
+    return true;
   }
 
   /** A kick or knee stands on one leg: only from a settled stance, not on the move. */
@@ -2007,7 +2052,7 @@ export class Sim {
       case 'dodge':
         f.lastDodgeW = this.t;
         // The feet follow the head a little; a step out moves the whole body.
-        if (a.t >= (a.delayT ?? 0) && a.t < (a.delayT ?? 0) + (a.reachT ?? a.dur * 0.7)) f.self.copy(a.dir).multiplyScalar((a.pose === 'dodgeBack' ? 3.4 : 1.6) * Math.sqrt(f.scale));
+        if (a.t >= (a.delayT ?? 0) && a.t < (a.delayT ?? 0) + (a.reachT ?? a.dur * 0.7)) f.self.copy(a.dir).multiplyScalar((a.pose === 'dodgeBack' ? 3.4 : a.lean ? 2.4 : 1.6) * Math.sqrt(f.scale));
         else f.self.multiplyScalar(Math.max(0, 1 - 20 * dl));
         break;
       case 'block':
@@ -2049,6 +2094,11 @@ export class Sim {
       }
       default:
         f.self.multiplyScalar(Math.max(0, 1 - 15 * dl));
+    }
+    // Leaned back out of his blow: fire back while he is still missing.
+    if (a.kind === 'dodge' && a.counterAt !== undefined && a.t >= a.counterAt) {
+      a.counterAt = undefined;
+      if (f.enemy.state === 'ok' && this.counterFromDodge(f)) return;
     }
     // Combinations flow: the next blow starts while the last one is coming back.
     if (a.kind === 'attack' && u >= 0.72 && f.comboLeft > 0 && f.enemy.state === 'ok') {

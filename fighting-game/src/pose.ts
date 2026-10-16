@@ -402,6 +402,12 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
         out.crouch += (down / f.scale) * 0.75 * k;
         out.headPitch += (down / f.scale) * 30 * k - (o.z < 0 ? 12 : 0) * k;
         out.spineTwist += -deg(o.x) * 0.35 * k;
+        // A lean back is the whole body: weight onto the back leg, trunk away, chin up out of it.
+        if (a.lean) {
+          out.spineLean -= 10 * k;
+          out.headPitch -= 8 * k;
+          out.crouch += 0.05 * k;
+        }
         break;
       }
       case 'dash':

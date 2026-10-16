@@ -207,6 +207,14 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   a threat seen while busy stays pending. Measured: 3x more dodges, ~2x more
   dodge-counters, but no clear win-rate gain (blows in a combination land while the
   fighter reels). Highlights: `sim.moment()` -> banner + short slow-mo in main.ts.
+- Lean back + counter (user: lean back with the whole body, and while he misses a high kick
+  is already coming): 'отклон корпусом' head dodge (0.3 m back, `Action.lean`: trunk away,
+  chin up, hips carried back), favoured vs head kicks and as range-escape vs straight shots
+  (`tryDodge` scores; small random habit factor so all dodges show). With chance
+  (tech, evasion, aggression, gene 'counter') the dodge gets `counterAt` (just before his
+  blow passes); `Sim.counterFromDodge` fires the hardest blow that lands before he is back
+  (`windupOf` vs his remaining time), head kick preferred, not if his combination goes on.
+  Tool: `leanback` (~1 counter per 3-4 lean-backs; head kick counters ~30% clean).
 - Base damage 7.6 now that head shots land (fights ~50-90 s in tests).
 
 - Finishing: an AI that sees the enemy hurt (`e.dazed`) presses; hurt fighters cover up.

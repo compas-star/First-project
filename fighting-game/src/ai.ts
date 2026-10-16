@@ -270,15 +270,25 @@ function tryDodge(f: Fighter, e: Fighter, m: Move, ea: NonNullable<Fighter['acti
     { off: leftDir.clone().multiplyScalar(0.26 * s), cost: 1, say: 'уклон' },
     { off: leftDir.clone().multiplyScalar(-0.26 * s), cost: 1, say: 'уклон' },
     { off: up.clone().multiplyScalar(-0.3 * s).addScaledVector(d, 0.06 * s), cost: 1.12, say: 'нырок' },
-    { off: back.clone().multiplyScalar(0.24 * s).addScaledVector(up, 0.02 * s), cost: 1.05, say: 'отклон' },
+    { off: back.clone().multiplyScalar(0.3 * s).addScaledVector(up, 0.02 * s), cost: 1.05, say: 'отклон' },
     { off: up.clone().multiplyScalar(-0.22 * s).addScaledVector(leftDir, 0.18 * s), cost: 1.1, say: 'нырок в сторону' },
     { off: up.clone().multiplyScalar(-0.22 * s).addScaledVector(leftDir, -0.18 * s), cost: 1.1, say: 'нырок в сторону' },
   ];
   const clear = (o: THREE.Vector3, dir: THREE.Vector3) => o.clone().addScaledVector(dir, -o.dot(dir)).length();
   let best = opts[0];
   let bestScore = -1;
+  const kick = /Foot/.test(m.limb);
+  const straight = !curved && !rising && m.path !== 'over';
   for (const o of opts) {
-    const sc = clear(o.off, seenDir) / o.cost;
+    let sc = clear(o.off, seenDir) / o.cost;
+    if (o.say === 'отклон') {
+      // Leaning back takes the head out of a straight blow's reach, not off its line;
+      // and it is the classic answer to a kick at the head.
+      if (straight) sc = Math.max(sc, (0.85 * o.off.length()) / o.cost);
+      if (kick) sc *= 1.4;
+    }
+    // Every man has his habits: the choice is not always the textbook one.
+    sc *= 0.85 + 0.3 * sim.rng();
     if (sc > bestScore) {
       bestScore = sc;
       best = o;
@@ -301,6 +311,17 @@ function tryDodge(f: Fighter, e: Fighter, m: Move, ea: NonNullable<Fighter['acti
   // Wait for it: move only at the last moment, when the blow is committed and cannot follow.
   act.delayT = Math.max(0, tti * f.body - act.reachT - 0.02);
   act.into = into;
+  // Leaning back is done with the whole body: hips back, the trunk away, the chin last.
+  // From there the back leg is loaded: a fighter who reads it fires back as the blow goes past.
+  if (best.say === 'отклон') {
+    act.lean = true;
+    best.say = 'отклон корпусом';
+    const fire = (0.15 + 0.35 * T + 0.35 * E + 0.15 * f.p.aggression + f.gene('counter')) * (f.dazed ? 0.3 : 1);
+    if (!into && !f.winded && !sim.lab && sim.rng() < fire) {
+      act.counterAt = Math.max((act.delayT ?? 0) + (act.reachT ?? 0.1), passes - 0.06);
+      act.dur = Math.max(act.dur, act.counterAt + 0.05);
+    }
+  }
   if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * T + 0.4 * E) / f.mind;
   f.say(`${best.say}: ${m.name}`);
   return true;

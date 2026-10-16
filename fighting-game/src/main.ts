@@ -853,8 +853,10 @@ const lab = new LabUi(
       startFight();
     },
   },
-  view as unknown as { camView: string },
+  view,
 );
+
+(window as unknown as { __lab: LabUi }).__lab = lab;
 
 $('btnLab').addEventListener('click', () => {
   $('sheet').hidden = true;

@@ -7,7 +7,7 @@ import { MOVE_BY_ID } from '../src/moves';
 const ids = (process.argv[2] ?? 'jab,cross,hook,lowkick').split(',');
 RAPIER.init().then(() => {
   const sim = new Sim(defaultFighter(0), { ...defaultFighter(1), aggression: 0 }, 3, MAP_BY_ID.dojo);
-  sim.lab = { dist: 1.1, dummy: 'still', crouch: 0, lean: 0, side: 0, turn: 0 };
+  sim.lab = { dist: Number(process.env.DIST ?? 1.1), dummy: 'still', crouch: 0, lean: 0, side: 0, turn: 0 };
   while (sim.t < 2.5) sim.step(sim.stepSize());
   const f = sim.fighters[0];
   const steps = ids.map((id) => ({ move: id, zone: MOVE_BY_ID[id].zones[0] }));

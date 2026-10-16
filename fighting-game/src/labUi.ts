@@ -1,9 +1,13 @@
-// The combination lab: tap blows in order to build a combination, watch your fighter
+// The lab, two tabs. Combinations: tap blows in order to build one, watch your fighter
 // throw it at a dummy in slow motion from any side, save it, and fighters will use it
-// in their fights when its first blow fits the moment.
+// in their fights when its first blow fits the moment. A strike: drag handles in the
+// arena (wind-up, arc, shoulders, hips) and throw it at the dummy to see.
 import { MOVES, MOVE_BY_ID, type Move, type Zone } from './moves';
 import { combos, loadCombos, addCombo, removeCombo, toggleAi, comboName, exportCombos, importCombos, type ComboStep } from './combos';
 import type { Sim, Lab } from './sim';
+import { StrikeEditor } from './strikeEditor';
+import { isEdited, resetMove, exportCode, importCode, commit, shapeOf } from './moveEdits';
+import type * as THREE from 'three';
 import type { FighterParams } from './config';
 
 export interface LabHooks {
@@ -18,9 +22,23 @@ const SPEEDS: [number, string][] = [[1, '×1'], [0.5, '×½'], [0.25, '×¼'], [
 const VIEWS: ['side' | 'front' | 'back' | 'top' | 'auto', string][] = [['side', 'Сбоку'], ['front', 'Спереди'], ['back', 'Сзади'], ['top', 'Сверху'], ['auto', 'Свободно']];
 const ZONE_SHORT: Record<Zone, string> = { head: 'голова', body: 'корпус', leg: 'ноги' };
 
+interface LabView {
+  camView: string;
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  controls: { enabled: boolean };
+  canvas: HTMLCanvasElement;
+}
+
 export class LabUi {
   active = false;
   slow = 0.5;
+  private tab: 'combo' | 'strike' = 'combo';
+  private editor: StrikeEditor;
+  private single: Move = MOVE_BY_ID.jab;
+  private zone: Zone = 'head';
+  private repeat = false;
+  private nextW = 0;
   private sim: Sim | null = null;
   /** The combination being built. */
   private steps: ComboStep[] = [];
@@ -32,8 +50,13 @@ export class LabUi {
   private striker!: FighterParams;
   private dummyBase!: FighterParams;
 
-  constructor(private hooks: LabHooks, private view: { camView: string }) {
+  constructor(private hooks: LabHooks, private view: LabView) {
     loadCombos();
+    this.editor = new StrikeEditor(view, () => this.sim);
+    this.editor.onChange = () => {
+      const t = document.getElementById('labEdited');
+      if (t) t.textContent = isEdited(this.single.id) ? 'изменён' : '';
+    };
     $('lab').addEventListener('click', (e) => this.onClick(e));
     $('lab').addEventListener('input', (e) => {
       const el = e.target as HTMLInputElement;
@@ -54,6 +77,13 @@ export class LabUi {
     this.view.camView = 'side';
     this.rebuild();
     this.render();
+    this.syncEditor();
+  }
+
+  private syncEditor(): void {
+    this.editor.active = this.active && this.tab === 'strike';
+    this.editor.move = this.single;
+    this.editor.zone = this.zone;
   }
 
   stop(): void {
@@ -61,6 +91,7 @@ export class LabUi {
     document.getElementById('app')!.classList.remove('lab');
     $('lab').hidden = true;
     this.view.camView = 'auto';
+    this.editor.active = false;
     this.hooks.exit();
   }
 
@@ -87,10 +118,17 @@ export class LabUi {
         else this.show.hits++;
       }
     }
+    this.editor.update();
+    if (this.tab === 'strike' && this.repeat && !f.action && f.state === 'ok' && !this.show && sim.t >= this.nextW) this.play([{ move: this.single.id, zone: zoneFor(this.single, this.zone) }]);
     const s = this.show;
     if (s && !f.action && sim.t > s.started + 0.3) {
+      this.nextW = sim.t + 0.8;
       this.show = null;
-      this.setReport(f.state !== 'ok' ? 'Упал по ходу связки' : `Попало ${s.hits} из ${s.n}${s.blocked ? `, в блок ${s.blocked}` : ''}`);
+      this.setReport(
+        f.state !== 'ok' ? 'Упал по ходу удара'
+        : s.n === 1 ? (s.hits ? 'Попал' : s.blocked ? 'В блок' : 'Промах')
+        : `Попало ${s.hits} из ${s.n}${s.blocked ? `, в блок ${s.blocked}` : ''}`,
+      );
     }
     for (const x of sim.fighters) {
       x.daze = 0;
@@ -157,11 +195,22 @@ export class LabUi {
       .map((d) => `<button type="button" class="chip${d === this.lab.dummy ? ' on' : ''}" data-act="dummy" data-v="${d}">${d === 'still' ? 'стоит' : d === 'block' ? 'блокирует' : 'уклоняется'}</button>`)
       .join('');
 
-    $('lab').innerHTML = `
+    const common = `
+      <div class="lrow"><span>Скорость</span><div class="chips">${speeds}</div></div>
+      <div class="lrow"><span>Камера</span><div class="chips">${views}</div></div>
+      <div class="lrow"><span>Манекен</span><div class="chips">${dummy}</div></div>
+      <label class="lslider"><span>Дистанция до манекена</span><output>${this.lab.dist.toFixed(2)} м</output>
+        <input type="range" min="0.6" max="2.4" step="0.05" value="${this.lab.dist}" data-k="dist"></label>`;
+    const head = `
       <div class="lab-head">
         <button type="button" data-act="exit">← Выйти</button>
-        <b>Лаборатория связок</b>
-      </div>
+        <div class="ltabs"><button type="button" class="${this.tab === 'combo' ? 'on' : ''}" data-act="tab" data-v="combo">Связки</button><button type="button" class="${this.tab === 'strike' ? 'on' : ''}" data-act="tab" data-v="strike">Удар</button></div>
+      </div>`;
+    if (this.tab === 'strike') {
+      $('lab').innerHTML = head + this.strikeTab(groups) + common;
+      return;
+    }
+    $('lab').innerHTML = head + `
       <div class="lgroup">Твоя связка</div>
       <div class="cbuilt">${built}</div>
       <div class="lab-go3">
@@ -171,16 +220,43 @@ export class LabUi {
       </div>
       <div class="lab-report" id="labReport">${this.report}</div>
       ${palette}
-      <div class="lrow"><span>Скорость</span><div class="chips">${speeds}</div></div>
-      <div class="lrow"><span>Камера</span><div class="chips">${views}</div></div>
-      <div class="lrow"><span>Манекен</span><div class="chips">${dummy}</div></div>
-      <label class="lslider"><span>Дистанция до манекена</span><output>${this.lab.dist.toFixed(2)} м</output>
-        <input type="range" min="0.6" max="2.4" step="0.05" value="${this.lab.dist}" data-k="dist"></label>
+      ${common}
       <div class="lgroup">Сохранённые связки</div>
       <div class="fnote">Связки с «В боях: да» бойцы бьют сами в боях, когда первый удар подходит по дистанции и моменту.</div>
       ${saved || '<div class="fnote">Пока нет. Собери связку из двух и больше ударов и нажми «Сохранить».</div>'}
       <details><summary>Код связок (прислать мне)</summary>
         <div class="row"><button type="button" data-act="copy">Скопировать код</button><button type="button" data-act="paste">Вставить код</button></div>
+        <textarea id="labCode" rows="3" placeholder="сюда появится или вставится код"></textarea>
+      </details>`;
+  }
+
+  private strikeTab(groups: [string, (x: Move) => boolean][]): string {
+    const m = this.single;
+    const pick = groups
+      .map(([name, ok]) => `<div class="lgroup">${name}</div><div class="chips">${MOVES.filter(ok)
+        .map((x) => `<button type="button" class="chip${x === m ? ' on' : ''}" data-act="pick" data-id="${x.id}">${x.name}${isEdited(x.id) ? ' •' : ''}</button>`)
+        .join('')}</div>`)
+      .join('');
+    const zones = m.zones.map((z) => `<button type="button" class="chip${z === this.zone ? ' on' : ''}" data-act="szone" data-z="${z}">${ZONE_SHORT[z]}</button>`).join('');
+    const arc = m.path ? `<button type="button" data-act="arc">${shapeOf(m)?.via ? 'Дуга: да' : 'Дуга: нет'}</button>` : '';
+    return `
+      <div class="fnote">Тащи шары прямо на арене. <b style="color:#f2c14e">Жёлтый</b> — откуда идёт замах, <b style="color:#ff8a3a">оранжевый</b> — через что идёт дуга, <b style="color:#ff4a3a">красное кольцо</b> — куда бьёт. <b style="color:#3fa7ff">Синий</b> — плечи в момент удара (влево-вправо поворот, вверх-вниз наклон), <b style="color:#7fd88f">зелёный</b> — бёдра (поворот и присед). Камеру крути вокруг, где нет шаров.</div>
+      <div class="lab-go3">
+        <button type="button" class="primary" data-act="sstrike">Ударить</button>
+        <button type="button" class="${this.repeat ? 'on' : ''}" data-act="repeat">${this.repeat ? 'Повтор: да' : 'Повтор: нет'}</button>
+        ${arc || '<span></span>'}
+      </div>
+      <div class="lab-report" id="labReport">${this.report}</div>
+      <div class="lrow"><span>Куда</span><div class="chips">${zones}</div></div>
+      <div class="lab-go3">
+        <button type="button" data-act="faster">Быстрее</button>
+        <button type="button" data-act="slower">Медленнее</button>
+        <button type="button" data-act="sreset">Как было</button>
+      </div>
+      <div class="fnote">${m.name}: ${m.duration.toFixed(2)} с <span id="labEdited">${isEdited(m.id) ? 'изменён' : ''}</span>${m.path ? '' : ' · у этого удара нет траектории, только плечи и бёдра'}</div>
+      ${pick}
+      <details><summary>Код ударов (прислать мне)</summary>
+        <div class="row"><button type="button" data-act="scopy">Скопировать код</button><button type="button" data-act="spaste">Вставить код</button></div>
         <textarea id="labCode" rows="3" placeholder="сюда появится или вставится код"></textarea>
       </details>`;
   }
@@ -194,6 +270,49 @@ export class LabUi {
     switch (b.dataset.act) {
       case 'exit':
         return this.stop();
+      case 'tab':
+        this.tab = b.dataset.v as 'combo' | 'strike';
+        this.repeat = false;
+        this.report = this.tab === 'strike' ? 'Выбери удар и тащи шары на арене' : 'Нажимай удары внизу по порядку, потом «Показать»';
+        break;
+      case 'pick':
+        this.single = MOVE_BY_ID[b.dataset.id!];
+        this.zone = zoneFor(this.single, this.zone);
+        break;
+      case 'szone':
+        this.zone = b.dataset.z as Zone;
+        break;
+      case 'sstrike':
+        this.play([{ move: this.single.id, zone: zoneFor(this.single, this.zone) }]);
+        return;
+      case 'repeat':
+        this.repeat = !this.repeat;
+        break;
+      case 'arc':
+        this.editor.toggleArc();
+        break;
+      case 'faster':
+      case 'slower':
+        this.single.duration = Math.round(this.single.duration * (b.dataset.act === 'faster' ? 0.9 : 1.1) * 100) / 100;
+        commit(this.single);
+        break;
+      case 'sreset':
+        resetMove(this.single.id);
+        break;
+      case 'scopy': {
+        const code = exportCode();
+        const ta = $<HTMLTextAreaElement>('labCode');
+        ta.value = code;
+        ta.select();
+        navigator.clipboard?.writeText(code).catch(() => {});
+        this.setReport(code.length > 20 ? 'Код скопирован' : 'Ты ещё ничего не менял');
+        return;
+      }
+      case 'spaste': {
+        const r = importCode($<HTMLTextAreaElement>('labCode').value);
+        this.report = typeof r === 'number' ? `Загружено ударов: ${r}` : r;
+        break;
+      }
       case 'add': {
         const m = MOVE_BY_ID[b.dataset.id!];
         const prev = this.steps[this.steps.length - 1]?.zone ?? 'head';
@@ -261,6 +380,7 @@ export class LabUi {
     const scroll = panel.scrollTop;
     const open = [...panel.querySelectorAll('details')].map((d) => d.open);
     this.render();
+    this.syncEditor();
     [...panel.querySelectorAll('details')].forEach((d, k) => (d.open = open[k] ?? d.open));
     panel.scrollTop = scroll;
   }

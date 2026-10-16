@@ -1167,3 +1167,30 @@ button:disabled {
   border-color: var(--gold);
   color: var(--gold);
 }
+
+.ltabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  flex: 1;
+}
+.ltabs button.on,
+.lab-go3 button.on {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+/* On a wide screen the lab panel sits on the right, the arena keeps its height. */
+@media (min-width: 820px) {
+  #app.lab #scene {
+    height: 100%;
+    width: calc(100% - 400px);
+  }
+  #lab {
+    top: 0;
+    left: auto;
+    width: 400px;
+    height: 100%;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+}

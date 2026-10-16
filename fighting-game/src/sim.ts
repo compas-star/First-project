@@ -1934,7 +1934,8 @@ export class Sim {
               const e = f.enemy;
               if (e.state === 'ok' && this.rng() < 0.08 + 0.2 * e.p.aggression) this.gesture(e, 'beckon', 1, 0.5 / e.body);
               f.stability = Math.min(f.stability, 1 - 0.45 * a.overcommit);
-              if (a.overcommit > 0.45) f.comboLeft = 0;
+              // A planned combination goes on from the overshoot; an improvised one stops.
+              if (a.overcommit > 0.45 && !f.script) f.comboLeft = 0;
               f.say(`провалился после промаха: ${m.name}`);
             }
           }
@@ -2032,7 +2033,11 @@ export class Sim {
         f.comboLeft--;
         const m = MOVE_BY_ID[step.move];
         if (f.canUse(m) && this.footReady(f, m)) {
-          this.startAction(f, 'attack', { move: m, zone: m.zones.includes(step.zone) ? step.zone : m.zones[0], reply: a.reply });
+          // Steps in as far as the blow needs, like the first blow of an entry.
+          const dist = tmpA.subVectors(f.enemy.pos, f.pos).setY(0).length();
+          const room = Math.max(0, dist - f.radius - f.enemy.radius - 0.1);
+          const lunge = m.lunge < 0 ? m.lunge * f.scale : Math.min(Math.max(m.lunge * f.scale, dist - this.attackRange(f, m) * 0.85 + 0.05), room);
+          this.startAction(f, 'attack', { move: m, zone: m.zones.includes(step.zone) ? step.zone : m.zones[0], reply: a.reply, lunge });
           f.say(`и ${m.name}`);
           return;
         }

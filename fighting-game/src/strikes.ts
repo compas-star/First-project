@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { PartName } from './physics';
 import { partPoint, solveArmIK, solveLegIK, v } from './physics';
-import type { KickPath, PunchPath, PathShape } from './moves';
+import type { KickPath, PunchPath, PathShape, Move } from './moves';
 import type { Action, Fighter } from './sim';
 
 // Aimed punches. Instead of replaying a fixed arm animation, the fist follows a
@@ -79,7 +79,8 @@ function pathPoint(a: Action, shape: PathShape, start: THREE.Vector3, s: number,
   else fromBasis(shape.chamber, s, p1);
   // A punch to the head is loaded at the height of the target, so it travels level
   // into the face instead of rising through the guard and the chest.
-  if (!(m.limb.endsWith('Foot')) && m.path !== 'upper' && aim.y > p1.y) p1.y = Math.max(p1.y, aim.y - 0.06 * s);
+  // A shape drawn by the player in the editor is taken as drawn.
+  if (!m.shape && !(m.limb.endsWith('Foot')) && m.path !== 'upper' && aim.y > p1.y) p1.y = Math.max(p1.y, aim.y - 0.06 * s);
   if (u < loadEnd) {
     res.lerpVectors(p0, p1, ease(u / loadEnd));
   } else if (u < reachEnd) {
@@ -102,6 +103,20 @@ function pathPoint(a: Action, shape: PathShape, start: THREE.Vector3, s: number,
 function fromBasis(o: [number, number, number] | THREE.Vector3, s: number, res: THREE.Vector3): THREE.Vector3 {
   const [x, y, z] = Array.isArray(o) ? o : [o.x, o.y, o.z];
   return res.copy(shoulder).addScaledVector(fwd, x * s).addScaledVector(up, y * s).addScaledVector(out, z * s);
+}
+
+/** The frame a strike's path is drawn in, and where it starts and lands, for the editor. */
+export function strikeFrame(f: Fighter, m: Move, zone: 'head' | 'body' | 'leg'): { origin: THREE.Vector3; fwd: THREE.Vector3; up: THREE.Vector3; out: THREE.Vector3; fist: THREE.Vector3; target: THREE.Vector3; s: number } {
+  const kick = /Foot$/.test(m.limb);
+  const side = m.limb[0] as 'l' | 'r';
+  const joint = `${side}${kick ? 'Thigh' : 'Upper'}` as PartName;
+  const end = `${side}${kick ? 'Shin' : 'Fore'}` as PartName;
+  basis(f, side, joint);
+  const fist = partPoint(f.rag.byName[end], tmp.copy(kick ? ANKLE : FIST).multiplyScalar(f.scale), new THREE.Vector3());
+  const z = zone === 'body' && kick ? KICK_BODY : AIM[zone];
+  const e = f.enemy;
+  const target = partPoint(e.rag.byName[z.part], tmp.set(z.at[0], z.at[1], z.at[2]).multiplyScalar(e.scale), new THREE.Vector3());
+  return { origin: shoulder.clone(), fwd: fwd.clone(), up: up.clone(), out: out.clone(), fist, target, s: f.scale };
 }
 
 /** Where this punch is aimed right now, in world space. */
@@ -152,7 +167,7 @@ export function punchOverride(
   aim.addScaledVector(tmp, (kick ? 0.1 : 0.14) * s);
 
   const shape = m.shape ?? (kick ? KICKS[m.path as KickPath] : SHAPES[m.path as PunchPath]);
-  pathPoint(a, shape, a.handStart, s, hand, !kick && m.path === 'straight');
+  pathPoint(a, shape, a.handStart, s, hand, !kick && m.path === 'straight' && !m.shape);
 
   pole.set(0, 0, 0).addScaledVector(fwd, shape.pole[0]).addScaledVector(up, shape.pole[1]).addScaledVector(out, shape.pole[2]);
   const qu = (res[joint] ??= new THREE.Quaternion());

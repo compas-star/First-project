@@ -66,11 +66,11 @@ export function commit(m: Move): void {
   store();
 }
 
-/** Before changing a move's keyframes or shape, give it its own copies (the built-ins share objects). */
-export function own(m: Move): void {
+/** Before changing a move's keyframes (and its path shape), give it its own copies (the built-ins share objects). */
+export function own(m: Move, withShape = true): void {
   m.keys = m.keys.map((k: Keyframe) => ({ t: k.t, pose: { ...k.pose } }));
   const sh = shapeOf(m);
-  if (sh && !m.shape) m.shape = clone(sh);
+  if (withShape && sh && !m.shape) m.shape = clone(sh);
 }
 
 export function isEdited(id: string): boolean {

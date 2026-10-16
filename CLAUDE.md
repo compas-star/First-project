@@ -87,8 +87,16 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   `arena-combos-v1`, code `КОМБО1:`) are used by the AI: in `think`, for entry/bait/punish,
   50% chance to pick a saved combo whose first blow is in range (`Fighter.script` drives
   the chain in the combo flow of `runAction`). Tools: `combo1`, `combo2`.
-  `moveEdits.ts` (strike diffs, `Move.shape`, code `УДАР1:`) stays without UI; the user
-  wants to shape single strikes with the mouse instead (not built yet).
+  A planned combination is not cut by an overcommitted miss and each next blow steps in
+  as far as it needs (user: haymaker → left uppercut never started).
+- Lab tab "Удар" (`strikeEditor.ts`): handles in the 3D scene, dragged with mouse/finger:
+  yellow = wind-up point (`shape.chamber`), orange = arc point (`shape.via`), red ring =
+  target; blue = shoulders at impact (drag x = spineTwist, y = spineLean), green = hips
+  (pelvisTwist, crouch) on the impact keyframe (`impactKey`). Points are in the strike's
+  body frame (`strikeFrame` in strikes.ts). A drawn `Move.shape` is taken as drawn (no
+  straight-punch relative load, no target-height load). Faster/slower, reset, code
+  `УДАР1:` (`moveEdits.ts`, localStorage `arena-moves-v1`). On wide screens the lab
+  panel sits on the right. `window.__lab` is exposed for Playwright.
 
 ## Testing (no phone needed)
 

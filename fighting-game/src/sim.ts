@@ -191,6 +191,8 @@ export type GroundPos = 'guard' | 'side' | 'mount';
  * from the top, pass, mount, choke or lock an arm; from the bottom cover,
  * get back to guard, sweep, stand up, or catch a triangle or an armbar.
  */
+export type Gesture = 'paw' | 'flinch' | 'shake' | 'hold' | 'nod' | 'beckon' | 'wipe';
+
 export interface Grapple {
   top: Fighter;
   bottom: Fighter;
@@ -299,6 +301,18 @@ export class Fighter {
   rockV = 0;
   /** 0..1 how much he is bouncing right now: the rhythm comes and goes. */
   rhythm = 1;
+  /**
+   * A small piece of body language laid over the stance: pawing with the lead hand,
+   * flinching at a feint, shaking off a blow, holding the ribs, a nod, waving him in,
+   * wiping the face. Purely how he looks; any action takes over the pose.
+   */
+  gesture: Gesture | null = null;
+  gestureW = 0;
+  gestureDur = 0;
+  nextPawW = 0;
+  /** Guard habits from what he has been hit with: elbows down for the body, gloves up for the head. */
+  guardLow = 0;
+  guardHigh = 0;
   /** Pelvis orientation when the floor roles were (re)set, to turn smoothly into them. */
   groundFrom = new THREE.Quaternion();
   fall: FallKind = 'back';
@@ -793,8 +807,14 @@ export class Sim {
   ): Action {
     const m = opts.move;
     if (m && kind === 'attack') f.lastAttackW = this.t;
-    if (m && kind === 'attack') f.stamina -= (opts.feint ? 0.4 : 1) * (0.006 + 0.008 * m.power);
-    if (kind === 'dodge') f.stamina -= 0.02 * (1 - 0.6 * f.p.evasion);
+    if (m && kind === 'attack') f.stamina -= (opts.feint ? 0.4 : 1) * (0.01 + 0.013 * m.power);
+    if (kind === 'dodge') f.stamina -= 0.035 * (1 - 0.4 * f.p.evasion);
+    if (kind === 'block' || kind === 'parry') f.stamina -= 0.006;
+    if (kind === 'shoot' || kind === 'sprawl') f.stamina -= 0.04;
+    if (m && kind === 'attack' && opts.feint && f.enemy.state === 'ok' && !f.enemy.action && this.rng() < 0.65 - 0.45 * f.enemy.tech) {
+      // He bites on the feint: a flinch, a moment late.
+      this.gesture(f.enemy, 'flinch', 0.3, 0.1 / f.enemy.mind);
+    }
     if (m && kind === 'attack' && !opts.feint) {
       f.recentMoves.push(m.id);
       if (f.recentMoves.length > 3) f.recentMoves.shift();
@@ -902,7 +922,8 @@ export class Sim {
       // Getting the wind back: fastest standing still, none while throwing a blow.
       const busy = f.action?.kind === 'attack' ? 0 : 1;
       const moving = Math.min(1, f.groundSpeed / (f.stride * f.body + 1e-6));
-      f.stamina = Math.min(1, Math.max(0, f.stamina) + busy * (0.09 - 0.035 * moving) * dl);
+      // Tense muscles burn the wind too: he gets it back only when he can let go.
+      f.stamina = Math.min(1, Math.max(0, f.stamina) + busy * (0.075 - 0.04 * moving) * (1 - 0.55 * f.tension) * dl);
       if (!this.winner) {
         react(f, f.enemy, this);
         if (this.t >= f.nextThinkW) {
@@ -1049,6 +1070,7 @@ export class Sim {
         look: f.state === 'ok' && f.enemy.state !== 'ground' && f.action?.kind !== 'getup' && f.action?.kind !== 'victory'
           ? v(f.enemy.rag.byName.head.body.translation(), tmpLook) : undefined,
         lookTuck: 6 + 10 * f.tech,
+        lookK: f.gesture && f.gesture !== 'paw' && f.gesture !== 'beckon' && f.clock >= f.gestureW ? 0.3 : 0.8,
         override: aimed || standing || groundAimed ? this.override : undefined,
         partTone,
       },
@@ -1109,6 +1131,15 @@ export class Sim {
     f.self.lerp(want.multiplyScalar(mul), Math.min(1, 7 * dl));
   }
 
+  /** Starts a piece of body language after `delay` (world seconds), unless one is playing. */
+  gesture(f: Fighter, g: Gesture, dur: number, delay = 0): void {
+    if (f.gesture && f.clock < f.gestureW + f.gestureDur && g !== 'flinch' && g !== 'shake') return;
+    // Kept in his own clock, which the pose reads.
+    f.gesture = g;
+    f.gestureW = f.clock + delay * f.body;
+    f.gestureDur = dur;
+  }
+
   /**
    * What makes a standing body look alive rather than held up on strings: how tense
    * he is, the hips trailing the shoulders on a turn, and the weight rocking between
@@ -1140,6 +1171,17 @@ export class Sim {
     // Bouncing for a while, then flat-footed and still, then again: never a metronome.
     const g = Math.sin(t * 0.31 + ph[2]) + 0.5 * Math.sin(t * 0.83 + ph[0]);
     f.rhythm = THREE.MathUtils.smoothstep(g, -0.6, 0.6);
+
+    f.guardLow = Math.max(0, f.guardLow - 0.04 * h * f.body);
+    f.guardHigh = Math.max(0, f.guardHigh - 0.04 * h * f.body);
+    if (f.gesture && f.clock > f.gestureW + f.gestureDur) f.gesture = null;
+    if (!f.action && !f.gesture && e.state === 'ok') {
+      // Feeling for the distance with the lead hand, at the edge of range.
+      if (near > 0.15 && near < 0.85 && this.t >= f.nextPawW) {
+        f.nextPawW = this.t + (1.2 + 2.5 * this.rng()) / f.mind;
+        if (this.rng() < 0.4 + 0.5 * f.tech) this.gesture(f, 'paw', 0.4);
+      } else if (f.fatigue > 0.35 && near < 0.1 && this.rng() < h * 0.25) this.gesture(f, 'wipe', 0.8);
+    }
   }
 
   /** Muscle tone through a fall: rigid for a knockout, half-tense while folding, then loose. */
@@ -1631,8 +1673,10 @@ export class Sim {
     // Judges count clean, effective blows: the head most, the body next, arms barely.
     this.roundDealt[1 - def.team] += blocked ? 0.1 * dmg : dmg * (zone === 'head' ? 1.3 : zone === 'arm' ? 0.25 : 1);
     const size = Math.sqrt(def.mass / 78);
-    def.stamina -= dmg * (blocked ? 0.003 : zone === 'body' ? 0.012 : 0.004);
+    def.stamina -= dmg * (blocked ? 0.005 : zone === 'body' ? 0.022 : 0.007);
     if (blocked) return;
+    if (zone === 'body') def.guardLow = Math.min(1, def.guardLow + 0.3);
+    if (zone === 'head') def.guardHigh = Math.min(1, def.guardHigh + 0.25);
     if (zone === 'head') {
       const turning = m.path === 'hook' || m.path === 'upper' || m.path === 'over' || m.path === 'swing' || m.path === 'round' || /Knee|Elbow/.test(m.limb);
       // A blow he saw coming meets a tucked chin and a braced neck, the more so the better he is trained.
@@ -1648,6 +1692,13 @@ export class Sim {
       // The liver: a hard blow to the body, worse on a body already hurt, folds him a moment later.
       const r = (dmg / (11 * size * stone * Math.sqrt(def.tough))) * (0.6 + 0.8 * def.bodyHurt) * (seen ? 1 : 1.3);
       if (def.liverW === 0 && r > 1 && this.rng() < THREE.MathUtils.smoothstep(r, 1, 1.6)) def.liverW = this.t + (0.3 + 0.4 * this.rng()) / def.body;
+    }
+    // How he shows it: shaking off a hard one, holding the ribs, or a nod that it did not hurt.
+    if (!def.out && !def.flash && def.state === 'ok') {
+      const hard = dmg / (9 * size * Math.sqrt(def.tough));
+      if (zone === 'head' && hard > 0.9) this.gesture(def, 'shake', 0.7, 0.35 / def.body);
+      else if (zone === 'body' && hard > 0.45 && !def.liverW) this.gesture(def, 'hold', 1.1, 0.15 / def.body);
+      else if (zone === 'head' && hard < 0.3 && this.rng() < 0.12 + 0.2 * def.p.aggression) this.gesture(def, 'nod', 0.8, 0.4 / def.body);
     }
     if (zone !== 'arm' && def.daze > 0.5) {
       // Hurt and not answering: the referee steps in.
@@ -1672,7 +1723,7 @@ export class Sim {
     f.bodyHurt = Math.max(0, f.bodyHurt - dl * 0.004 * regen);
     if (f.tough > 1) for (const l of Object.keys(f.limbDmg) as Limb[]) f.limbDmg[l] = Math.max(0, f.limbDmg[l] - 0.35 * dl);
     // In a long fight the tiredness builds: work and damage wear him down round by round.
-    if (this.rules.roundLen && f.state === 'ok') f.wear = Math.min(1, f.wear + dl * (0.00035 + 0.0006 * (1 - Math.max(0, f.stamina)) + 0.0005 * f.daze));
+    if (this.rules.roundLen && f.state === 'ok') f.wear = Math.min(1, f.wear + dl * (0.0003 + 0.0005 * (1 - Math.max(0, f.stamina)) + 0.0005 * f.daze));
     f.stamina = Math.min(f.stamina, 1 - 0.5 * f.bodyHurt - 0.35 * f.wear);
     f.dazed = f.daze > 0.42;
     // A summary number for the plans and the training score: 100 fresh, 0 out.
@@ -1828,10 +1879,14 @@ export class Sim {
         if (u >= a1 && !a.missChecked && !a.feint) {
           a.missChecked = true;
           if (!a.hitDone) {
+            f.stamina -= 0.006 * m.power;
             const k = THREE.MathUtils.clamp((m.power - 1.3) / 1.4, 0, 1) * (1.2 - 0.6 * f.tech) + (m.style === 'wild' ? 0.25 : 0);
             if (k > 0.15) {
               a.overcommit = Math.min(1, k);
               f.stamina -= 0.03 * a.overcommit;
+              // He fell short with everything behind it: the other man may wave him in.
+              const e = f.enemy;
+              if (e.state === 'ok' && this.rng() < 0.08 + 0.2 * e.p.aggression) this.gesture(e, 'beckon', 1, 0.5 / e.body);
               f.stability = Math.min(f.stability, 1 - 0.45 * a.overcommit);
               if (a.overcommit > 0.45) f.comboLeft = 0;
               f.say(`провалился после промаха: ${m.name}`);

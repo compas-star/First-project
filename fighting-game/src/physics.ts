@@ -293,6 +293,8 @@ export interface Drive {
   look?: THREE.Vector3;
   /** Chin tucked this many degrees below the line to the look point. */
   lookTuck?: number;
+  /** 0..1 how much the eyes win over the pose's own head movement (default 0.8). */
+  lookK?: number;
   /** Pelvis height to hold instead of the pose height (getting up). */
   pelvisY?: number;
   /**
@@ -393,7 +395,7 @@ const lookE = new THREE.Euler(0, 0, 0, 'YXZ');
  * Turns the head's target toward a point: mostly the eyes on it, chin tucked, while
  * keeping some of the pose's own head movement (a slip still tilts the head).
  */
-function lookAt(head: Part, at: THREE.Vector3, tuckDeg: number, want: THREE.Quaternion): void {
+function lookAt(head: Part, at: THREE.Vector3, tuckDeg: number, k: number, want: THREE.Quaternion): void {
   const hp = head.body.translation();
   lookD.set(at.x - hp.x, at.y - hp.y, at.z - hp.z);
   const len = lookD.length();
@@ -410,7 +412,7 @@ function lookAt(head: Part, at: THREE.Vector3, tuckDeg: number, want: THREE.Quat
   const y = lookE.y + THREE.MathUtils.clamp(dy, -1.1, 1.1);
   const x = THREE.MathUtils.lerp(lookE.x, pitch, 0.7);
   lookQ.setFromEuler(lookE.set(x, y, lookE.z, 'YXZ'));
-  want.slerp(lookQ, 0.8);
+  want.slerp(lookQ, k);
 }
 
 function capped(tau: THREE.Vector3, cap: number): THREE.Vector3 {
@@ -458,7 +460,7 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
       const ov = d.override?.[p.name];
       if (ov) want.copy(ov);
       else t[p.key].getWorldQuaternion(want);
-      if (p.name === 'head' && d.look && !ov) lookAt(p, d.look, d.lookTuck ?? 10, want);
+      if (p.name === 'head' && d.look && !ov) lookAt(p, d.look, d.lookTuck ?? 10, d.lookK ?? 0.8, want);
       // Limbs have their own inertia: arms and the head follow a little behind the trunk.
       // Relaxed, they follow further behind, carried by the body rather than held.
       const rx = d.relax ?? 0;

@@ -147,6 +147,68 @@ function groundPose(f: Fighter, out: Pose): Pose {
   return out;
 }
 
+/** Body language over the stance (see Fighter.gesture). */
+function gesturePose(f: Fighter, out: Pose): void {
+  const g = f.gesture;
+  if (!g) return;
+  const tt = f.clock - f.gestureW;
+  if (tt < 0 || tt > f.gestureDur) return;
+  const u = tt / f.gestureDur;
+  const env = Math.sin(Math.PI * u);
+  // Sharp in, slower out.
+  const snap = u < 0.25 ? u / 0.25 : 1 - (u - 0.25) / 0.75;
+  switch (g) {
+    case 'paw':
+      // The lead glove reaches out half way and taps the air, then comes home.
+      out.lShF += 28 * env;
+      out.lEl -= 60 * env;
+      out.spineLean += 3 * env;
+      break;
+    case 'flinch':
+      out.crouch += 0.05 * snap;
+      out.lShF += 25 * snap;
+      out.rShF += 25 * snap;
+      out.lEl += 20 * snap;
+      out.rEl += 20 * snap;
+      out.headPitch += 14 * snap;
+      out.spineLean += 7 * snap;
+      out.spineSide += 6 * snap;
+      break;
+    case 'shake':
+      // Shaking the head clear.
+      out.spineSide += 9 * Math.sin(u * Math.PI * 6) * (1 - u);
+      out.headPitch += 8 * Math.sin(u * Math.PI * 4) * (1 - u) - 6 * env;
+      break;
+    case 'hold':
+      // The right glove goes to the liver, the body curls over it a little.
+      out.rShF = THREE.MathUtils.lerp(out.rShF, 20, env);
+      out.rShS = THREE.MathUtils.lerp(out.rShS, -8, env);
+      out.rEl = THREE.MathUtils.lerp(out.rEl, 120, env);
+      out.crouch += 0.06 * env;
+      out.spineLean += 14 * env;
+      out.spineSide -= 6 * env;
+      break;
+    case 'nod':
+      // "Didn't hurt": a short nod, chin up.
+      out.headPitch += 16 * Math.max(0, Math.sin(u * Math.PI * 4)) - 6 * env;
+      break;
+    case 'beckon':
+      // Come on: chin up, lead glove out, waving him in.
+      out.lShF = THREE.MathUtils.lerp(out.lShF, 65, env);
+      out.lEl = THREE.MathUtils.lerp(out.lEl, 45 + 40 * Math.max(0, Math.sin(u * Math.PI * 6)), env);
+      out.headPitch -= 8 * env;
+      out.spineLean -= 6 * env;
+      break;
+    case 'wipe':
+      // Wiping the face with a glove.
+      out.rShF = THREE.MathUtils.lerp(out.rShF, 95, env);
+      out.rShS = THREE.MathUtils.lerp(out.rShS, -25, env);
+      out.rEl = THREE.MathUtils.lerp(out.rEl, 140, env);
+      out.headPitch += 10 * env;
+      break;
+  }
+}
+
 export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
   if (f.state === 'ground' && f.grapple) return groundPose(f, out);
   if (f.state !== 'ok') return downPose(f, out);
@@ -212,6 +274,14 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
       out.lEl -= relax * 0.6;
       out.rEl -= relax * 0.5;
     }
+    // Guard habits: hit to the body, the elbows come down to the ribs; to the head, the gloves rise.
+    out.lShF += 12 * f.guardHigh - 8 * f.guardLow;
+    out.rShF += 12 * f.guardHigh - 8 * f.guardLow;
+    out.lEl += 10 * f.guardHigh + 14 * f.guardLow;
+    out.rEl += 10 * f.guardHigh + 14 * f.guardLow;
+    out.lShS -= 6 * f.guardLow;
+    out.rShS -= 6 * f.guardLow;
+    if (!a) gesturePose(f, out);
     // Tired: the hands sink, the chin comes up, the chest heaves.
     const tired = f.fatigue;
     if (tired > 0) {

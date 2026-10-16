@@ -152,6 +152,14 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   of hip motion), `rhythm` gates the bounce on and off; breathing. The head looks at the
   enemy's head (`Drive.look`, chin tucked by technique, keeps the pose's roll).
   Tool: `pspeed` (fastest parts by state). Known: rare shin spikes ~30-38 m/s (old issue).
+- Body language (`Fighter.gesture`, `Sim.gesture()`, `gesturePose` in pose.ts, own clock):
+  paw (lead hand feels the range), flinch (bit on a feint), shake (hard head shot), hold
+  (ribs after a body shot), nod (shrugging off a light one), beckon (after the other's
+  big miss), wipe (tired, at distance). Only when no action. `guardLow/guardHigh`: elbows
+  drop after body shots, gloves rise after head shots, fading. Tool: `gest`.
+- Fatigue x~1.6 (user: tire faster from everything): strikes, misses, dodges, blocks,
+  shots/sprawls and body hits cost more; regen is lower while tense (`tension`).
+  Quick fights: wind 0.2-0.5 after a minute. Bouts: wear reaches 1 by round 5.
 
 
 

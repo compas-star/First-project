@@ -3,7 +3,7 @@
 // in their fights when its first blow fits the moment. A strike: drag handles in the
 // arena (wind-up, arc, shoulders, hips) and throw it at the dummy to see.
 import { MOVES, MOVE_BY_ID, type Move, type Zone } from './moves';
-import { combos, loadCombos, addCombo, removeCombo, toggleAi, comboName, exportCombos, importCombos, type ComboStep } from './combos';
+import { CLASSICS, classicOn, toggleClassic, combos, loadCombos, addCombo, removeCombo, toggleAi, comboName, exportCombos, importCombos, type ComboStep } from './combos';
 import type { Sim, Lab } from './sim';
 import { StrikeEditor } from './strikeEditor';
 import { isEdited, resetMove, exportCode, importCode, commit, shapeOf } from './moveEdits';
@@ -20,6 +20,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 
 const SPEEDS: [number, string][] = [[1, '×1'], [0.5, '×½'], [0.25, '×¼'], [0.1, '×⅒']];
 const VIEWS: ['side' | 'front' | 'back' | 'top' | 'auto', string][] = [['side', 'Сбоку'], ['front', 'Спереди'], ['back', 'Сзади'], ['top', 'Сверху'], ['auto', 'Свободно']];
+const STYLE_SHORT: Record<string, string> = { mma: 'ММА', boxing: 'бокс', muaythai: 'тай', kickboxing: 'кикбоксинг', karate: 'каратэ', street: 'улица', wrestling: 'борьба', bjj: 'BJJ' };
 const ZONE_SHORT: Record<Zone, string> = { head: 'голова', body: 'корпус', leg: 'ноги' };
 
 interface LabView {
@@ -224,6 +225,15 @@ export class LabUi {
       <div class="lgroup">Сохранённые связки</div>
       <div class="fnote">Связки с «В боях: да» бойцы бьют сами в боях, когда первый удар подходит по дистанции и моменту.</div>
       ${saved || '<div class="fnote">Пока нет. Собери связку из двух и больше ударов и нажми «Сохранить».</div>'}
+      <details><summary>Классические связки (${CLASSICS.length})</summary>
+        <div class="fnote">Встроенные связки стилей. Боец бьёт классику только своего стиля и только из ударов, которые есть у этого стиля. «Взять» кладёт связку в конструктор, чтобы поменять.</div>
+        ${CLASSICS.map((c) => `<div class="csaved"><div><b>${c.name}</b><span>${comboName(c.steps)} · ${c.styles.map((x) => STYLE_SHORT[x] ?? x).join(', ')}</span></div>
+          <div class="crow3">
+            <button type="button" data-act="playclassic" data-id="${c.id}">Показать</button>
+            <button type="button" class="${classicOn(c.id) ? 'on' : ''}" data-act="classic" data-id="${c.id}">${classicOn(c.id) ? 'В боях: да' : 'В боях: нет'}</button>
+            <button type="button" data-act="take" data-id="${c.id}">Взять</button>
+          </div></div>`).join('')}
+      </details>
       <details><summary>Код связок (прислать мне)</summary>
         <div class="row"><button type="button" data-act="copy">Скопировать код</button><button type="button" data-act="paste">Вставить код</button></div>
         <textarea id="labCode" rows="3" placeholder="сюда появится или вставится код"></textarea>
@@ -342,6 +352,20 @@ export class LabUi {
         const c = combos().find((x) => x.id === b.dataset.id);
         if (c) this.play(c.steps);
         return;
+      }
+      case 'playclassic': {
+        const c = CLASSICS.find((x) => x.id === b.dataset.id);
+        if (c) this.play(c.steps);
+        return;
+      }
+      case 'classic':
+        toggleClassic(b.dataset.id!);
+        break;
+      case 'take': {
+        const c = CLASSICS.find((x) => x.id === b.dataset.id);
+        if (c) this.steps = c.steps.map((x) => ({ ...x }));
+        this.report = 'Связка в конструкторе наверху';
+        break;
       }
       case 'ai':
         toggleAi(b.dataset.id!);

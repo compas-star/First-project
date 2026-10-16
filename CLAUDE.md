@@ -87,6 +87,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   `arena-combos-v1`, code `КОМБО1:`) are used by the AI: in `think`, for entry/bait/punish,
   50% chance to pick a saved combo whose first blow is in range (`Fighter.script` drives
   the chain in the combo flow of `runAction`). Tools: `combo1`, `combo2`.
+  Built-in classics (`CLASSICS` in combos.ts, 42: boxing numbers, Dutch, Thai, karate,
+  MMA, street), each tagged with styles; a fighter uses a classic only of his style and
+  only if every blow has weight in his style. Pool: the player's combos first (65% when
+  both fit), then classics; 50% chance to throw a combo at all. Toggle per classic
+  (`arena-classics-off-v1`), "Взять" copies one into the builder. Tool: `classics`.
   A planned combination is not cut by an overcommitted miss and each next blow steps in
   as far as it needs (user: haymaker → left uppercut never started).
 - Lab tab "Удар" (`strikeEditor.ts`): handles in the 3D scene, dragged with mouse/finger:

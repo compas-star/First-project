@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { combos, comboName } from './combos';
+import { combos, comboName, CLASSICS, classicOn } from './combos';
 import { MOVE_BY_ID, type Move } from './moves';
 import type { Fighter, Sim } from './sim';
 import {
@@ -544,10 +544,15 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     let { m } = picked;
     const { why } = picked;
     // A combination the player built in the lab, if its first blow fits this moment.
-    const mine = go === 'entry' || go === 'bait' || go === 'punish'
-      ? combos().filter((c) => c.ai && c.steps.length > 1 && options.includes(MOVE_BY_ID[c.steps[0].move]) && c.steps.every((st) => f.canUse(MOVE_BY_ID[st.move])))
+    // Or a classic of his style (only blows from his own arsenal). The player's come first.
+    const starts = (steps: { move: string }[]) => steps.length > 1 && options.includes(MOVE_BY_ID[steps[0].move]);
+    const planned = go === 'entry' || go === 'bait' || go === 'punish';
+    const mine = planned ? combos().filter((c) => c.ai && starts(c.steps) && c.steps.every((st) => f.canUse(MOVE_BY_ID[st.move]))) : [];
+    const classic = planned
+      ? CLASSICS.filter((c) => classicOn(c.id) && c.styles.includes(f.p.discipline) && starts(c.steps) && c.steps.every((st) => f.canUse(MOVE_BY_ID[st.move]) && f.weightOf(MOVE_BY_ID[st.move]) > 0))
       : [];
-    const script = mine.length && sim.rng() < 0.5 ? mine[Math.floor(sim.rng() * mine.length)] : null;
+    const pool = mine.length && (!classic.length || sim.rng() < 0.65) ? mine : classic;
+    const script = pool.length && sim.rng() < 0.5 ? pool[Math.floor(sim.rng() * pool.length)] : null;
     if (script) m = MOVE_BY_ID[script.steps[0].move];
     f.script = null;
     const r = sim.attackRange(f, m);
@@ -561,7 +566,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
       f.script = { steps: script.steps, i: 1 };
       f.comboLeft = script.steps.length - 1;
       f.answerUntilW = 0;
-      f.say(`своя связка: ${comboName(script.steps)}`);
+      f.say(`${'name' in script ? `связка «${script.name}»` : 'своя связка'}: ${comboName(script.steps)}`);
       return;
     }
     if (go === 'entry' && m.path && sim.rng() < feintChance(f)) {

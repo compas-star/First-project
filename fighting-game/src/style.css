@@ -1194,3 +1194,17 @@ button:disabled {
     border-left: 1px solid var(--line);
   }
 }
+
+.crow3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+.crow3 button {
+  padding: 9px 6px;
+  font-size: 12px;
+}
+.crow3 button.on {
+  border-color: var(--gold);
+  color: var(--gold);
+}

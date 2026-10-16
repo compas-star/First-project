@@ -74,6 +74,10 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   tournaments (other bracket fights decided by `rating` odds). Market refreshes every 20
   min. Stand-up only (`Rules.standing` turns off shots and pounces). Saved in localStorage
   `arena-career-v1`. `FighterParams.cardio` scales stamina costs and regen.
+  UI is screen-based (user: the first tabbed version was unclear): home (fighter card +
+  big Train / Fight buttons, how-to card once), gym (pick stat row, then intensity with
+  the gain shown), fight ladder, preview (side-by-side stats, odds) before each fight,
+  result screen after. Start: $300 and 100 tokens; old saves got a one-off +100 (`gifts`).
 
 ## Testing (no phone needed)
 

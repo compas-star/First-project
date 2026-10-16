@@ -88,6 +88,10 @@ export interface Career {
   log: string[];
   /** The fighter the manager is looking at. */
   pick: string;
+  /** One-off gifts already given to this save (e.g. 'tokens100'). */
+  gifts?: string[];
+  /** The how-to card was closed. */
+  seenHelp?: boolean;
 }
 
 const KEY = 'arena-career-v1';
@@ -388,8 +392,8 @@ export function afterFight(c: Career, f: CareerFighter, t: Tier, opp: CareerFigh
     out.push(`Победа над ${opp.name}${r.ko ? ' досрочно' : ''}. Известность +${fame}`);
     if (!tour) {
       c.money += t.purse[0];
-      c.tokens += 1;
-      out.push(`Гонорар $${t.purse[0]}, жетон +1`);
+      c.tokens += 2;
+      out.push(`Гонорар $${t.purse[0]}, жетонов +2`);
     }
   } else {
     f.record.l++;
@@ -433,7 +437,7 @@ export function enterTour(c: Career, f: CareerFighter, t: Tier): string | null {
 }
 
 /** Odds between two fighters we do not watch. */
-function odds(a: CareerFighter, b: CareerFighter): number {
+export function odds(a: CareerFighter, b: CareerFighter): number {
   return 1 / (1 + Math.exp(-(rating(a) - rating(b)) / 7));
 }
 
@@ -484,7 +488,8 @@ export function tourFight(c: Career, f: CareerFighter, r: FightResult): string[]
 
 export function newCareer(): Career {
   const first = makeFighter(0.02, rnd(0.45, 0.85));
-  const c: Career = { money: 300, tokens: 10, roster: [first], market: [], marketAt: 0, tour: null, log: ['Карьера началась. У тебя один боец и немного денег.'], pick: first.id };
+  const c: Career = { money: 300, tokens: 100, roster: [first], market: [], marketAt: 0, tour: null, log: ['Карьера началась. У тебя один боец и немного денег.'], pick: first.id };
+  c.gifts = ['tokens100'];
   refreshMarket(c);
   return c;
 }
@@ -492,7 +497,16 @@ export function newCareer(): Career {
 export function load(): Career | null {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as Career) : null;
+    if (!raw) return null;
+    const c = JSON.parse(raw) as Career;
+    // A gift for saves made before the start went up to 100 tokens.
+    c.gifts ??= [];
+    if (!c.gifts.includes('tokens100')) {
+      c.gifts.push('tokens100');
+      c.tokens += 100;
+      c.log.unshift('Подарок: +100 жетонов');
+    }
+    return c;
   } catch {
     return null;
   }

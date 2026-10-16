@@ -168,7 +168,7 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
 
   if (tryDodge(f, e, m, ea, sim, tti, 0)) return;
 
-  if (tti > 0.05 / f.body && sim.rng() < 0.4 + 0.6 * f.tech + f.gene('block')) {
+  if (tti > 0.05 / f.body && sim.rng() < 0.4 + 0.6 * f.tech + f.gene('block') + (f.dazed ? 0.35 : 0)) {
     sim.startAction(f, 'block', { dur: 0.5 });
     if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * f.tech) / f.mind;
     noted(f, 'block');
@@ -191,7 +191,7 @@ function tryDodge(f: Fighter, e: Fighter, m: Move, ea: NonNullable<Fighter['acti
   const E = f.p.evasion;
   const T = f.tech;
   if (tti < (0.1 - 0.04 * E) / f.body) return false;
-  const chance = 0.15 + 0.4 * T + 0.8 * E + f.gene('dodge') + bonus;
+  const chance = (0.15 + 0.4 * T + 0.8 * E + f.gene('dodge') + bonus) * (f.dazed ? 0.5 : 1);
   if (sim.rng() > Math.min(0.96, chance)) return false;
 
   const s = f.scale;
@@ -453,6 +453,20 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   const tired = f.fatigue;
   if (tired > 0.5) f.wantDist = pref + 0.25 * tired * f.scale;
 
+  // He is hurt: no more waiting, go and finish it. Hurt myself: cover up and get away.
+  const finishing = e.dazed && !f.dazed && f.stamina > 0.1;
+  if (finishing) {
+    if (f.plan !== 'finish') {
+      f.plan = 'finish';
+      f.say('он поплыл, добиваю');
+    }
+    f.wantDist = gap + 0.05 * f.scale;
+    f.initiativeW = Math.min(f.initiativeW, sim.t);
+  } else if (f.dazed) {
+    f.plan = 'survive';
+    f.wantDist = pref + 0.9 * f.scale;
+  }
+
   let go: 'bait' | 'punish' | 'answer' | 'entry' | 'meet' | null = null;
   if (bit) go = 'bait';
   else if (opening && sim.rng() < (0.25 + 0.3 * tech) * Math.min(1.3, planEagerness(f, true) * 0.6)) go = 'punish';
@@ -495,7 +509,9 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     // Entries come in combinations; answers and counters are short.
     const base = f.style.comboLen * (0.5 + f.p.aggression) * (0.5 + sim.rng()) + planComboBonus(f);
     // A patient fighter throws short, clean combinations; a brawler keeps swinging.
-    const len = Math.round(go === 'entry' || go === 'bait' ? Math.min(patience > 0.45 ? 1 + (sim.rng() < 0.6 ? 1 : 0) : 3, base * (1 - 0.6 * patience)) : 1);
+    const len = finishing
+      ? 3 + Math.floor(sim.rng() * 3)
+      : Math.round(go === 'entry' || go === 'bait' ? Math.min(patience > 0.45 ? 1 + (sim.rng() < 0.6 ? 1 : 0) : 3, base * (1 - 0.6 * patience)) : 1);
     f.comboLeft = Math.max(0, len - 1);
     return;
   }

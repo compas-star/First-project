@@ -215,6 +215,18 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   blow passes); `Sim.counterFromDodge` fires the hardest blow that lands before he is back
   (`windupOf` vs his remaining time), head kick preferred, not if his combination goes on.
   Tool: `leanback` (~1 counter per 3-4 lean-backs; head kick counters ~30% clean).
+- Less "drunk" (user: they still fight like drunks). Tool `drunk` (trunk tilt, spin, parts
+  off target, time unstable/bracing, falls nobody caused, their causes); `selftrace`
+  (timeline before such a fall). Fixes: (1) a kick no longer counts as falling: while
+  kicking (not hit, not caught, no overcommit) stability is floored at 0.7+0.25 tech, and
+  the pelvis topple check allows the intended hip roll (up.y 0.15); (2) balance counts only
+  motion he did not ask for (`measureBalance(f, wanted)`: comVel minus 0.85 of his walk),
+  so lunges and walking are not falls; catching steps for any error, quicker when big;
+  (3) idle head movement is beats, not a sway (`pose.ts`: every ~0.5-1 s a sharp move to a
+  new spot or centre, held; was a constant sinusoid up to ±30°); rock and relax smaller
+  (arms 0.5, head 0.3, chest 0.15). Self-falls 1.5 -> ~0.3-0.5/min in presets 0-3; the
+  remaining ones in 'Тело против ума' are body collisions with the ×4 man.
+  Snappier punches: arrive at 15% of the window (was 35%), snap back with ease-out.
 - Base damage 7.6 now that head shots land (fights ~50-90 s in tests).
 
 - Finishing: an AI that sees the enemy hurt (`e.dazed`) presses; hurt fighters cover up.

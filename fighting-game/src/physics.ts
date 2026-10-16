@@ -464,7 +464,7 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
       // Limbs have their own inertia: arms and the head follow a little behind the trunk.
       // Relaxed, they follow further behind, carried by the body rather than held.
       const rx = d.relax ?? 0;
-      const soft = rx > 0 ? (ARMS.has(p.name) ? 1 - 0.75 * rx : p.name === 'head' ? 1 - 0.6 * rx : p.name === 'chest' ? 1 - 0.35 * rx : 1) : 1;
+      const soft = rx > 0 ? (ARMS.has(p.name) ? 1 - 0.5 * rx : p.name === 'head' ? 1 - 0.3 * rx : p.name === 'chest' ? 1 - 0.15 * rx : 1) : 1;
       const fq = (FREQ[p.name] ?? 1) * Math.sqrt(soft);
       rotErr(want, cur, alphaW).multiplyScalar(kp * fq * fq).addScaledVector(w, -kd * fq).multiplyScalar(stand * pt);
     }

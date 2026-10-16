@@ -1222,7 +1222,7 @@ export class Sim {
       // Rhythm: a light in-and-out bounce of a trained fighter.
       want.addScaledVector(d, Math.sin(f.clock * 2 * Math.PI * 1.4 + f.style.phase[0]) * 0.18 * f.style.bounce * f.bounceK * f.rhythm * f.stride);
       // The weight drifting between the feet moves the hips a few centimetres.
-      want.addScaledVector(d, f.rockV * 0.05 * f.scale);
+      want.addScaledVector(d, f.rockV * 0.03 * f.scale);
     }
     // On the ropes or against the wall: circle out toward open floor.
     const inward = { x: 0, z: 0 };
@@ -1900,7 +1900,7 @@ export class Sim {
 
     if (f.state === 'ok' && f.action?.kind !== 'getup') {
       // Balance over the feet: losing it lets the body tip over for real.
-      f.balanceErr = measureBalance(f);
+      f.balanceErr = measureBalance(f, tmpB.copy(f.self).multiplyScalar(f.body).setY(0));
       const s = f.scale;
       // On one leg in a kick the body leans to counter the leg: judged more leniently,
       // the planted foot grips and the trunk is held, as a trained kicker does.
@@ -1914,6 +1914,9 @@ export class Sim {
       // A moment off balance (during a step) is nothing; staying off it tips you over.
       const rate = (want < f.stability ? (this.t < f.wobbleUntilW ? 25 : 3) : 4) * h * f.body;
       f.stability += THREE.MathUtils.clamp(want - f.stability, -rate, rate);
+      // A kick is a planned trip onto one leg: the swinging leg's speed throws the measured
+      // balance far off, but a kicker who was not hit keeps his trunk held through it.
+      if (kicking && this.t >= f.wobbleUntilW && this.t >= f.caughtUntilW && !ka!.overcommit) f.stability = Math.max(f.stability, 0.7 + 0.25 * f.tech);
       if (f.stability < 0.5 && f.thought !== 'теряю равновесие' && this.rng() < 0.02) f.say('теряю равновесие');
       // Thrown off balance on one leg: abandon the kick and put the foot down to catch himself.
       const a = f.action;
@@ -1930,7 +1933,9 @@ export class Sim {
       // Physical loss of balance: the pelvis tips over or sinks to the floor.
       const up = tmpA.copy(UP).applyQuaternion(q(pb.rotation(), tmpQ));
       const low = p.y < PELVIS_Y * f.scale * 0.45;
-      if (up.y < 0.45 || low) f.topple += h * f.body;
+      // A round kick turns the hips over on purpose: only far beyond that is a fall.
+      const kick = f.action?.kind === 'attack' && FOOT_OF_STRIKER[f.action.move!.limb] !== undefined;
+      if (up.y < (kick ? 0.15 : 0.45) || low) f.topple += h * f.body;
       else f.topple = Math.max(0, f.topple - h * f.body);
       if (f.topple > 0.12) this.knockDown(f, 'потерял равновесие');
     }

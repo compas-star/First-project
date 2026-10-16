@@ -96,7 +96,12 @@ function distToSegment(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3): nu
  * is outside the base of support (0 = balanced). Feet in the air count where
  * they are about to land.
  */
-export function measureBalance(f: Fighter): number {
+/**
+ * How far the body is carried off its feet. Motion he makes on purpose (walking, a lunge,
+ * `wanted`, world m/s) is not falling: his legs are already doing it, so only the part of
+ * the body's speed he did not ask for (a push, a collision, a swing gone wrong) counts.
+ */
+export function measureBalance(f: Fighter, wanted?: THREE.Vector3): number {
   com.set(0, 0, 0);
   comVel.set(0, 0, 0);
   let M = 0;
@@ -108,6 +113,7 @@ export function measureBalance(f: Fighter): number {
   }
   com.divideScalar(M);
   comVel.divideScalar(M);
+  if (wanted) comVel.x -= 0.85 * wanted.x, comVel.z -= 0.85 * wanted.z;
   const h = Math.max(0.3 * f.scale, com.y);
   // A faster body brakes and steps proportionally faster, so its momentum carries it less far.
   const k = Math.sqrt(h / 9.81) / f.body;
@@ -149,7 +155,8 @@ export function updateFeet(f: Fighter, dl: number): void {
   left.set(Math.cos(f.facing), 0, -Math.sin(f.facing));
 
   // Catching step: the body is being carried off its feet, put a foot under it.
-  if (f.balanceErr > 0.04 * s && f.balanceErr < 0.7 * s) {
+  // Carried far (a collision, a big push): run under it with quick steps, as far as each reaches.
+  if (f.balanceErr > 0.04 * s) {
     let best = -1;
     let bestD = Infinity;
     for (const i of [0, 1] as const) {
@@ -169,7 +176,7 @@ export function updateFeet(f: Fighter, dl: number): void {
       tmp.subVectors(ft.to, ft.from);
       const reach = 0.75 * s;
       if (tmp.length() > reach) ft.to.copy(ft.from).addScaledVector(tmp.normalize(), reach);
-      ft.dur = 0.13;
+      ft.dur = f.balanceErr > 0.4 * s ? 0.1 : 0.13;
       ft.t = 0;
       return;
     }

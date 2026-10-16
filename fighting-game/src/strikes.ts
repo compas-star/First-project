@@ -77,7 +77,7 @@ function pathPoint(a: Action, shape: PathShape, start: THREE.Vector3, s: number,
   const [act0, act1] = m.active;
   const loadEnd = act0 * 0.5;
   // A kick's foot is heavy and lags its target: aim it to arrive as the window opens.
-  const reachEnd = m.limb.endsWith('Foot') ? act0 : act0 + (act1 - act0) * 0.35;
+  const reachEnd = m.limb.endsWith('Foot') ? act0 : act0 + (act1 - act0) * 0.15;
   fromBasis(start, s, p0);
   if (straightLoad) fromBasis(start, s, p1).addScaledVector(fwd, (shape.chamber[0] - 0.2) * s).addScaledVector(up, shape.chamber[1] * s);
   else fromBasis(shape.chamber, s, p1);
@@ -100,7 +100,9 @@ function pathPoint(a: Action, shape: PathShape, start: THREE.Vector3, s: number,
   } else if (u < act1) {
     res.copy(aim);
   } else {
-    res.lerpVectors(aim, p0, ease((u - act1) / (1 - act1)));
+    // Snapped back: off the target at once, settling into the guard at the end.
+    const r = THREE.MathUtils.clamp((u - act1) / (1 - act1), 0, 1);
+    res.lerpVectors(aim, p0, 1 - (1 - r) * (1 - r) * (1 - r));
   }
 }
 

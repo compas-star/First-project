@@ -209,6 +209,12 @@ function gesturePose(f: Fighter, out: Pose): void {
   }
 }
 
+/** 0..1 pseudo-random, fixed for a given number. */
+function hash(x: number): number {
+  const s = Math.sin(x * 12.9898) * 43758.5453;
+  return s - Math.floor(s);
+}
+
 export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
   if (f.state === 'ground' && f.grapple) return groundPose(f, out);
   if (f.state !== 'ok') return downPose(f, out);
@@ -223,20 +229,32 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
     const ev = f.p.evasion;
     const hm = st.headMove * disc.headMove * (1 + 1.6 * ev);
     const t = f.clock;
-    out.spineSide += hm * 9 * (Math.sin(t * 1.9 + st.phase[0]) + 0.5 * Math.sin(t * 3.7 + st.phase[1]));
-    out.spineLean += hm * 6 * Math.sin(t * 1.3 + st.phase[2]);
-    out.headPitch += hm * 4 * Math.sin(t * 2.3 + st.phase[1]);
-    // Bobbing and weaving: an elusive fighter keeps changing level and line.
+    // Head movement is not a sway: short, sharp changes of line, held, then the next.
+    // Each beat picks a spot (often back to centre); the trunk snaps there in a moment.
+    const P = 0.5 + 0.6 / (0.6 + hm);
+    const beat = Math.floor(t / P + st.phase[0]);
+    const into = t / P + st.phase[0] - beat;
+    const snap = smooth(Math.min(1, (into * P) / (0.13 / Math.max(1, 0.7 + 0.3 * hm))));
+    const spot = (n: number, k: number) => {
+      const r = hash(n * 7.13 + k * 3.7 + st.phase[1]);
+      return hash(n * 3.31 + st.phase[2]) < 0.35 ? 0 : r * 2 - 1;
+    };
+    const headAmp = Math.min(14, 3 + 5 * hm);
+    out.spineSide += headAmp * THREE.MathUtils.lerp(spot(beat - 1, 0), spot(beat, 0), snap);
+    out.spineLean += 0.45 * headAmp * THREE.MathUtils.lerp(spot(beat - 1, 1), spot(beat, 1), snap);
+    // A little life between the beats, much smaller than before.
+    out.spineSide += 1.5 * Math.sin(t * 1.9 + st.phase[0]);
+    // Bobbing and weaving: an elusive fighter now and then dips and changes level.
     if (ev > 0.3) {
       const w = (ev - 0.3) / 0.7;
-      out.crouch += 0.05 * w * (1 + Math.sin(t * 2.6 + st.phase[2]));
-      out.spineSide += 12 * w * Math.sin(t * 1.3 + st.phase[0]);
-      out.spineLean += 6 * w * (1 + Math.sin(t * 2.6 + st.phase[2]));
+      const dip = Math.max(0, THREE.MathUtils.lerp(spot(beat - 1, 2), spot(beat, 2), snap));
+      out.crouch += 0.08 * w * dip;
+      out.spineLean += 8 * w * dip;
     }
     out.crouch += 0.03 * st.bounce * disc.bounce * f.rhythm * (1 + Math.sin(t * 2 * Math.PI * 2.8 + st.phase[0]));
     // Weight on the front foot: the trunk over it, knees a touch deeper; on the back foot, upright.
-    out.spineLean += 5 * f.rock;
-    out.crouch += 0.012 * (1 + f.rock);
+    out.spineLean += 3 * f.rock;
+    out.crouch += 0.008 * (1 + f.rock);
     // Breathing, faster and deeper as the wind goes.
     const br = Math.sin(t * (1.6 + 2.4 * f.fatigue) + st.phase[1]);
     out.spineLean += (1.2 + 2 * f.fatigue) * br;

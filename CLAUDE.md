@@ -112,6 +112,15 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
 - Head punches used to rise through the guard and chest (and the chest hit zone
   reached the chin): head hits were ~5%. Punches now load at the target's height.
 
+- Evasion (`FighterParams.evasion`, slider "Вертлявость"): `tryDodge` in ai.ts picks
+  slip/duck/weave/pull/step-back for the blow; the wrong side (`Action.into`) takes
+  x1.5. Aimed strikes commit to the target once thrown (`Action.lockAim`), so dodges
+  really make them miss. Defending from the end of a stagger / chaining dodges;
+  a threat seen while busy stays pending. Measured: 3x more dodges, ~2x more
+  dodge-counters, but no clear win-rate gain (blows in a combination land while the
+  fighter reels). Highlights: `sim.moment()` -> banner + short slow-mo in main.ts.
+- Base damage 7.6 now that head shots land (fights ~50-90 s in tests).
+
 ## Next steps (planned with the user)
 
 1. Done: training (genome/train/school), memory across fights.

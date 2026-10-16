@@ -451,6 +451,16 @@ export const POSES = {
   dodgeL: { spineSide: -28, spineLean: 18, crouch: 0.2, headPitch: 5 },
   dodgeR: { spineSide: 28, spineLean: 18, crouch: 0.2, headPitch: 5 },
   dodgeBack: { spineLean: -18, crouch: 0.12, headPitch: -5 },
+  /** Slip: the head goes off the line to one side, the shoulder rolls in. */
+  slipL: { spineSide: -34, spineLean: 16, spineTwist: -16, crouch: 0.14, headPitch: 6 },
+  slipR: { spineSide: 34, spineLean: 16, spineTwist: 16, crouch: 0.14, headPitch: 6 },
+  /** Duck straight under. */
+  duck: { crouch: 0.36, spineLean: 40, headPitch: 22 },
+  /** Weave: down and across, under a hook. */
+  weaveL: { crouch: 0.3, spineLean: 30, spineSide: -26, spineTwist: -14, headPitch: 14 },
+  weaveR: { crouch: 0.3, spineLean: 30, spineSide: 26, spineTwist: 14, headPitch: 14 },
+  /** Pull: lean back from the waist, the blow passes in front of the chin. */
+  pull: { spineLean: -32, crouch: 0.05, headPitch: -18 },
   air: { lShF: 120, lShS: 60, lEl: 30, rShF: 110, rShS: 60, rEl: 30, lHipF: 30, rHipF: 10, lKn: 40, rKn: 20 },
   /** Lying: loose arms, slightly bent legs. */
   down: { lShF: 25, lShS: 35, lEl: 35, rShF: 20, rShS: 35, rEl: 30, lHipF: 15, rHipF: 5, lKn: 25, rKn: 15, crouch: 0, headPitch: 0, spineLean: 5 },

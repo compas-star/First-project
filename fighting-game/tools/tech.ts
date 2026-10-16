@@ -18,7 +18,7 @@ RAPIER.init().then(() => {
         for(const e of sim.events) if(e.type==='hit'){ const k=(e.target.team?'R→B ':'B→R ')+(e.blocked?'блок':e.zone); stat[k]=(stat[k]??0)+1; } else if (e.type==='break'||e.type==='parry'||e.type==='wave'||e.type==='catch') { const k=e.type; stat[k]=(stat[k]??0)+1; }
         sim.events.length=0;
       }
-      if(!sim.winner) draws++; else { wins[sim.winner.team]++; durs.push(sim.t); }
+      if(!sim.winner) draws++; else { wins[sim.winner.team]++; durs.push(sim.t); if (process.env.V) console.log("  end", s, sim.t.toFixed(1), sim.winner.enemy.koReason); }
       sim.dispose();
     }
     durs.sort((x,y)=>x-y);

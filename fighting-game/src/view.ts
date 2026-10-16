@@ -298,6 +298,8 @@ export class View {
   private waves: { mesh: THREE.Mesh; age: number; size: number }[] = [];
   private pops: { el: HTMLDivElement; pos: THREE.Vector3; age: number }[] = [];
   private shake = 0;
+  /** Called on a highlight (the HUD shows a banner and slows time). */
+  onMoment?: (text: string, focus: Fighter) => void;
   private hemi: THREE.HemisphereLight;
   private sun: THREE.DirectionalLight;
   private arena: Arena | null = null;
@@ -492,6 +494,9 @@ export class View {
         this.pop(ev.pos, 'печень!', ev.target.team);
         this.excite = 1;
         this.shake = Math.max(this.shake, 0.15);
+      } else if (ev.type === 'moment') {
+        this.excite = 1;
+        this.onMoment?.(ev.text, ev.focus);
       } else if (ev.type === 'bell') {
         this.excite = Math.max(this.excite, 0.7);
       } else if (ev.type === 'catch') {

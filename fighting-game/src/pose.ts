@@ -89,11 +89,19 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
     // Never quite still: the head and torso keep moving, a trained fighter bounces.
     const st = f.style;
     const disc = f.disc;
-    const hm = st.headMove * disc.headMove;
+    const ev = f.p.evasion;
+    const hm = st.headMove * disc.headMove * (1 + 1.6 * ev);
     const t = f.clock;
     out.spineSide += hm * 9 * (Math.sin(t * 1.9 + st.phase[0]) + 0.5 * Math.sin(t * 3.7 + st.phase[1]));
     out.spineLean += hm * 6 * Math.sin(t * 1.3 + st.phase[2]);
     out.headPitch += hm * 4 * Math.sin(t * 2.3 + st.phase[1]);
+    // Bobbing and weaving: an elusive fighter keeps changing level and line.
+    if (ev > 0.3) {
+      const w = (ev - 0.3) / 0.7;
+      out.crouch += 0.05 * w * (1 + Math.sin(t * 2.6 + st.phase[2]));
+      out.spineSide += 12 * w * Math.sin(t * 1.3 + st.phase[0]);
+      out.spineLean += 6 * w * (1 + Math.sin(t * 2.6 + st.phase[2]));
+    }
     out.crouch += 0.03 * st.bounce * disc.bounce * (1 + Math.sin(t * 2 * Math.PI * 2.8 + st.phase[0]));
     // Arms swing a little with the steps; the legs themselves are placed by the feet.
     const amp = Math.min(1, f.groundSpeed / (f.stride * f.body * 0.6));
@@ -204,7 +212,8 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
         lerpPose(out, out, withStance(POSES.parry), smooth(Math.min(u * 7, (1 - u) * 3)));
         break;
       case 'dodge':
-        lerpPose(out, out, withStance(POSES[a.pose ?? 'dodgeBack']), smooth(Math.min(u * 5, (1 - u) * 3)));
+        // Snappy in, smooth out; an elusive fighter goes deeper.
+        lerpPose(out, out, withStance(POSES[a.pose ?? 'dodgeBack']), smooth(Math.min(u * 6, (1 - u) * 2.6)) * (0.85 + 0.45 * f.p.evasion));
         break;
       case 'dash':
         lerpPose(out, out, withStance(POSES.dash), smooth(Math.min(u * 6, (1 - u) * 4)));

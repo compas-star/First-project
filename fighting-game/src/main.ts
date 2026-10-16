@@ -373,6 +373,17 @@ function showDraw(): void {
   $('ko').hidden = false;
 }
 
+// Highlights: a big caption and a moment of slow motion.
+let dramaUntil = 0;
+view.onMoment = (text) => {
+  const el = $('moment');
+  el.textContent = text;
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
+  dramaUntil = performance.now() + 900;
+};
+
 let last = performance.now();
 function frame(now: number): void {
   const realDt = Math.min(0.05, (now - last) / 1000);
@@ -381,7 +392,8 @@ function frame(now: number): void {
   // Once the fight is decided, ease toward normal speed so the knockout plays out in reasonable time.
   // A knockout plays in slow motion first, then eases toward normal speed.
   if (sim.winner) koReal += realDt;
-  const target = sim.winner ? (koReal < 1.8 ? Math.min(targetScale(), 0.22) : Math.max(targetScale(), 0.5)) : targetScale();
+  let target = sim.winner ? (koReal < 1.8 ? Math.min(targetScale(), 0.22) : Math.max(targetScale(), 0.5)) : targetScale();
+  if (now < dramaUntil && !sim.winner) target = Math.min(target, 0.3);
   view.koFocus = sim.winner ? sim.winner.enemy : null;
   const k = 1 - Math.exp(-realDt * 5);
   viewScale = Math.exp(Math.log(viewScale) + (Math.log(target) - Math.log(viewScale)) * k);
@@ -452,6 +464,7 @@ const SLIDERS: SliderDef[] = [
   { key: 'bodySpeed', label: 'Скорость тела', hint: 'Как быстро двигаются руки, ноги и всё тело.', min: 0.3, max: 50, log: true, unit: (v) => `×${fmt(v)}`, live: true },
   { key: 'mindSpeed', label: 'Скорость восприятия', hint: 'Как рано замечает замах и как часто думает.', min: 0.3, max: 50, log: true, unit: (v) => `×${fmt(v)}`, live: true },
   { key: 'aggression', label: 'Агрессия', hint: 'Атаковать или ждать момента.', min: 0, max: 1, step: 0.01, unit: (v) => `${Math.round(v * 100)}%`, live: true },
+  { key: 'evasion', label: 'Вертлявость', hint: 'Как много и как красиво уворачивается: уклоны, нырки, отклоны, и сразу контратака. Успевает, только если вовремя заметил удар (восприятие). Уворот не в ту сторону — нарвался.', min: 0, max: 1, step: 0.01, unit: (v) => `${Math.round(v * 100)}%`, live: true },
   { key: 'skill', label: 'Техника', hint: 'Высокая: держит дистанцию, входит выпадом и выходит, бьёт чисто. Низкая: лезет вплотную и машет.', min: 0, max: 1, step: 0.01, unit: (v) => `${Math.round(v * 100)}%`, live: true },
 ];
 

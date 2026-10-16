@@ -49,6 +49,8 @@ export const bout = (rounds: number): Rules => ({ roundLen: 300, rounds, tough: 
 export const ARENA_R = 12;
 export const FLOOR_R = 13.5;
 
+export type DodgePose = 'dodgeL' | 'dodgeR' | 'dodgeBack' | 'slipL' | 'slipR' | 'duck' | 'weaveL' | 'weaveR' | 'pull';
+
 export type ActionKind = 'attack' | 'dodge' | 'block' | 'stagger' | 'getup' | 'victory' | 'parry' | 'dash' | 'slam' | 'catch' | 'sweep';
 
 export type Limb = 'lArm' | 'rArm' | 'lLeg' | 'rLeg';
@@ -91,7 +93,11 @@ export interface Action {
   move?: Move;
   hitDone: boolean;
   dir: THREE.Vector3;
-  pose?: 'dodgeL' | 'dodgeR' | 'dodgeBack';
+  pose?: DodgePose;
+  /** Where an aimed strike was committed to, once thrown. */
+  lockAim?: THREE.Vector3;
+  /** A dodge toward where the blow comes from: if it lands, it lands far harder. */
+  into?: boolean;
   /** Facing when the action started; spinning techniques turn from here. */
   baseFacing: number;
   /** How far an attack steps in during its wind-up, meters. */
@@ -312,6 +318,8 @@ export class Fighter {
   /** Side whose hand is out or still coming back from a punch, open until this world time. */
   openSide: 'l' | 'r' = 'l';
   openUntilW = 0;
+  /** World time of his last dodge (a counter right after it is a highlight). */
+  lastDodgeW = -9;
   /** Last few strikes thrown, newest last. */
   recentMoves: string[] = [];
   /** A strike cut off in its wind-up: that limb hangs loose and swings on until this world time. */
@@ -462,7 +470,8 @@ export type SimEvent =
   | { type: 'parry'; pos: THREE.Vector3; target: Fighter }
   | { type: 'catch'; pos: THREE.Vector3; target: Fighter }
   | { type: 'liver'; pos: THREE.Vector3; target: Fighter }
-  | { type: 'bell'; round: number };
+  | { type: 'bell'; round: number }
+  | { type: 'moment'; text: string; focus: Fighter };
 
 const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
@@ -698,7 +707,7 @@ export class Sim {
     const m = opts.move;
     if (m && kind === 'attack') f.lastAttackW = this.t;
     if (m && kind === 'attack') f.stamina -= (opts.feint ? 0.4 : 1) * (0.006 + 0.008 * m.power);
-    if (kind === 'dodge') f.stamina -= 0.02;
+    if (kind === 'dodge') f.stamina -= 0.02 * (1 - 0.6 * f.p.evasion);
     if (m && kind === 'attack' && !opts.feint) {
       f.recentMoves.push(m.id);
       if (f.recentMoves.length > 3) f.recentMoves.shift();
@@ -1014,6 +1023,15 @@ export class Sim {
       default:
         return ko ? 0.05 : 0.2;
     }
+  }
+
+  private lastMomentW = -9;
+
+  /** A highlight worth slowing down for, not too often. */
+  moment(text: string, focus: Fighter): void {
+    if (this.t - this.lastMomentW < 1.5 && text !== 'НОКДАУН!') return;
+    this.lastMomentW = this.t;
+    this.events.push({ type: 'moment', text, focus });
   }
 
   /** Puts a fighter who fell out of the ring back on the canvas near the middle, lying down. */
@@ -1348,6 +1366,7 @@ export class Sim {
         }
         break;
       case 'dodge':
+        f.lastDodgeW = this.t;
         if (u < 0.7) f.self.copy(a.dir).multiplyScalar(3.4 * Math.sqrt(f.scale));
         else f.self.multiplyScalar(Math.max(0, 1 - 20 * dl));
         break;
@@ -1524,21 +1543,31 @@ export class Sim {
       def.action = null;
       this.startAction(def, 'sweep', { dur: 0.55 });
       def.say(`поймал ${m.name}!`);
+      this.moment('ПОЙМАЛ НОГУ!', att);
       att.say('ногу поймали!');
       this.events.push({ type: 'catch', pos: at, target: def });
       return;
     }
-    const blocked = def.action?.kind === 'block' && zone === 'arm' && facingAtt > 0;
+    // A blow that only brushes the arm of a man slipping it is a graze, like a block.
+    const grazed = def.action?.kind === 'dodge' && !def.action.into && zone === 'arm';
+    const blocked = (def.action?.kind === 'block' && zone === 'arm' && facingAtt > 0) || grazed;
     if (blocked) {
       def.blockedSide = part.name[0] as 'l' | 'r';
       def.blockedW = this.t + 0.5 / def.body;
     }
     // Damage grows slower than the impulse, so a much faster fighter needs a few blows, not one.
-    let dmg = (8.5 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
+    let dmg = (7.6 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
     // A well placed blow lands on the point, a wild one spreads its force.
     dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
     if (fromBehind) dmg *= 1.3;
     if (att.action?.shaken) dmg *= 0.6;
+    // Dodging: the wrong way walks into the blow, the right way it only grazes.
+    const dodge = def.action?.kind === 'dodge' ? def.action : null;
+    let walkedIn = false;
+    if (dodge?.into) {
+      dmg *= 1.5;
+      walkedIn = true;
+    } else if (dodge) dmg *= 0.4;
     // A shove moves the man, it does not hurt him.
     if (m.id === 'shove') {
       dmg *= 0.2;
@@ -1551,6 +1580,13 @@ export class Sim {
       push.multiplyScalar(0.6);
     }
     this.hurt(def, m, zone, dmg, blocked, seen);
+    // Highlights: the view slows down and names the moment.
+    if (!blocked && zone !== 'arm') {
+      if (walkedIn) this.moment('НАРВАЛСЯ!', def);
+      else if (this.t - att.lastDodgeW < 0.9 && dmg > 4) this.moment('УКЛОН И КОНТРА!', def);
+      else if (zone === 'head' && (m.id === 'headkick' || m.id === 'spinkick' || m.id === 'spinelbow' || m.id === 'flyknee') && dmg > 6)
+        this.moment(m.id === 'headkick' ? 'ХАЙ-КИК!' : m.id === 'flyknee' ? 'КОЛЕНО В ПРЫЖКЕ!' : 'С РАЗВОРОТА!', def);
+    }
     if (!blocked && !stone) {
       if (zone === 'head') def.snapHeadW = this.t + (0.1 + 0.012 * dmg) / def.body;
       if (zone === 'body' || dmg > 9) def.snapChestW = this.t + (0.08 + 0.008 * dmg) / def.body;
@@ -1610,6 +1646,7 @@ export class Sim {
     } else if (def.flash && def.state === 'ok') {
       // Knockdown: dropped, not out. He will get up, a little more shaken.
       def.flash = false;
+      this.moment('НОКДАУН!', def);
       def.knockdowns++;
       this.roundDowns[def.team]++;
       this.knockDown(def, 'нокдаун', this.rng() < 0.5 ? 'back' : 'buckle', side);

@@ -149,7 +149,14 @@ export function punchOverride(
   }
 
   // Aim through the target, so the strike is still accelerating at contact.
+  // Once the blow is thrown it is committed: it goes where the target was, with
+  // only a little correction, so a slip or a duck at that moment makes it miss.
   aimPointOf(f, a, aim);
+  const committed = a.t / a.dur >= m.active[0] * 0.55;
+  if (committed) {
+    if (!a.lockAim) a.lockAim = aim.clone();
+    aim.lerpVectors(a.lockAim, aim, 0.25 + 0.15 * f.tech);
+  }
   tmp.subVectors(aim, shoulder).normalize();
   aim.addScaledVector(tmp, (kick ? 0.1 : 0.14) * s);
 

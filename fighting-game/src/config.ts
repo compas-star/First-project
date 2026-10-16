@@ -29,6 +29,8 @@ export interface FighterParams {
    * clean punches with the body behind them, tight guard. Low: walks in and swings.
    */
   skill: number;
+  /** 0..1 elusiveness: how much and how well he slips, ducks and rolls instead of blocking. */
+  evasion: number;
   /** Fighting style: which strikes, what stance, what range. */
   discipline: DisciplineId;
   powers: PowerId[];
@@ -63,6 +65,7 @@ export function defaultFighter(team: 0 | 1): FighterParams {
     linkMind: true,
     aggression: 0.6,
     skill: 0.6,
+    evasion: 0.3,
     discipline: 'mma',
     powers: [],
   };
@@ -91,7 +94,7 @@ export const PRESETS: Preset[] = [
     map: 'alley',
     name: 'Мастер и драчун',
     desc: 'Красный: техничный, держит дистанцию. Синий: крупнее и злее, но без техники.',
-    red: { skill: 0.95, aggression: 0.55, weight: 72, discipline: 'mma', skin: 'ninja' },
+    red: { skill: 0.95, aggression: 0.55, weight: 72, discipline: 'mma', skin: 'ninja', evasion: 0.85 },
     blue: { skill: 0.1, aggression: 0.9, weight: 90, height: 1.86, strength: 1.2, discipline: 'street', skin: 'biker' },
   },
   {
@@ -99,7 +102,7 @@ export const PRESETS: Preset[] = [
     map: 'ring',
     name: 'Боксёр и таец',
     desc: 'Красный: бокс, руки и работа головой. Синий: тайский бокс, ноги, локти, колени.',
-    red: { discipline: 'boxing', skill: 0.85, aggression: 0.65 },
+    red: { discipline: 'boxing', skill: 0.85, aggression: 0.65, evasion: 0.75 },
     blue: { discipline: 'muaythai', skill: 0.85, aggression: 0.6 },
   },
   {

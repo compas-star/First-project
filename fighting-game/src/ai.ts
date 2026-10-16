@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MOVE_BY_ID, type Move } from './moves';
-import type { Fighter, Sim } from './sim';
+import type { DodgePose, Fighter, Sim } from './sim';
 import {
   updatePlan, planDistance, planEagerness, planComboBonus, moveWeight, bodyBias, feintChance, counterBonus,
   type Reaction,
@@ -55,12 +55,29 @@ function noted(f: Fighter, r: Reaction): void {
 }
 
 export function react(f: Fighter, e: Fighter, sim: Sim): void {
+  // Coming out of one slip he can go straight into the next (bob and weave through a
+  // combination), and the end of a stagger is time enough to get the hands back up.
+  // If no new defence is chosen, what he was doing goes on.
+  const own = f.action;
+  const E = f.p.evasion;
+  const free =
+    (own?.kind === 'dodge' && own.t > own.dur * (0.55 - 0.3 * E)) ||
+    (own?.kind === 'stagger' && own.t > own.dur * (0.75 - 0.35 * Math.max(E, f.tech)));
+  if (free) f.action = null;
+  reactInner(f, e, sim);
+  if (free && f.action === null) f.action = own;
+}
+
+function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
   const ea = e.action;
   if (!ea || (ea.kind !== 'attack' && ea.kind !== 'slam') || e.state !== 'ok') return;
   if (f.handledThreat === ea.id) return;
   // Reaction time varies from blow to blow, so a slightly slower fighter still catches some.
   const jitter = 0.65 + 0.7 * (((Math.sin(ea.id * 12.9898 + f.team * 78.233) * 43758.5453) % 1 + 1) % 1);
   if (sim.t < ea.startW + f.reactDelay * jitter) return;
+  // Busy reeling or recovering: the blow stays on his mind until he can do something about it.
+  const busy = f.action && f.action.kind !== 'block' && f.action.kind !== 'attack';
+  if (busy && ea.kind === 'attack') return;
   f.handledThreat = ea.id;
 
   d.subVectors(e.pos, f.pos).setY(0);
@@ -118,6 +135,9 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
     return;
   }
 
+  // An elusive fighter goes to his head movement first, then counters off it.
+  if (sim.rng() < f.p.evasion * 0.7 && tryDodge(f, e, m, ea, sim, tti, 0.15)) return;
+
   // Counter: land a strike before theirs connects.
   const counters = sim
     .usableMoves(f)
@@ -146,21 +166,7 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
     return;
   }
 
-  if (tti > 0.1 / f.body && sim.rng() < 0.3 + 0.65 * f.tech + f.gene('dodge')) {
-    if (m.dodge === 'back') {
-      noted(f, 'back');
-      sim.startAction(f, 'dodge', { dur: 0.3, dir: d.clone().negate(), pose: 'dodgeBack' });
-      if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * f.tech) / f.mind;
-      f.say(`отскок от ${m.name}`);
-    } else {
-      const { dir, left } = sideStep(sim, f);
-      noted(f, 'slip');
-      sim.startAction(f, 'dodge', { dur: 0.28, dir, pose: left ? 'dodgeL' : 'dodgeR' });
-      if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * f.tech) / f.mind;
-      f.say(`уклон от ${m.name}`);
-    }
-    return;
-  }
+  if (tryDodge(f, e, m, ea, sim, tti, 0)) return;
 
   if (tti > 0.05 / f.body && sim.rng() < 0.4 + 0.6 * f.tech + f.gene('block')) {
     sim.startAction(f, 'block', { dur: 0.5 });
@@ -172,6 +178,64 @@ export function react(f: Fighter, e: Fighter, sim: Sim): void {
 
   noted(f, 'none');
   f.say('не успеваю!');
+}
+
+/**
+ * Slip, duck, weave, pull back or step out, picked for the blow that is coming.
+ * A hook is ducked or weaved under, an uppercut or a knee is pulled away from,
+ * a straight shot is slipped. The wrong choice moves the head into the blow;
+ * technique and elusiveness make it rarer. Needs time: a blow seen too late
+ * cannot be dodged, which is where perception speed comes in.
+ */
+function tryDodge(f: Fighter, e: Fighter, m: Move, ea: NonNullable<Fighter['action']>, sim: Sim, tti: number, bonus: number): boolean {
+  const E = f.p.evasion;
+  const T = f.tech;
+  if (tti < (0.1 - 0.04 * E) / f.body) return false;
+  const chance = 0.15 + 0.4 * T + 0.8 * E + f.gene('dodge') + bonus;
+  if (sim.rng() > Math.min(0.96, chance)) return false;
+
+  const back = d.clone().negate();
+  const leftDir = new THREE.Vector3(d.z, 0, -d.x);
+  // Facing each other, his left hand or foot comes in on my right side.
+  const from: 'l' | 'r' = m.limb[0] === 'l' ? 'r' : 'l';
+  const away: 'l' | 'r' = from === 'l' ? 'r' : 'l';
+  const curved = m.path === 'hook' || m.path === 'swing' || m.path === 'over' || m.path === 'round' || !!m.spin || /Elbow/.test(m.limb);
+  const rising = m.path === 'upper' || /Knee/.test(m.limb);
+  const zone = ea.zone;
+  type Pick = { pose: DodgePose; dir: THREE.Vector3; into?: boolean; say: string };
+  const side = (s: 'l' | 'r', k: number) => leftDir.clone().multiplyScalar(s === 'l' ? k : -k);
+  let good: Pick[];
+  let bad: Pick | null = null;
+  if (zone === 'leg') {
+    good = [{ pose: 'dodgeBack', dir: back, say: 'убрал ногу' }];
+  } else if (zone === 'body') {
+    good = [{ pose: 'dodgeBack', dir: back, say: 'отскок' }, { pose: 'pull', dir: back.clone().multiplyScalar(0.5), say: 'отклон' }];
+    if (curved) bad = { pose: from === 'l' ? 'slipL' : 'slipR', dir: side(from, 0.35), into: true, say: 'уклон' };
+  } else if (rising) {
+    good = [{ pose: 'pull', dir: back.clone().multiplyScalar(0.35), say: 'отклон назад' }, { pose: 'dodgeBack', dir: back, say: 'отскок' }];
+    bad = { pose: 'duck', dir: new THREE.Vector3(), into: true, say: 'нырок' };
+  } else if (curved) {
+    good = [
+      { pose: 'duck', dir: new THREE.Vector3(), say: 'нырок' },
+      { pose: away === 'l' ? 'weaveL' : 'weaveR', dir: side(away, 0.25).addScaledVector(back, 0.1), say: 'ушёл нырком' },
+      { pose: 'pull', dir: back.clone().multiplyScalar(0.35), say: 'отклон' },
+    ];
+    bad = { pose: from === 'l' ? 'slipL' : 'slipR', dir: side(from, 0.35), into: true, say: 'уклон' };
+  } else {
+    const s0: 'l' | 'r' = sim.rng() < 0.5 ? 'l' : 'r';
+    good = [
+      { pose: s0 === 'l' ? 'slipL' : 'slipR', dir: side(s0, 0.35), say: 'уклон' },
+      { pose: 'pull', dir: back.clone().multiplyScalar(0.35), say: 'отклон' },
+    ];
+  }
+  const right = 0.5 + 0.45 * Math.min(1, 0.5 * T + 0.7 * E);
+  const pick = bad && sim.rng() > right ? bad : good[Math.floor(sim.rng() * good.length)];
+  noted(f, pick.pose === 'dodgeBack' || pick.pose === 'pull' ? 'back' : 'slip');
+  const act = sim.startAction(f, 'dodge', { dur: (0.34 - 0.08 * E) * (pick.pose === 'dodgeBack' ? 1 : 0.9), dir: pick.dir, pose: pick.pose });
+  act.into = !!pick.into;
+  if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * T + 0.4 * E) / f.mind;
+  f.say(`${pick.say}: ${m.name}`);
+  return true;
 }
 
 /** Say something only when it changes, so the bubble does not flicker. */
@@ -351,7 +415,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   let go: 'bait' | 'punish' | 'answer' | 'entry' | 'meet' | null = null;
   if (bit) go = 'bait';
   else if (opening && sim.rng() < (0.25 + 0.3 * tech) * Math.min(1.3, planEagerness(f, true) * 0.6)) go = 'punish';
-  else if (answering && sim.rng() < 0.12 + 0.2 * tech) go = 'answer';
+  else if (answering && sim.rng() < 0.12 + 0.2 * tech + (sim.t - f.lastDodgeW < 0.6 ? 0.6 * f.p.evasion : 0)) go = 'answer';
   else if (behind && sim.rng() < 0.5) go = 'punish';
   else if (sim.t >= f.initiativeW) go = f.stamina < 0.12 ? null : 'entry';
   else if (steppedIn && sim.rng() < 0.08 + 0.3 * tech) go = 'meet';

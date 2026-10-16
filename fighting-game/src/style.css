@@ -1303,3 +1303,83 @@ button:disabled {
 #rec {
   z-index: 20;
 }
+
+.nav4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.nav4 button {
+  padding: 11px 4px;
+  font-size: 12px;
+}
+.nav4 b {
+  color: var(--gold);
+}
+.newsbox {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+}
+.newsbox small {
+  color: var(--muted);
+}
+.belt {
+  color: var(--gold);
+}
+.rival {
+  color: #ff8a7a;
+  font-style: normal;
+}
+.friend {
+  color: #7fd88f;
+}
+.titlecard {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--gold);
+  background: rgba(242, 193, 78, 0.08);
+  font-size: 12.5px;
+}
+.titlecard b {
+  font: 16px/1.15 var(--display);
+  color: var(--gold);
+}
+.rlist {
+  display: grid;
+  gap: 4px;
+}
+.rrow {
+  display: grid;
+  grid-template-columns: 30px 1fr auto 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  text-align: left;
+  font-weight: 500;
+}
+.rrow.mine {
+  border-color: var(--gold);
+}
+.rpl {
+  font: 700 13px/1 var(--mono);
+  color: var(--muted);
+}
+.rnm {
+  font-size: 13px;
+}
+.rst {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.rrow b {
+  font: 700 13px/1 var(--mono);
+  color: var(--gold);
+  text-align: right;
+}

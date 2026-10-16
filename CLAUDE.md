@@ -83,6 +83,19 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   "Смотреть" (played in the arena as AI vs AI, `settle(c, m, winner)`) or "Пропустить"
   (`settle` by `odds`), "Пропустить все чужие бои" (`settleOthers`). A loss knocks ours out,
   the rest can be watched or "Досчитать" (`closeTour`). Test buttons +◆ / ±$ in the top bar.
+  Living world (`Career.world`, 60 named fighters, `ensureWorld` also upgrades old saves):
+  Elo ranking points (`recordBout` for every bout, ours and theirs), `rankings`/`rankOf`,
+  a belt (`Career.champion`, changes only in title bouts; top-3 get a shot via `titleBout`,
+  ours defends against the best contender; purse `TITLE_PURSE`). Fight nights every
+  `NIGHT_MS` (4 min real time, caught up on load, max 6 at once): 8 bouts by odds, a title
+  defence every 3rd night, one trash-talk event (sometimes at ours), the world creeps toward
+  its caps. Single fights and tournament fields come from the world (`worldOpponent`,
+  `worldField`, new faces if a league runs short). Feelings `Career.rel` (-100..100 per
+  pair): KOs breed bad blood, close fights respect; <= -50 = sworn enemies: purse x1.5,
+  fame x2, both fight angrier (`toParams(..., angry)`: aggression +0.25, skill x0.93).
+  Screens: 'rank' (top 20 + ours, ⚔ enemies), 'profile' (any fighter, feelings, "Вызвать"
+  in his league), title card on the fights screen, news on home and in the journal.
+  Tool: `worldtest`.
 - "Записать бой" (`recorder.ts`): the last 12 s at 15 fps (via `Sim.onStep`), body segments
   in cm as deltas + actions + hits, gzip+base64 code `БОЙ1:` (~16k chars). Button shows when
   paused (#btnRec) and on the KO card. Decode: `tools/run.sh replay code.txt out.json`, then

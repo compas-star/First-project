@@ -40,6 +40,8 @@ export interface CareerFighter {
   busyWhat: string;
   /** A training session in progress, applied when it ends. */
   session?: { stat: StatKey; gain: number; injury: number };
+  /** Ranking points (Elo): wins over better men raise them more. */
+  elo?: number;
 }
 
 export interface Tier {
@@ -99,6 +101,17 @@ export interface Career {
   gifts?: string[];
   /** The how-to card was closed. */
   seenHelp?: boolean;
+  /** Everyone else in the fight world: they fight each other, rise and fall. */
+  world?: CareerFighter[];
+  /** Holder of the belt (any fighter's id). */
+  champion?: string | null;
+  /** Feelings between two fighters, -100 (sworn enemies) .. 100, by pair key. */
+  rel?: Record<string, number>;
+  /** What happened in the fight world, newest first. */
+  news?: string[];
+  /** When the world last had a fight night. */
+  worldAt?: number;
+  nights?: number;
 }
 
 const KEY = 'arena-career-v1';
@@ -106,8 +119,8 @@ export const MAX_ROSTER = 4;
 
 // ---------- People ----------
 
-const FIRST = ['Игорь', 'Артём', 'Дима', 'Саша', 'Руслан', 'Тимур', 'Миша', 'Гоша', 'Костя', 'Олег', 'Вадим', 'Стас', 'Рома', 'Женя', 'Леха', 'Марат', 'Самир', 'Паша', 'Ярик', 'Федя', 'Гена', 'Влад', 'Ильдар', 'Борис'];
-const LAST = ['Ветров', 'Крюков', 'Шаталов', 'Гром', 'Бурков', 'Соколов', 'Рябов', 'Лисин', 'Каримов', 'Зуев', 'Медведев', 'Орлов', 'Ткач', 'Седых', 'Ковалёв', 'Мамаев', 'Чернов', 'Воронин', 'Хан', 'Дубов'];
+const FIRST = ['Антон', 'Егор', 'Никита', 'Сергей', 'Денис', 'Арсен', 'Эрик', 'Глеб', 'Игорь', 'Артём', 'Дима', 'Саша', 'Руслан', 'Тимур', 'Миша', 'Гоша', 'Костя', 'Олег', 'Вадим', 'Стас', 'Рома', 'Женя', 'Леха', 'Марат', 'Самир', 'Паша', 'Ярик', 'Федя', 'Гена', 'Влад', 'Ильдар', 'Борис'];
+const LAST = ['Белов', 'Сафин', 'Гусев', 'Жуков', 'Абрамов', 'Котов', 'Назаров', 'Пахомов', 'Ветров', 'Крюков', 'Шаталов', 'Гром', 'Бурков', 'Соколов', 'Рябов', 'Лисин', 'Каримов', 'Зуев', 'Медведев', 'Орлов', 'Ткач', 'Седых', 'Ковалёв', 'Мамаев', 'Чернов', 'Воронин', 'Хан', 'Дубов'];
 const NICK = ['Молот', 'Шрам', 'Тень', 'Бетон', 'Лис', 'Кувалда', 'Пуля', 'Сквозняк', 'Медведь', 'Гвоздь', 'Ворон', 'Зубило', 'Дизель', 'Призрак', 'Кирпич', 'Скат', 'Ураган', 'Лом', 'Пёс', 'Монах'];
 
 interface Story {
@@ -209,7 +222,7 @@ export function value(f: CareerFighter): number {
   return Math.round((40 * Math.exp(r / 18) + 12 * Math.exp(pot / 28)) / 10) * 10;
 }
 
-export function toParams(f: CareerFighter, team: 0 | 1): FighterParams {
+export function toParams(f: CareerFighter, team: 0 | 1, angry = false): FighterParams {
   return {
     name: f.name.replace(/^(\S+) «(.+)» (\S+)$/, '$2'),
     color: team === 0 ? RED : BLUE,
@@ -219,8 +232,9 @@ export function toParams(f: CareerFighter, team: 0 | 1): FighterParams {
     bodySpeed: f.stats.bodySpeed,
     mindSpeed: f.stats.mindSpeed,
     linkMind: false,
-    aggression: f.aggression,
-    skill: f.stats.skill,
+    // Against a sworn enemy he comes forward harder and a little more carelessly.
+    aggression: angry ? Math.min(1, f.aggression + 0.25) : f.aggression,
+    skill: angry ? f.stats.skill * 0.93 : f.stats.skill,
     evasion: f.stats.evasion,
     cardio: f.stats.cardio,
     discipline: f.discipline,
@@ -295,6 +309,7 @@ export function tick(c: Career, now = Date.now()): string[] {
     }
   }
   if (now - c.marketAt > 20 * 60000) refreshMarket(c, now);
+  out.push(...worldTick(c, now));
   if (out.length) {
     c.log.unshift(...out);
     c.log.length = Math.min(c.log.length, 30);
@@ -389,26 +404,37 @@ function recovery(r: FightResult): number {
 }
 
 /** After the fight: money, name, experience, the doctor. Returns lines for the screen. */
-export function afterFight(c: Career, f: CareerFighter, t: Tier, opp: CareerFighter, r: FightResult, tour: boolean): string[] {
+export function afterFight(c: Career, f: CareerFighter, t: Tier, opp: CareerFighter, r: FightResult, tour: boolean, title = false): string[] {
   const out: string[] = [];
+  const grudge = relOf(c, f, opp) <= -50;
+  const purseK = (grudge ? 1.5 : 1) * (title ? 1 : 1);
   if (r.won) {
     f.record.w++;
     if (r.ko) f.record.ko++;
-    const fame = Math.max(1, Math.round((1 + (r.ko ? 1 : 0)) * (1 + rating(opp) / 30)));
+    const fame = Math.max(1, Math.round((1 + (r.ko ? 1 : 0)) * (1 + rating(opp) / 30) * (grudge ? 2 : 1) * (title ? 3 : 1)));
     f.fame += fame;
     out.push(`Победа над ${opp.name}${r.ko ? ' досрочно' : ''}. Известность +${fame}`);
-    if (!tour) {
-      c.money += t.purse[0];
+    if (title) {
+      c.money += TITLE_PURSE[0];
+      c.tokens += 10;
+      out.push(`Титульный гонорар $${TITLE_PURSE[0]}, жетонов +10`);
+    } else if (!tour) {
+      const purse = Math.round(t.purse[0] * purseK);
+      c.money += purse;
       c.tokens += 2;
-      out.push(`Гонорар $${t.purse[0]}, жетонов +2`);
+      out.push(`Гонорар $${purse}${grudge ? ' (бой с заклятым врагом)' : ''}, жетонов +2`);
     }
   } else {
     f.record.l++;
     f.fame = Math.max(0, f.fame - 1);
     out.push(`Поражение от ${opp.name} (${r.reason})`);
-    if (!tour) {
-      c.money += t.purse[1];
-      out.push(`За выход $${t.purse[1]}`);
+    if (title) {
+      c.money += TITLE_PURSE[1];
+      out.push(`За титульный бой $${TITLE_PURSE[1]}`);
+    } else if (!tour) {
+      const purse = Math.round(t.purse[1] * purseK);
+      c.money += purse;
+      out.push(`За выход $${purse}`);
     }
   }
   // A fight teaches more than a week in the gym, a little.
@@ -418,6 +444,7 @@ export function afterFight(c: Career, f: CareerFighter, t: Tier, opp: CareerFigh
   };
   learn('skill', 0.012);
   learn('mindSpeed', 0.004);
+  out.push(...recordBout(c, r.won ? f : opp, r.won ? opp : f, r.ko, title));
   const mins = recovery(r);
   f.busyFrom = Date.now();
   f.busyUntil = Date.now() + mins * 60000;
@@ -436,7 +463,7 @@ export function enterTour(c: Career, f: CareerFighter, t: Tier): string | null {
   if (c.tour) return 'Уже идёт турнир';
   if (c.money < t.fee) return 'Не хватает на взнос';
   c.money -= t.fee;
-  const field = Array.from({ length: t.size - 1 }, () => opponent(t));
+  const field = worldField(c, t, t.size - 1);
   // The draw: everyone shuffled into pairs.
   const ids = [f.id, ...field.map((x) => x.id)];
   for (let i = ids.length - 1; i > 0; i--) {
@@ -461,7 +488,7 @@ export const roundName = (fights: number) =>
   fights === 1 ? 'финал' : fights === 2 ? 'полуфинал' : fights === 4 ? 'четвертьфинал' : `1/${fights} финала`;
 
 export function person(c: Career, id: string): CareerFighter {
-  return c.roster.find((x) => x.id === id) ?? c.tour!.field.find((x) => x.id === id)!;
+  return c.roster.find((x) => x.id === id) ?? c.world?.find((x) => x.id === id) ?? c.tour!.field.find((x) => x.id === id)!;
 }
 
 export const current = (t: Tour) => t.rounds[t.rounds.length - 1];
@@ -475,11 +502,7 @@ export function myMatch(t: Tour): Match | null {
 export function settle(c: Career, m: Match, winner?: string): void {
   if (m.w) return;
   m.w = winner ?? (Math.random() < odds(person(c, m.a), person(c, m.b)) ? m.a : m.b);
-  // The winner's record grows; the loser's too.
-  const w = person(c, m.w);
-  const l = person(c, m.w === m.a ? m.b : m.a);
-  if (!c.roster.includes(w)) w.record.w++;
-  if (!c.roster.includes(l)) l.record.l++;
+  recordBout(c, person(c, m.w), person(c, m.w === m.a ? m.b : m.a), Math.random() < 0.4);
   advance(c);
   save(c);
 }
@@ -512,7 +535,6 @@ export function tourFight(c: Career, f: CareerFighter, r: FightResult): string[]
   const opp = person(c, m.a === f.id ? m.b : m.a);
   const out = [`${name}: ` + afterFight(c, f, t, opp, r, true).join('. ')];
   m.w = r.won ? f.id : opp.id;
-  opp.record[r.won ? 'l' : 'w']++;
   advance(c);
   if (!r.won) {
     out.push(`Вылет: ${name}. Остальные бои можно досмотреть или пропустить.`);
@@ -544,12 +566,235 @@ export function closeTour(c: Career): string {
   return line;
 }
 
+// ---------- The world: rankings, the belt, feelings ----------
+
+const WORLD_SIZE = 60;
+/** Real time between the world's fight nights. */
+export const NIGHT_MS = 4 * 60000;
+export const TITLE_PURSE: [number, number] = [15000, 3000];
+
+const eloOf = (f: CareerFighter) => 900 + 12 * rating(f);
+
+/** Which league a fighter of this rating belongs in. */
+export function tierOf(f: CareerFighter): Tier {
+  const r = rating(f);
+  return r < 26 ? TIERS[0] : r < 34 ? TIERS[1] : r < 45 ? TIERS[2] : r < 57 ? TIERS[3] : r < 70 ? TIERS[4] : TIERS[5];
+}
+
+function makeWorld(): CareerFighter[] {
+  const taken = new Set<string>();
+  return Array.from({ length: WORLD_SIZE }, (_, i) => {
+    const L = Math.pow(i / (WORLD_SIZE - 1), 0.85);
+    let f = makeFighter(L, clamp(L + rnd(-0.1, 0.25), 0, 1));
+    // Everyone in the world has his own name.
+    for (let k = 0; k < 20 && taken.has(short(f)); k++) f = makeFighter(L, clamp(L + rnd(-0.1, 0.25), 0, 1));
+    taken.add(short(f));
+    f.elo = eloOf(f) + rnd(-30, 30);
+    const fights = Math.round(2 + 25 * L + rnd(0, 6));
+    const w = Math.round(fights * clamp(0.45 + 0.35 * L + rnd(-0.15, 0.15), 0.2, 0.95));
+    f.record = { w, l: fights - w, ko: Math.round(w * rnd(0.2, 0.7)) };
+    return f;
+  });
+}
+
+/** Builds the world for a new career, or for a save from before it existed. */
+export function ensureWorld(c: Career): void {
+  if (!c.world) {
+    c.world = makeWorld();
+    c.rel = {};
+    c.news = ['В мире бойцов новый менеджер. Тебя пока никто не знает.'];
+    c.worldAt = Date.now();
+    c.nights = 0;
+    c.champion = [...c.world].sort((a, b) => b.elo! - a.elo!)[0].id;
+  }
+  c.rel ??= {};
+  c.news ??= [];
+  for (const f of c.roster) f.elo ??= eloOf(f);
+}
+
+export const everyone = (c: Career) => [...c.roster, ...(c.world ?? [])];
+
+/** Everyone by ranking points; the champion is listed first. */
+export function rankings(c: Career): CareerFighter[] {
+  const all = everyone(c).sort((a, b) => (b.elo ?? 0) - (a.elo ?? 0));
+  const champ = all.find((x) => x.id === c.champion);
+  return champ ? [champ, ...all.filter((x) => x !== champ)] : all;
+}
+
+/** Place in the rankings: 0 for the champion, then 1, 2, ... */
+export function rankOf(c: Career, f: CareerFighter): number {
+  return rankings(c).indexOf(f) + (c.champion ? 0 : 1);
+}
+
+const relKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+export const relOf = (c: Career, a: CareerFighter, b: CareerFighter) => c.rel?.[relKey(a.id, b.id)] ?? 0;
+
+function addRel(c: Career, a: CareerFighter, b: CareerFighter, d: number): number {
+  const k = relKey(a.id, b.id);
+  const before = c.rel![k] ?? 0;
+  c.rel![k] = Math.round(clamp(before + d, -100, 100));
+  return before;
+}
+
+export function relWord(v: number): string {
+  return v <= -50 ? 'заклятые враги' : v <= -20 ? 'неприязнь' : v >= 40 ? 'уважают друг друга' : '';
+}
+
+/** His sworn enemies. */
+export function rivalsOf(c: Career, f: CareerFighter): CareerFighter[] {
+  return everyone(c).filter((x) => x !== f && relOf(c, f, x) <= -50);
+}
+
+function news(c: Career, s: string): void {
+  c.news!.unshift(s);
+  c.news!.length = Math.min(c.news!.length, 40);
+}
+
+const TRASH = [
+  (a: string, b: string) => `${a}: «${b} бегает от меня уже год»`,
+  (a: string, b: string) => `${a} и ${b} толкались на взвешивании`,
+  (a: string, b: string) => `${a}: «${b} — бумажный боец, я его сломаю»`,
+  (a: string, b: string) => `${a} в интервью: «${b}? Не знаю такого»`,
+  (a: string, b: string) => `${a} и ${b} подрались в ресторане, растащила охрана`,
+];
+
+/** A bout's outcome for the world: ranking points, records of world fighters, feelings, the belt. */
+export function recordBout(c: Career, w: CareerFighter, l: CareerFighter, ko: boolean, title = false): string[] {
+  ensureWorld(c);
+  const out: string[] = [];
+  w.elo ??= eloOf(w);
+  l.elo ??= eloOf(l);
+  const expect = 1 / (1 + 10 ** ((l.elo - w.elo) / 400));
+  const k = title ? 60 : 40;
+  w.elo += k * (1 - expect);
+  l.elo -= k * (1 - expect);
+  if (!c.roster.includes(w)) {
+    w.record.w++;
+    if (ko) w.record.ko++;
+  }
+  if (!c.roster.includes(l)) l.record.l++;
+  // A knockout leaves bad blood; a hard, close fight can end in respect.
+  const before = addRel(c, w, l, ko ? -rnd(15, 35) : rnd(-15, 20));
+  const now = relOf(c, w, l);
+  if (before > -50 && now <= -50) {
+    const line = `${short(w)} и ${short(l)} теперь заклятые враги`;
+    news(c, line);
+    out.push(line);
+  }
+  if (title && c.champion === l.id) {
+    c.champion = w.id;
+    const line = `НОВЫЙ ЧЕМПИОН: ${w.name}${ko ? ' нокаутом' : ' решением судей'}`;
+    news(c, line);
+    out.push(line);
+  } else if (title && c.champion === w.id) {
+    const line = `Защита пояса: ${short(w)} — ${short(l)}, пояс остаётся у чемпиона`;
+    news(c, line);
+    out.push(line);
+  }
+  return out;
+}
+
+/** Fighters of the world who belong in this league, to fight ours. */
+function worldField(c: Career, t: Tier, n: number): CareerFighter[] {
+  ensureWorld(c);
+  const busyIds = new Set(c.tour ? c.tour.field.map((x) => x.id) : []);
+  const pool = c.world!.filter((x) => tierOf(x) === t && x.id !== c.champion && !busyIds.has(x.id));
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const out = pool.slice(0, n);
+  // Not enough men in this league: new faces come in.
+  while (out.length < n) {
+    const f = opponent(t);
+    f.elo = eloOf(f);
+    c.world!.push(f);
+    out.push(f);
+  }
+  return out;
+}
+
+/** An opponent from the world for a single fight in this league: someone near his level. */
+export function worldOpponent(c: Career, t: Tier, f: CareerFighter): CareerFighter {
+  const pool = worldField(c, t, 6);
+  pool.sort((a, b) => Math.abs((a.elo ?? 0) - (f.elo ?? 0)) - Math.abs((b.elo ?? 0) - (f.elo ?? 0)));
+  return pool[Math.floor(Math.random() * Math.min(3, pool.length))];
+}
+
+/** Who the title is fought against now: the champion, or (ours holding it) the best contender. */
+export function titleBout(c: Career, f: CareerFighter): CareerFighter | null {
+  ensureWorld(c);
+  if (c.champion === f.id) return rankings(c).find((x) => x.id !== f.id && !c.roster.includes(x)) ?? null;
+  const champ = c.champion ? person(c, c.champion) : null;
+  if (!champ || c.roster.includes(champ)) return null;
+  // Only the top three contenders get a shot.
+  return rankOf(c, f) <= 3 ? champ : null;
+}
+
+/** The world's fight nights since last time: bouts, a title defence, bad blood, growth. */
+export function worldTick(c: Career, now = Date.now()): string[] {
+  ensureWorld(c);
+  const out: string[] = [];
+  let n = 0;
+  while (now - c.worldAt! >= NIGHT_MS && n++ < 6) {
+    c.worldAt! += NIGHT_MS;
+    c.nights = (c.nights ?? 0) + 1;
+    out.push(...fightNight(c));
+  }
+  if (n > 6) c.worldAt = now;
+  if (out.length) save(c);
+  return out;
+}
+
+function fightNight(c: Career): string[] {
+  const out: string[] = [];
+  const inTour = new Set(c.tour ? c.tour.field.map((x) => x.id) : []);
+  const npcs = c.world!.filter((x) => !inTour.has(x.id) && x.id !== c.champion).sort((a, b) => b.elo! - a.elo!);
+  // Eight bouts between men of about the same standing.
+  for (let k = 0; k < 8 && npcs.length > 2; k++) {
+    const i = Math.floor(Math.random() * (npcs.length - 1));
+    const a = npcs[i];
+    const b = npcs[i + 1];
+    npcs.splice(i, 2);
+    const aWins = Math.random() < odds(a, b);
+    const ko = Math.random() < 0.4;
+    out.push(...recordBout(c, aWins ? a : b, aWins ? b : a, ko));
+    if (k < 2) news(c, `Бой: ${short(a)} — ${short(b)}, победил ${short(aWins ? a : b)}${ko ? ' нокаутом' : ''}`);
+  }
+  // Every third night the champion defends against the best contender of the world.
+  const champ = c.champion ? person(c, c.champion) : null;
+  if (champ && !c.roster.includes(champ) && (c.nights ?? 0) % 3 === 0) {
+    const contender = rankings(c).find((x) => x !== champ && !c.roster.includes(x) && !inTour.has(x.id));
+    if (contender) {
+      const cWins = Math.random() < odds(contender, champ);
+      out.push(...recordBout(c, cWins ? contender : champ, cWins ? champ : contender, Math.random() < 0.45, true));
+    }
+  }
+  // Bad blood: someone calls someone out, now and then one of yours.
+  const all = everyone(c);
+  const a = pickOf(all.filter((x) => !c.roster.includes(x)));
+  const near = all.filter((x) => x !== a && Math.abs((x.elo ?? 0) - (a.elo ?? 0)) < 120);
+  if (near.length) {
+    const mine = near.filter((x) => c.roster.includes(x));
+    const b = mine.length && Math.random() < 0.35 ? pickOf(mine) : pickOf(near);
+    addRel(c, a, b, -(c.roster.includes(b) ? rnd(30, 55) : rnd(20, 40)));
+    const line = pickOf(TRASH)(short(a), short(b));
+    news(c, line);
+    if (c.roster.includes(b)) out.push(line);
+    if (relOf(c, a, b) <= -50) news(c, `${short(a)} и ${short(b)} теперь заклятые враги`);
+  }
+  // The world trains too: everyone creeps toward his ceiling.
+  for (const f of c.world!) for (const k of STAT_KEYS) f.stats[k] += (f.caps[k] - f.stats[k]) * 0.012;
+  return out;
+}
+
 // ---------- Save ----------
 
 export function newCareer(): Career {
   const first = makeFighter(0.02, rnd(0.45, 0.85));
   const c: Career = { money: 300, tokens: 100, roster: [first], market: [], marketAt: 0, tour: null, log: ['Карьера началась. У тебя один боец и немного денег.'], pick: first.id };
   c.gifts = ['tokens100'];
+  ensureWorld(c);
   refreshMarket(c);
   return c;
 }
@@ -561,6 +806,7 @@ export function load(): Career | null {
     const c = JSON.parse(raw) as Career;
     // A gift for saves made before the start went up to 100 tokens.
     c.gifts ??= [];
+    ensureWorld(c);
     // A tournament from before the brackets: give the fee back.
     if (c.tour && !(c.tour as Partial<Tour>).rounds) {
       c.money += TIER_BY_ID[c.tour.tier]?.fee ?? 0;

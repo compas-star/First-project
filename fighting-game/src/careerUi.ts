@@ -7,6 +7,7 @@ import {
   load, save, reset, newCareer, tick, startTraining, gainOf, busy, skip, skipCost, refreshMarket, buy, sell,
   rating, talentWord, value, opponent, canEnter, enterTour, afterFight, tourFight, roundName, short, odds,
   person, current, myMatch, settle, settleOthers, finished, closeTour,
+  rankings, rankOf, relOf, relWord, rivalsOf, worldOpponent, titleBout, tierOf, TITLE_PURSE, NIGHT_MS,
   type Career, type CareerFighter, type Tier, type FightResult, type StatKey,
 } from './career';
 import { DISCIPLINE_BY_ID } from './disciplines';
@@ -18,7 +19,7 @@ export interface CareerHooks {
   close(): void;
 }
 
-type Screen = 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
+type Screen = 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -29,7 +30,9 @@ export class CareerUi {
   private toast = '';
   private timer = 0;
   /** The fight about to happen (preview screen). */
-  private bill: { tier: Tier; opp: CareerFighter; tour: boolean } | null = null;
+  private bill: { tier: Tier; opp: CareerFighter; tour: boolean; title?: boolean } | null = null;
+  /** The fighter shown on the profile screen. */
+  private profileId = '';
   /** What happened in the last fight (result screen). */
   private outcome: { won: boolean; title: string; lines: string[] } | null = null;
 
@@ -107,6 +110,8 @@ export class CareerUi {
       : this.screen === 'fights' ? this.fights()
       : this.screen === 'preview' ? this.preview()
       : this.screen === 'bracket' ? this.bracket()
+      : this.screen === 'rank' ? this.rankView()
+      : this.screen === 'profile' ? this.profile()
       : this.screen === 'result' ? this.result()
       : this.screen === 'team' ? this.team()
       : this.screen === 'market' ? this.market()
@@ -139,11 +144,13 @@ export class CareerUi {
         <button type="button" class="bigbtn" data-act="to" data-s="gym"><b>Тренировать</b><span>${busy(f) ? 'сейчас занят' : 'выбрать, что качать'}</span></button>
         <button type="button" class="bigbtn primary" data-act="to" data-s="fights"><b>Драться</b><span>бои и турниры</span></button>
       </div>
-      <div class="nav3">
+      <div class="nav4">
+        <button type="button" data-act="to" data-s="rank">Рейтинг</button>
         <button type="button" data-act="to" data-s="team">Команда <b>${c.roster.length}/${MAX_ROSTER}</b></button>
         <button type="button" data-act="to" data-s="market">Рынок</button>
         <button type="button" data-act="to" data-s="log">Журнал</button>
-      </div>`;
+      </div>
+      <div class="newsbox"><div class="h2">Новости мира боёв</div>${(c.news ?? []).slice(0, 4).map((x) => `<div>${esc(x)}</div>`).join('')}<div class="fnote">Бойцы мира дерутся между собой каждые ${NIGHT_MS / 60000} минуты, даже когда игра закрыта.</div></div>`;
   }
 
   /** The fighter: who he is, what he can do now and how far he can go, what he is doing. */
@@ -154,6 +161,7 @@ export class CareerUi {
         <div>
           <div class="fname">${esc(f.name)}</div>
           <div class="fmeta">${esc(d.name)} · ${f.height.toFixed(2)} м · ${f.weight} кг · бои ${f.record.w}–${f.record.l}</div>
+          <div class="fmeta">${this.c.champion === f.id ? '<b class="belt">🏆 Чемпион мира</b>' : `<b>#${rankOf(this.c, f)}</b> в мировом рейтинге`}${rivalsOf(this.c, f).length ? ` · <span class="rival">враги: ${rivalsOf(this.c, f).map((x) => esc(short(x))).join(', ')}</span>` : ''}</div>
         </div>
         <div class="rate"><b>${rating(f)}</b><span>рейтинг</span></div>
       </div>
@@ -165,6 +173,7 @@ export class CareerUi {
   }
 
   private status(f: CareerFighter): string {
+    if (!this.c.roster.includes(f)) return '';
     if (!busy(f)) {
       if (this.c.tour?.fighter === f.id) return `<div class="pill gold">На турнире, ждёт следующего боя</div>`;
       return `<div class="pill green">Свободен: можно тренировать или драться</div>`;
@@ -218,6 +227,14 @@ export class CareerUi {
     let html = `<div class="h1">Бои · ${esc(short(f))}</div>
       <div class="fnote">Рейтинг твоего бойца: <b>${rating(f)}</b>, известность <b>${f.fame}</b>. ${why0 ? `<b>${why0}</b> Подожди или закончи жетонами на главном экране.` : 'Разовый бой — быстрые деньги. Турнир — взнос, несколько боёв подряд и большой приз.'}</div>`;
     html += this.tourBanner();
+    const tb = titleBout(c, f);
+    if (tb) {
+      const defend = c.champion === f.id;
+      html += `<div class="titlecard"><b>🏆 ${defend ? 'Защита пояса' : 'Бой за пояс чемпиона мира'}</b><span>${defend ? 'Лучший претендент' : 'Чемпион'}: ${esc(tb.name)} · рейтинг ${rating(tb)} · ${tb.record.w}–${tb.record.l}</span><span>Пять раундов. Гонорар $${TITLE_PURSE[0]} за победу, $${TITLE_PURSE[1]} за поражение.</span>
+        <button type="button" class="primary" data-act="title" ${busy(f) || c.tour ? 'disabled' : ''}>${defend ? 'Защищать пояс' : 'Драться за пояс'}</button></div>`;
+    } else if (c.champion && !c.roster.some((x) => x.id === c.champion)) {
+      html += `<div class="fnote">Пояс чемпиона: ${esc(person(c, c.champion).name)}. Право на бой за пояс дают первые три места рейтинга (у тебя #${rankOf(c, f)}).</div>`;
+    }
     TIERS.forEach((t, i) => {
       const open = f.fame >= t.fame;
       const why = canEnter(c, f, t);
@@ -247,7 +264,8 @@ export class CareerUi {
       const cls = (x: number, y: number) => (x > y * 1.03 ? 'better' : x < y * 0.97 ? 'worse' : '');
       return `<div class="vrow"><b class="${cls(a, z)}">${fmtStat(k, a)}</b><span>${STAT_INFO[k].name}</span><b class="${cls(z, a)}">${fmtStat(k, z)}</b></div>`;
     }).join('');
-    const title = b.tour ? `Турнир «${b.tier.name}», ${roundName(current(this.c.tour!).length)}` : `Разовый бой · ${b.tier.name}`;
+    const title = b.title ? (this.c.champion === me.id ? 'Защита пояса чемпиона' : 'Бой за пояс чемпиона мира') : b.tour ? `Турнир «${b.tier.name}», ${roundName(current(this.c.tour!).length)}` : `Разовый бой · ${b.tier.name}`;
+    const feel = relOf(this.c, me, o);
     return `<div class="h1">${esc(title)}</div>
       <div class="vs">
         <div class="vside red"><b>${esc(short(me))}</b><span>${esc(DISCIPLINE_BY_ID[me.discipline].name)} · ${me.height.toFixed(2)} м · ${me.weight} кг</span><span>рейтинг ${rating(me)} · ${me.record.w}–${me.record.l}</span></div>
@@ -255,6 +273,8 @@ export class CareerUi {
         <div class="vside blue"><b>${esc(short(o))}</b><span>${esc(DISCIPLINE_BY_ID[o.discipline].name)} · ${o.height.toFixed(2)} м · ${o.weight} кг</span><span>рейтинг ${rating(o)} · ${o.record.w}–${o.record.l}</span></div>
       </div>
       <div class="fstory">${esc(o.story)}</div>
+      <div class="fmeta">Места в рейтинге: ${this.rankLabel(me)} и ${this.rankLabel(o)}${relWord(feel) ? ` · <span class="${feel < 0 ? 'rival' : 'friend'}">${relWord(feel)}</span>` : ''}</div>
+      ${feel <= -50 ? '<div class="pill red">Заклятые враги: гонорар ×1,5, известность ×2. Оба лезут вперёд злее и небрежнее.</div>' : ''}
       <div class="vtable">${rows}</div>
       <div class="pill ${p >= 55 ? 'green' : p <= 45 ? 'red' : 'gold'}">Букмекеры дают тебе примерно ${p}%</div>
       <button type="button" class="primary wide" data-act="fight">В бой</button>
@@ -370,8 +390,52 @@ export class CareerUi {
       ${list || '<div class="fnote">Пока никого.</div>'}`;
   }
 
+  private rankLabel(f: CareerFighter): string {
+    return this.c.champion === f.id ? '🏆 чемпион' : `#${rankOf(this.c, f)}`;
+  }
+
+  /** The world's rankings: the champion, the top twenty, and where ours stand. */
+  private rankView(): string {
+    const c = this.c;
+    const all = rankings(c);
+    const mine = new Set(c.roster.map((x) => x.id));
+    const me = this.me();
+    const row = (f: CareerFighter, i: number) => {
+      const place = c.champion === f.id ? '🏆' : `${i + (c.champion ? 0 : 1)}`;
+      const feel = relOf(c, me, f);
+      return `<button type="button" class="rrow${mine.has(f.id) ? ' mine' : ''}" data-act="profile" data-id="${f.id}">
+        <span class="rpl">${place}</span><span class="rnm">${esc(short(f))}${feel <= -50 && f !== me ? ' <i class="rival">⚔</i>' : ''}</span>
+        <span class="rst">${esc(DISCIPLINE_BY_ID[f.discipline].name)} · ${f.record.w}–${f.record.l}</span><b>${rating(f)}</b></button>`;
+    };
+    const top = all.slice(0, 21).map((f, i) => row(f, i)).join('');
+    const below = all.map((f, i) => [f, i] as const).filter(([f, i]) => i > 20 && mine.has(f.id)).map(([f, i]) => row(f, i)).join('');
+    return `<div class="h1">Мировой рейтинг</div>
+      <div class="fnote">Место зависит от очков: победа над тем, кто выше, даёт много, над слабым — мало. Чемпион — тот, у кого пояс; отобрать его можно только в бою за пояс (нужно быть в первой тройке). ⚔ — заклятый враг твоего бойца.</div>
+      <div class="rlist">${top}${below ? `<div class="fnote">…</div>${below}` : ''}</div>`;
+  }
+
+  /** Any fighter of the world: who he is, his record, what he thinks of yours. */
+  private profile(): string {
+    const c = this.c;
+    const f = person(c, this.profileId);
+    if (!f) return '<div class="fnote">Нет такого бойца.</div>';
+    const ours = c.roster.includes(f);
+    const feelings = c.roster.filter((x) => x !== f).map((x) => {
+      const v = relOf(c, x, f);
+      return `<div>${esc(short(x))}: ${relWord(v) || 'нейтрально'} <small>(${v})</small></div>`;
+    }).join('');
+    const t = tierOf(f);
+    return `<div class="h1">${this.rankLabel(f)} · ${esc(f.name)}</div>
+      ${this.hero(f, false)}
+      <div class="fmeta">Лига: «${esc(t.name)}» · побед нокаутом ${f.record.ko}</div>
+      ${ours ? '' : `<div class="newsbox"><div class="h2">Отношения с твоими</div>${feelings || '<div>—</div>'}</div>
+      <button type="button" class="primary wide" data-act="challenge" ${f.id === c.champion ? 'disabled' : ''}>Вызвать ${esc(short(this.me()))} против него</button>
+      ${f.id === c.champion ? '<div class="fnote">С чемпионом дерутся только за пояс.</div>' : ''}`}`;
+  }
+
   private logView(): string {
     return `<div class="h1">Журнал</div>
+      <div class="newsbox"><div class="h2">Новости</div>${(this.c.news ?? []).map((x) => `<div>${esc(x)}</div>`).join('')}</div>
       <div class="log">${this.c.log.map((s) => `<div>${esc(s)}</div>`).join('')}</div>
       <button type="button" data-act="reset">Начать карьеру заново</button>`;
   }
@@ -401,7 +465,7 @@ export class CareerUi {
       case 'sandbox':
         return this.hide();
       case 'back':
-        return this.go(this.screen === 'preview' ? (this.bill?.tour ? 'bracket' : 'fights') : 'home');
+        return this.go(this.screen === 'preview' ? (this.bill?.tour ? 'bracket' : 'fights') : this.screen === 'profile' ? 'rank' : 'home');
       case 'to':
         return this.go(b.dataset.s as Screen);
       case 'help':
@@ -447,13 +511,30 @@ export class CareerUi {
         if (!confirm('Стереть карьеру и начать сначала?')) return;
         this.c = reset();
         return this.go('home');
+      case 'title': {
+        const opp = titleBout(c, me);
+        if (!opp) return say(null);
+        this.bill = { tier: TIERS[5], opp, tour: false, title: true };
+        return this.go('preview');
+      }
+      case 'profile':
+        this.profileId = b.dataset.id!;
+        return this.go('profile');
+      case 'challenge': {
+        const opp = person(c, this.profileId);
+        const t = tierOf(opp);
+        if (me.fame < t.fame) return say(`Чтобы вызвать его, нужна известность ${t.fame} (лига «${t.name}»)`);
+        if (busy(me)) return say(`${short(me)} занят`);
+        this.bill = { tier: t, opp, tour: false };
+        return this.go('preview');
+      }
       case 'single': {
         const t = TIER_BY_ID[b.dataset.t!];
-        this.bill = { tier: t, opp: opponent(t), tour: false };
+        this.bill = { tier: t, opp: worldOpponent(c, t, me), tour: false };
         return this.go('preview');
       }
       case 'reroll':
-        if (this.bill) this.bill.opp = opponent(this.bill.tier);
+        if (this.bill) this.bill.opp = worldOpponent(c, this.bill.tier, this.me());
         return say(null);
       case 'tour': {
         const t = TIER_BY_ID[b.dataset.t!];
@@ -508,11 +589,11 @@ export class CareerUi {
     const b = this.bill!;
     const c = this.c;
     const me = b.tour ? c.roster.find((x) => x.id === c.tour!.fighter)! : this.me();
-    const title = b.tour ? `${b.tier.name}, ${roundName(current(c.tour!).length)}` : `${b.tier.name}: ${short(me)} против ${short(b.opp)}`;
+    const title = b.title ? `Бой за пояс: ${short(me)} против ${short(b.opp)}` : b.tour ? `${b.tier.name}, ${roundName(current(c.tour!).length)}` : `${b.tier.name}: ${short(me)} против ${short(b.opp)}`;
     $('career').hidden = true;
     clearInterval(this.timer);
     this.hooks.fight(me, b.opp, b.tier, title, (r) => {
-      const lines = b.tour ? tourFight(c, me, r) : afterFight(c, me, b.tier, b.opp, r, false);
+      const lines = b.tour ? tourFight(c, me, r) : afterFight(c, me, b.tier, b.opp, r, false, !!b.title);
       this.outcome = { won: r.won, title: `${title} · ${r.won ? (r.ko ? 'досрочно' : 'по очкам') : r.reason}`, lines };
       this.bill = null;
       this.screen = 'result';

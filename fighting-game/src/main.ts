@@ -17,7 +17,7 @@ import { CareerUi } from './careerUi';
 import { LabUi } from './labUi';
 import { loadEdits } from './moveEdits';
 import { Recorder } from './recorder';
-import { toParams, type FightResult } from './career';
+import { toParams, relOf, type FightResult } from './career';
 import type { Rules } from './sim';
 
 type Eyes = 'fastest' | 'red' | 'blue' | 'real';
@@ -809,7 +809,9 @@ const career = new CareerUi({
   fight(me, opp, tier, title, done) {
     careerFight = { done };
     setCareerDock(true);
-    runFight(toParams(me, 0), toParams(opp, 1), MAP_BY_ID[tier.map], tier.rules);
+    // Sworn enemies come at each other harder.
+    const grudge = relOf(career.c, me, opp) <= -50;
+    runFight(toParams(me, 0, grudge), toParams(opp, 1, grudge), MAP_BY_ID[tier.map], tier.rules);
     // The bill of the fight, as a caption, whatever the words setting.
     const el = $('moment');
     el.textContent = title;

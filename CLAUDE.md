@@ -115,6 +115,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
 - Visual: `node tools/strip.cjs <presetIndex> <waitMs>` in Playwright (Chromium at
   `/opt/pw-browsers`, global playwright) writes `s0..s23.png` frames; tile them with PIL
   and look. Screenshots cannot show motion; say so when reporting.
+- Watching fights without a browser: `tools/run.sh watch <preset> <secs> [fps] [out.json] [seed]`
+  records every frame (both ends of each part's hit segment in world space, action,
+  thought, daze, wind) and events; `python3 tools/watch.py out.json sheet.png [from] [to]
+  [every] [side|top|front]` draws a contact sheet of stick figures (red/blue, action under
+  each, landed blows marked). Fast and readable; use it to look at what fighters do.
 - Targets that worked well: equal fighters ~25-40 s fights, no runaway draws; fast
   fighters must not fall on their own; parts should not exceed ~20 m/s at body speed 1.
 

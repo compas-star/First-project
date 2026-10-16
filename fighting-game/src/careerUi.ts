@@ -92,7 +92,7 @@ export class CareerUi {
     const c = this.c;
     const top = `<div class="ctop">
       ${this.screen === 'home' ? '<button type="button" data-act="sandbox">← Песочница</button>' : '<button type="button" data-act="back">← Назад</button>'}
-      <div class="wallet"><span title="деньги">$<b>${c.money.toLocaleString('ru')}</b></span><span title="жетоны: ускоряют ожидание">◆ <b>${c.tokens}</b></span></div>
+      <div class="wallet"><span title="деньги">$<b>${c.money.toLocaleString('ru')}</b></span><span title="жетоны: ускоряют ожидание">◆ <b>${c.tokens}</b></span><button type="button" class="addcoins" data-act="cheat" title="для тестов: +100 жетонов и +$1000">+</button></div>
     </div>`;
     const body =
       this.screen === 'home' ? this.home()
@@ -326,6 +326,13 @@ export class CareerUi {
       this.render();
     };
     switch (b.dataset.act) {
+      case 'cheat':
+        // For testing: the player tops himself up.
+        c.tokens += 100;
+        c.money += 1000;
+        c.log.unshift('Пополнение для тестов: +100 жетонов, +$1000');
+        save(c);
+        return say('+100 жетонов и +$1000');
       case 'sandbox':
         return this.hide();
       case 'back':

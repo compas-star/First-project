@@ -1208,3 +1208,13 @@ button:disabled {
   border-color: var(--gold);
   color: var(--gold);
 }
+
+.wallet {
+  align-items: center;
+}
+.addcoins {
+  padding: 4px 10px;
+  font: 700 16px/1 var(--mono);
+  color: var(--gold);
+  border-color: var(--gold);
+}

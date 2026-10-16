@@ -66,6 +66,14 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   always shows on something. `FighterParams.skin`, default by style.
 - `view.ts`: rendering, afterimages, effects, auto-framing camera, KO slow-mo zoom.
 - `main.ts`: HUD, time scale ("eyes"), setup sheet, presets.
+- `career.ts` + `careerUi.ts`: manager mode ("Карьера" button; the sandbox stays as is).
+  Fighters with a story, stats (`bodySpeed, strength, mindSpeed, skill, evasion, cardio`)
+  and hidden caps (talent). Real-time training sessions (2/6/15 min, small gains that shrink
+  near the cap, injury risk on hard), recovery after fights, tokens ("жетоны") skip timers
+  (1 per 3 min). Tiers Подвал → Мировой титул: single fights (purse) and 4/8-man
+  tournaments (other bracket fights decided by `rating` odds). Market refreshes every 20
+  min. Stand-up only (`Rules.standing` turns off shots and pounces). Saved in localStorage
+  `arena-career-v1`. `FighterParams.cardio` scales stamina costs and regen.
 
 ## Testing (no phone needed)
 

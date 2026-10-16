@@ -13,6 +13,9 @@ const DISCIPLINE_IDS: string[] = DISCIPLINES.map((d) => d.id);
 import { View } from './view';
 import { MAPS, MAP_BY_ID, type MapId } from './maps';
 import { SKINS, defaultSkin } from './skins';
+import { CareerUi } from './careerUi';
+import { toParams, type FightResult } from './career';
+import type { Rules } from './sim';
 
 type Eyes = 'fastest' | 'red' | 'blue' | 'real';
 const EYES: Eyes[] = ['fastest', 'red', 'blue', 'real'];
@@ -233,11 +236,26 @@ function recall(): void {
   }
 }
 
+// A fight of the manager mode in progress: who to tell when it is over.
+let careerFight: { done: (r: FightResult) => void } | null = null;
+
+function setCareerDock(on: boolean): void {
+  for (const id of ['btnRestart', 'btnSetup', 'btnCareer']) $(id).hidden = on;
+}
+
 function startFight(): void {
+  if (careerFight) {
+    careerFight = null;
+    setCareerDock(false);
+  }
   // Fighters keep a reference to these objects, so speed and strength sliders act live.
+  runFight(params[0], params[1], MAP_BY_ID[mapId], rounds ? bout(rounds) : QUICK);
+}
+
+function runFight(a: FighterParams, b: FighterParams, map: (typeof MAPS)[number], rules: Rules): void {
   remember();
   sim?.dispose();
-  sim = new Sim(params[0], params[1], (Math.random() * 1e9) | 0, MAP_BY_ID[mapId], rounds ? bout(rounds) : QUICK);
+  sim = new Sim(a, b, (Math.random() * 1e9) | 0, map, rules);
   (window as unknown as { __sim: Sim }).__sim = sim;
   roundShownAt = -1;
   $('round').hidden = true;
@@ -332,6 +350,8 @@ function injuries(f: Sim['fighters'][number]): string {
 
 function showKo(): void {
   remember();
+  $('koAgain').textContent = careerFight ? 'Дальше' : 'Ещё раз';
+  $('koSetup').hidden = !!careerFight;
   const w = sim.winner!;
   const l = w.enemy;
   const known = memStore[memKey(w.p, l.p)]?.fights ?? 0;
@@ -376,6 +396,8 @@ function startNextRound(): void {
 }
 
 function showDraw(): void {
+  $('koAgain').textContent = careerFight ? 'Дальше' : 'Ещё раз';
+  $('koSetup').hidden = !!careerFight;
   $('koTitle').textContent = 'Ничья';
   $('koStats').innerHTML = cardsHtml();
   $('ko').hidden = false;
@@ -752,7 +774,10 @@ $('btnFight').addEventListener('click', () => {
   $('sheet').hidden = true;
   startFight();
 });
-$('koAgain').addEventListener('click', startFight);
+$('koAgain').addEventListener('click', () => {
+  if (careerFight) finishCareerFight();
+  else startFight();
+});
 $('trainStop').addEventListener('click', () => {
   if (training) {
     finishTraining();
@@ -771,6 +796,53 @@ function resize(): void {
 }
 window.addEventListener('resize', resize);
 new ResizeObserver(resize).observe($('scene'));
+
+// ---------- Manager mode ----------
+
+const career = new CareerUi({
+  fight(me, opp, tier, title, done) {
+    careerFight = { done };
+    setCareerDock(true);
+    runFight(toParams(me, 0), toParams(opp, 1), MAP_BY_ID[tier.map], tier.rules);
+    // The bill of the fight, as a caption, whatever the words setting.
+    const el = $('moment');
+    el.textContent = title;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+  },
+  close() {
+    paused = false;
+    $('btnPause').textContent = 'Пауза';
+    if (careerFight) startFight();
+  },
+});
+
+function finishCareerFight(): void {
+  const cf = careerFight!;
+  const [me, opp] = sim.fighters;
+  // A draw on the cards goes to the man who landed more.
+  const won = sim.winner ? sim.winner === me : me.hits >= opp.hits;
+  const loser = won ? opp : me;
+  const r: FightResult = {
+    won,
+    ko: !!sim.winner && !loser.koReason.startsWith('решение'),
+    reason: sim.winner ? loser.koReason || 'нокаут' : 'ничья, по попаданиям',
+    trauma: me.trauma,
+    body: me.bodyHurt,
+    broken: Object.values(me.broken).filter(Boolean).length,
+    seconds: sim.t,
+  };
+  $('ko').hidden = true;
+  paused = true;
+  cf.done(r);
+}
+
+$('btnCareer').addEventListener('click', () => {
+  paused = true;
+  $('sheet').hidden = true;
+  career.show();
+});
 
 renderPresets();
 RAPIER.init().then(() => {

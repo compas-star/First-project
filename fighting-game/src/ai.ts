@@ -420,7 +420,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   // grappler always likes it there; a striker only to finish a hurt man who is no
   // better on the floor than he is, otherwise he lets him up and keeps it standing.
   const wish = sim.groundWish(f);
-  if (e.state === 'down' && !e.out && !sim.grapple && f.groundAllowed && f.stamina > 0.15 &&
+  if (e.state === 'down' && !e.out && !sim.grapple && !sim.rules.standing && f.groundAllowed && f.stamina > 0.15 &&
       (wish > 0.15 || (e.daze > 0.45 && wish > -0.2))) {
     f.wantDist = 0;
     if (dist < f.radius + e.radius + 0.6 * f.scale) sim.pounce(f);
@@ -526,7 +526,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   const shoot = sim.gripOf(f).shoot;
   // Only when the floor is his place: a striker facing a wrestler keeps it standing.
   const floorWish = THREE.MathUtils.clamp(0.2 + 1.6 * sim.groundWish(f), 0, 1.2);
-  if (go && shoot >= 0.3 && !sim.grapple && dist < gap + 1.5 * f.scale && f.stamina > 0.2 &&
+  if (go && shoot >= 0.3 && !sim.grapple && !sim.rules.standing && dist < gap + 1.5 * f.scale && f.stamina > 0.2 &&
       sim.rng() < shoot * floorWish * (0.22 + (heAttacks || punish ? 0.3 : 0))) {
     sim.startAction(f, 'shoot', { dur: 0.8 });
     f.initiativeW = sim.t + waitTime(f, sim);

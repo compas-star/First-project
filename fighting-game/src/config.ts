@@ -31,6 +31,8 @@ export interface FighterParams {
   skill: number;
   /** 0..1 elusiveness: how much and how well he slips, ducks and rolls instead of blocking. */
   evasion: number;
+  /** Engine, 1 = ordinary: how long the wind lasts and how fast it comes back. */
+  cardio?: number;
   /** 0..1 how good a striker; missing = what his style makes of him. */
   striking?: number;
   /** 0..1 how good a wrestler and ground fighter; missing = what his style makes of him. */

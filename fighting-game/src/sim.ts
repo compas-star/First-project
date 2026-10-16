@@ -42,6 +42,8 @@ export interface Rules {
   rounds: number;
   /** How much more punishment a fighter takes than in a quick fight. */
   tough: number;
+  /** Stand-up only: no shots for the legs, no following a man to the floor. */
+  standing?: boolean;
 }
 
 export const QUICK: Rules = { roundLen: 0, rounds: 0, tough: 1 };
@@ -463,6 +465,11 @@ export class Fighter {
     return this.p.skill;
   }
 
+  /** Engine: how long the wind lasts and how fast it comes back. 1 = ordinary. */
+  get cardio(): number {
+    return this.p.cardio ?? 1;
+  }
+
   /** 0..1 how good a striker (slider, or his style's default). */
   get striking(): number {
     return this.p.striking ?? styleStriking(this.p.discipline);
@@ -809,10 +816,11 @@ export class Sim {
   ): Action {
     const m = opts.move;
     if (m && kind === 'attack') f.lastAttackW = this.t;
-    if (m && kind === 'attack') f.stamina -= (opts.feint ? 0.4 : 1) * (0.01 + 0.013 * m.power);
-    if (kind === 'dodge') f.stamina -= 0.035 * (1 - 0.4 * f.p.evasion);
-    if (kind === 'block' || kind === 'parry') f.stamina -= 0.006;
-    if (kind === 'shoot' || kind === 'sprawl') f.stamina -= 0.04;
+    const cost = 1 / f.cardio;
+    if (m && kind === 'attack') f.stamina -= cost * (opts.feint ? 0.4 : 1) * (0.01 + 0.013 * m.power);
+    if (kind === 'dodge') f.stamina -= cost * 0.035 * (1 - 0.4 * f.p.evasion);
+    if (kind === 'block' || kind === 'parry') f.stamina -= cost * 0.006;
+    if (kind === 'shoot' || kind === 'sprawl') f.stamina -= cost * 0.04;
     if (m && kind === 'attack' && opts.feint && f.enemy.state === 'ok' && !f.enemy.action && this.rng() < 0.65 - 0.45 * f.enemy.tech) {
       // He bites on the feint: a flinch, a moment late.
       this.gesture(f.enemy, 'flinch', 0.3, 0.1 / f.enemy.mind);
@@ -925,7 +933,7 @@ export class Sim {
       const busy = f.action?.kind === 'attack' ? 0 : 1;
       const moving = Math.min(1, f.groundSpeed / (f.stride * f.body + 1e-6));
       // Tense muscles burn the wind too: he gets it back only when he can let go.
-      f.stamina = Math.min(1, Math.max(0, f.stamina) + busy * (0.088 - 0.04 * moving) * (1 - 0.45 * f.tension) * dl);
+      f.stamina = Math.min(1, Math.max(0, f.stamina) + busy * (0.088 - 0.04 * moving) * (1 - 0.45 * f.tension) * f.cardio * dl);
       if (!this.winner) {
         react(f, f.enemy, this);
         if (this.t >= f.nextThinkW) {
@@ -1675,7 +1683,7 @@ export class Sim {
     // Judges count clean, effective blows: the head most, the body next, arms barely.
     this.roundDealt[1 - def.team] += blocked ? 0.1 * dmg : dmg * (zone === 'head' ? 1.3 : zone === 'arm' ? 0.25 : 1);
     const size = Math.sqrt(def.mass / 78);
-    def.stamina -= dmg * (blocked ? 0.005 : zone === 'body' ? 0.022 : 0.007);
+    def.stamina -= (dmg * (blocked ? 0.005 : zone === 'body' ? 0.022 : 0.007)) / Math.sqrt(def.cardio);
     if (blocked) return;
     if (zone === 'body') def.guardLow = Math.min(1, def.guardLow + 0.3);
     if (zone === 'head') def.guardHigh = Math.min(1, def.guardHigh + 0.25);

@@ -96,6 +96,11 @@ export interface Action {
   pose?: DodgePose;
   /** Where an aimed strike was committed to, once thrown. */
   lockAim?: THREE.Vector3;
+  /** Head movement of a dodge, in his own frame (x left, y up, z forward), metres. */
+  dodgeOff?: THREE.Vector3;
+  /** Local seconds to get the head there, after waiting delayT for the blow to commit. */
+  reachT?: number;
+  delayT?: number;
   /** A dodge toward where the blow comes from: if it lands, it lands far harder. */
   into?: boolean;
   /** Facing when the action started; spinning techniques turn from here. */
@@ -1367,7 +1372,8 @@ export class Sim {
         break;
       case 'dodge':
         f.lastDodgeW = this.t;
-        if (u < 0.7) f.self.copy(a.dir).multiplyScalar(3.4 * Math.sqrt(f.scale));
+        // The feet follow the head a little; a step out moves the whole body.
+        if (a.t >= (a.delayT ?? 0) && a.t < (a.delayT ?? 0) + (a.reachT ?? a.dur * 0.7)) f.self.copy(a.dir).multiplyScalar((a.pose === 'dodgeBack' ? 3.4 : 1.6) * Math.sqrt(f.scale));
         else f.self.multiplyScalar(Math.max(0, 1 - 20 * dl));
         break;
       case 'block':
@@ -1556,7 +1562,7 @@ export class Sim {
       def.blockedW = this.t + 0.5 / def.body;
     }
     // Damage grows slower than the impulse, so a much faster fighter needs a few blows, not one.
-    let dmg = (7.6 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
+    let dmg = (8.8 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
     // A well placed blow lands on the point, a wild one spreads its force.
     dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
     if (fromBehind) dmg *= 1.3;

@@ -376,12 +376,13 @@ function showDraw(): void {
 // Highlights: a big caption and a moment of slow motion.
 let dramaUntil = 0;
 view.onMoment = (text) => {
+  dramaUntil = performance.now() + 900;
+  if (!view.words) return;
   const el = $('moment');
   el.textContent = text;
   el.classList.remove('show');
   void el.offsetWidth;
   el.classList.add('show');
-  dramaUntil = performance.now() + 900;
 };
 
 let last = performance.now();
@@ -681,7 +682,28 @@ function renderModes(): void {
   }
 }
 
+const WORDS_KEY = 'arena-words-v1';
+try {
+  view.words = localStorage.getItem(WORDS_KEY) === '1';
+} catch {
+  /* storage unavailable */
+}
+
+function renderWords(): void {
+  const box = $('words');
+  box.innerHTML = `<label class="check"><input type="checkbox" ${view.words ? 'checked' : ''}> Подписи на экране: мысли бойцов, куда попал, яркие моменты</label>`;
+  box.querySelector('input')!.addEventListener('change', (e) => {
+    view.words = (e.target as HTMLInputElement).checked;
+    try {
+      localStorage.setItem(WORDS_KEY, view.words ? '1' : '0');
+    } catch {
+      /* storage unavailable */
+    }
+  });
+}
+
 function openSheet(): void {
+  renderWords();
   renderModes();
   renderMaps();
   renderForm();

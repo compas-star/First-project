@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MOVE_BY_ID, type Move } from './moves';
-import type { DodgePose, Fighter, Sim } from './sim';
+import type { Fighter, Sim } from './sim';
 import {
   updatePlan, planDistance, planEagerness, planComboBonus, moveWeight, bodyBias, feintChance, counterBonus,
   type Reaction,
@@ -194,47 +194,88 @@ function tryDodge(f: Fighter, e: Fighter, m: Move, ea: NonNullable<Fighter['acti
   const chance = 0.15 + 0.4 * T + 0.8 * E + f.gene('dodge') + bonus;
   if (sim.rng() > Math.min(0.96, chance)) return false;
 
+  const s = f.scale;
+  const zone = ea.zone;
   const back = d.clone().negate();
   const leftDir = new THREE.Vector3(d.z, 0, -d.x);
-  // Facing each other, his left hand or foot comes in on my right side.
-  const from: 'l' | 'r' = m.limb[0] === 'l' ? 'r' : 'l';
-  const away: 'l' | 'r' = from === 'l' ? 'r' : 'l';
-  const curved = m.path === 'hook' || m.path === 'swing' || m.path === 'over' || m.path === 'round' || !!m.spin || /Elbow/.test(m.limb);
-  const rising = m.path === 'upper' || /Knee/.test(m.limb);
-  const zone = ea.zone;
-  type Pick = { pose: DodgePose; dir: THREE.Vector3; into?: boolean; say: string };
-  const side = (s: 'l' | 'r', k: number) => leftDir.clone().multiplyScalar(s === 'l' ? k : -k);
-  let good: Pick[];
-  let bad: Pick | null = null;
-  if (zone === 'leg') {
-    good = [{ pose: 'dodgeBack', dir: back, say: 'убрал ногу' }];
-  } else if (zone === 'body') {
-    good = [{ pose: 'dodgeBack', dir: back, say: 'отскок' }, { pose: 'pull', dir: back.clone().multiplyScalar(0.5), say: 'отклон' }];
-    if (curved) bad = { pose: from === 'l' ? 'slipL' : 'slipR', dir: side(from, 0.35), into: true, say: 'уклон' };
-  } else if (rising) {
-    good = [{ pose: 'pull', dir: back.clone().multiplyScalar(0.35), say: 'отклон назад' }, { pose: 'dodgeBack', dir: back, say: 'отскок' }];
-    bad = { pose: 'duck', dir: new THREE.Vector3(), into: true, say: 'нырок' };
-  } else if (curved) {
-    good = [
-      { pose: 'duck', dir: new THREE.Vector3(), say: 'нырок' },
-      { pose: away === 'l' ? 'weaveL' : 'weaveR', dir: side(away, 0.25).addScaledVector(back, 0.1), say: 'ушёл нырком' },
-      { pose: 'pull', dir: back.clone().multiplyScalar(0.35), say: 'отклон' },
-    ];
-    bad = { pose: from === 'l' ? 'slipL' : 'slipR', dir: side(from, 0.35), into: true, say: 'уклон' };
-  } else {
-    const s0: 'l' | 'r' = sim.rng() < 0.5 ? 'l' : 'r';
-    good = [
-      { pose: s0 === 'l' ? 'slipL' : 'slipR', dir: side(s0, 0.35), say: 'уклон' },
-      { pose: 'pull', dir: back.clone().multiplyScalar(0.35), say: 'отклон' },
-    ];
+  const up = new THREE.Vector3(0, 1, 0);
+
+  // Body and leg shots: the trunk cannot slip, so step out of range.
+  if (zone !== 'head') {
+    noted(f, 'back');
+    const act = sim.startAction(f, 'dodge', { dur: tti * f.body + 0.22, dir: back, pose: 'dodgeBack' });
+    act.dodgeOff = new THREE.Vector3(0, 0, -0.12 * s);
+    act.reachT = Math.min(0.18, tti * f.body * 0.7);
+    act.delayT = Math.max(0, tti * f.body - act.reachT - 0.04);
+    if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * T + 0.4 * E) / f.mind;
+    f.say(`отскок: ${m.name}`);
+    return true;
   }
-  const right = 0.5 + 0.45 * Math.min(1, 0.5 * T + 0.7 * E);
-  const pick = bad && sim.rng() > right ? bad : good[Math.floor(sim.rng() * good.length)];
-  noted(f, pick.pose === 'dodgeBack' || pick.pose === 'pull' ? 'back' : 'slip');
-  const act = sim.startAction(f, 'dodge', { dur: (0.34 - 0.08 * E) * (pick.pose === 'dodgeBack' ? 1 : 0.9), dir: pick.dir, pose: pick.pose });
-  act.into = !!pick.into;
+
+  // Where the blow travels as it arrives at the head: a straight shot along the
+  // line from his shoulder, a hook or a round kick across from his side, an
+  // uppercut or a knee from below, an overhand from above and the side.
+  const limbSide = m.limb[0] as 'l' | 'r';
+  const joint = e.rag.byName[/Foot|Knee/.test(m.limb) ? (limbSide === 'l' ? 'lThigh' : 'rThigh') : limbSide === 'l' ? 'lUpper' : 'rUpper'].body.translation();
+  const head = f.rag.byName.head.body.translation();
+  const toHead = new THREE.Vector3(head.x - joint.x, head.y + 0.12 * s - joint.y, head.z - joint.z).normalize();
+  // His left comes in on my right: travelling toward my left.
+  const across = leftDir.clone().multiplyScalar(limbSide === 'l' ? 1 : -1);
+  const curved = m.path === 'hook' || m.path === 'swing' || m.path === 'round' || !!m.spin || /Elbow/.test(m.limb);
+  const rising = m.path === 'upper' || /Knee/.test(m.limb);
+  const truth = new THREE.Vector3();
+  if (rising) truth.copy(up).multiplyScalar(0.8).addScaledVector(d, -0.6);
+  else if (m.path === 'over') truth.copy(up).multiplyScalar(-0.5).addScaledVector(d, -0.6).addScaledVector(across, 0.5);
+  else if (curved) truth.copy(across).addScaledVector(d, -0.45);
+  else truth.copy(toHead);
+  truth.normalize();
+
+  // Reading the line is a skill: technique, elusiveness and a quick mind read it truer.
+  const err = 0.9 * (1 - 0.45 * T - 0.45 * E) / Math.sqrt(Math.max(1, f.mind / e.body));
+  const seenDir = truth
+    .clone()
+    .add(new THREE.Vector3(sim.rng() - 0.5, sim.rng() - 0.5, sim.rng() - 0.5).multiplyScalar(2 * err))
+    .normalize();
+
+  // Head moves he can make, each with how costly it is; take the one that gets the head
+  // furthest off the line he sees, then make it just big enough, no more.
+  const opts: { off: THREE.Vector3; cost: number; say: string }[] = [
+    { off: leftDir.clone().multiplyScalar(0.26 * s), cost: 1, say: 'уклон' },
+    { off: leftDir.clone().multiplyScalar(-0.26 * s), cost: 1, say: 'уклон' },
+    { off: up.clone().multiplyScalar(-0.3 * s).addScaledVector(d, 0.06 * s), cost: 1.12, say: 'нырок' },
+    { off: back.clone().multiplyScalar(0.24 * s).addScaledVector(up, 0.02 * s), cost: 1.05, say: 'отклон' },
+    { off: up.clone().multiplyScalar(-0.22 * s).addScaledVector(leftDir, 0.18 * s), cost: 1.1, say: 'нырок в сторону' },
+    { off: up.clone().multiplyScalar(-0.22 * s).addScaledVector(leftDir, -0.18 * s), cost: 1.1, say: 'нырок в сторону' },
+  ];
+  const clear = (o: THREE.Vector3, dir: THREE.Vector3) => o.clone().addScaledVector(dir, -o.dot(dir)).length();
+  let best = opts[0];
+  let bestScore = -1;
+  for (const o of opts) {
+    const sc = clear(o.off, seenDir) / o.cost;
+    if (sc > bestScore) {
+      bestScore = sc;
+      best = o;
+    }
+  }
+  const need = 0.26 * s;
+  const off = best.off.clone().multiplyScalar(THREE.MathUtils.clamp((need * (1.15 + 0.2 * E)) / Math.max(1e-3, clear(best.off, seenDir)), 0.6, 1.5));
+  // Misread: the head hardly leaves the real line and goes toward where the blow comes from.
+  const into = clear(off, truth) < need * 0.55 && off.dot(truth) < -0.03 * s;
+
+  noted(f, best.say === 'отклон' ? 'back' : 'slip');
+  // In the fighter's own frame: x to his left, y up, z forward.
+  const local = new THREE.Vector3(off.dot(leftDir), off.y, off.dot(d));
+  // Stay under it until the blow has gone past, not just until it arrives.
+  const passes = (ea.startW + (ea.dur * m.active[1]) / e.body - sim.t) * f.body;
+  const act = sim.startAction(f, 'dodge', { dur: passes + 0.24 + 0.1 * (1 - E), dir: off.clone().setY(0).multiplyScalar(1.2 / s) });
+  act.dodgeOff = local;
+  // Get there just before the blow does, no sooner than needed and no later.
+  act.reachT = THREE.MathUtils.clamp(tti * f.body * 0.75, 0.06, 0.16 - 0.05 * E);
+  // Wait for it: move only at the last moment, when the blow is committed and cannot follow.
+  act.delayT = Math.max(0, tti * f.body - act.reachT - 0.02);
+  act.into = into;
   if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * T + 0.4 * E) / f.mind;
-  f.say(`${pick.say}: ${m.name}`);
+  f.say(`${best.say}: ${m.name}`);
   return true;
 }
 

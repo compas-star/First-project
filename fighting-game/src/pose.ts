@@ -211,10 +211,28 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
       case 'parry':
         lerpPose(out, out, withStance(POSES.parry), smooth(Math.min(u * 7, (1 - u) * 3)));
         break;
-      case 'dodge':
-        // Snappy in, smooth out; an elusive fighter goes deeper.
-        lerpPose(out, out, withStance(POSES[a.pose ?? 'dodgeBack']), smooth(Math.min(u * 6, (1 - u) * 2.6)) * (0.85 + 0.45 * f.p.evasion));
+      case 'dodge': {
+        if (!a.dodgeOff) {
+          lerpPose(out, out, withStance(POSES[a.pose ?? 'dodgeBack']), smooth(Math.min(u * 6, (1 - u) * 2.6)));
+          break;
+        }
+        // Precise head movement: straight to the spot that clears the blow, hold it while
+        // the blow goes by, then back. The trunk bends to carry the head there.
+        const reach = a.reachT ?? 0.15;
+        const back = Math.min(0.22, a.dur * 0.35);
+        const t0 = a.t - (a.delayT ?? 0);
+        const k = t0 < 0 ? 0 : t0 < reach ? smooth(t0 / reach) : a.t > a.dur - back ? smooth((a.dur - a.t) / back) : 1;
+        const o = a.dodgeOff;
+        const L = 0.62 * f.scale;
+        const deg = (x: number) => (Math.asin(THREE.MathUtils.clamp(x / L, -0.8, 0.8)) * 180) / Math.PI;
+        const down = Math.max(0, -o.y);
+        out.spineSide += -deg(o.x) * k;
+        out.spineLean += (deg(o.z) + (down / f.scale) * 75) * k;
+        out.crouch += (down / f.scale) * 0.75 * k;
+        out.headPitch += (down / f.scale) * 30 * k - (o.z < 0 ? 12 : 0) * k;
+        out.spineTwist += -deg(o.x) * 0.35 * k;
         break;
+      }
       case 'dash':
         lerpPose(out, out, withStance(POSES.dash), smooth(Math.min(u * 6, (1 - u) * 4)));
         break;

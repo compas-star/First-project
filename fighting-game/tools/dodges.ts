@@ -17,7 +17,7 @@ RAPIER.init().then(() => {
       for (const f of sim.fighters) {
         const da = f.action;
         const ea = f.enemy.action;
-        if (da?.kind === 'dodge' && ea?.kind === 'attack' && !watch.has(ea)) watch.set(ea, { kind: da.pose + (da.into ? '(into)' : ''), def: f, res: '' , headMove: 0, h0: null });
+        if (da?.kind === 'dodge' && ea?.kind === 'attack' && !watch.has(ea)) watch.set(ea, { kind: (f.thought.split(':')[0]) + (da.into ? '(into)' : '') + ' vs ' + ea.move.path,  def: f, res: '' , headMove: 0, h0: null });
       }
       for (const e of sim.events) if (e.type === 'hit') for (const [ea, w] of watch) if (!w.res && w.def === e.target && ea.hitDone) w.res = e.zone;
       sim.events.length = 0;

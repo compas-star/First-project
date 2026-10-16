@@ -298,6 +298,8 @@ export class View {
   private waves: { mesh: THREE.Mesh; age: number; size: number }[] = [];
   private pops: { el: HTMLDivElement; pos: THREE.Vector3; age: number }[] = [];
   private shake = 0;
+  /** Thought bubbles and hit captions over the fighters (off: a clean picture). */
+  words = false;
   /** Called on a highlight (the HUD shows a banner and slows time). */
   onMoment?: (text: string, focus: Fighter) => void;
   private hemi: THREE.HemisphereLight;
@@ -533,6 +535,7 @@ export class View {
   }
 
   private pop(at: THREE.Vector3, text: string, team: 0 | 1): void {
+    if (!this.words) return;
     const el = document.createElement('div');
     el.className = `pop team${team}`;
     el.textContent = text;
@@ -655,7 +658,7 @@ export class View {
     const p = new THREE.Vector3();
     for (const fv of this.fighters) {
       const s = this.project(fv.headPoint(p));
-      const show = fv.bubbleAge < 1.6 && s.visible && fv.f.thought !== '';
+      const show = this.words && fv.bubbleAge < 1.6 && s.visible && fv.f.thought !== '';
       fv.bubble.style.opacity = show ? String(Math.min(1, (1.6 - fv.bubbleAge) * 3)) : '0';
       fv.bubble.style.transform = `translate(${s.x}px, ${s.y}px) translate(-50%, -100%)`;
     }

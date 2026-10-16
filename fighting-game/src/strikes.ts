@@ -155,7 +155,7 @@ export function punchOverride(
   const committed = a.t / a.dur >= m.active[0] * 0.55;
   if (committed) {
     if (!a.lockAim) a.lockAim = aim.clone();
-    aim.lerpVectors(a.lockAim, aim, 0.25 + 0.15 * f.tech);
+    aim.lerpVectors(a.lockAim, aim, 0.08 + 0.07 * f.tech);
   }
   tmp.subVectors(aim, shoulder).normalize();
   aim.addScaledVector(tmp, (kick ? 0.1 : 0.14) * s);

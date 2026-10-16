@@ -1103,3 +1103,67 @@ button:disabled {
   font: 11px/1.3 var(--mono);
   padding: 8px;
 }
+.cbuilt {
+  display: grid;
+  gap: 6px;
+}
+.cstep {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+}
+.cmain {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+.cmain span {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--gold);
+}
+.cx {
+  width: 44px;
+}
+.lab-go3 {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 8px;
+}
+.lab-go3 button {
+  padding: 13px 6px;
+}
+.lab-go3 .primary {
+  font: 16px/1 var(--display);
+}
+.csaved {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+}
+.csaved b {
+  display: block;
+  font-size: 13px;
+}
+.csaved span {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.crow {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+}
+.crow button {
+  padding: 9px 8px;
+  font-size: 12px;
+}
+.crow button.on {
+  border-color: var(--gold);
+  color: var(--gold);
+}

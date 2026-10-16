@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { combos, comboName } from './combos';
 import { MOVE_BY_ID, type Move } from './moves';
 import type { Fighter, Sim } from './sim';
 import {
@@ -539,13 +540,30 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   if (go === 'entry' && few && sim.rng() < 0.65) options.length = 0;
   if (go && options.length) {
     const read = readOpponent(f, e, sim.t);
-    const { m, why } = pickStyled(f, sim, options, read);
+    const picked = pickStyled(f, sim, options, read);
+    let { m } = picked;
+    const { why } = picked;
+    // A combination the player built in the lab, if its first blow fits this moment.
+    const mine = go === 'entry' || go === 'bait' || go === 'punish'
+      ? combos().filter((c) => c.ai && c.steps.length > 1 && options.includes(MOVE_BY_ID[c.steps[0].move]) && c.steps.every((st) => f.canUse(MOVE_BY_ID[st.move])))
+      : [];
+    const script = mine.length && sim.rng() < 0.5 ? mine[Math.floor(sim.rng() * mine.length)] : null;
+    if (script) m = MOVE_BY_ID[script.steps[0].move];
+    f.script = null;
     const r = sim.attackRange(f, m);
     // Step in far enough to land, never so far as to walk into the enemy.
     // A check hook steps back out of the way while it lands; everything else steps in.
     const lunge = m.lunge < 0 ? m.lunge * f.scale : Math.min(Math.max(m.lunge * f.scale, dist - r * 0.85 + 0.05), Math.max(0, dist - gap));
-    const zone = pickZone(f, e, sim, m, read);
+    const zone = script && m.zones.includes(script.steps[0].zone) ? script.steps[0].zone : pickZone(f, e, sim, m, read);
     if (go === 'entry') f.initiativeW = sim.t + waitTime(f, sim);
+    if (script) {
+      sim.startAction(f, 'attack', { move: m, lunge, zone, reply: go === 'punish' });
+      f.script = { steps: script.steps, i: 1 };
+      f.comboLeft = script.steps.length - 1;
+      f.answerUntilW = 0;
+      f.say(`своя связка: ${comboName(script.steps)}`);
+      return;
+    }
     if (go === 'entry' && m.path && sim.rng() < feintChance(f)) {
       sim.startAction(f, 'attack', { move: m, lunge: lunge * 0.4, zone, feint: true });
       f.say(`финт: ${m.name}`);

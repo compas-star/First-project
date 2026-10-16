@@ -79,14 +79,16 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   the gain shown), fight ladder, preview (side-by-side stats, odds) before each fight,
   result screen after. Start: $300 and 100 tokens; old saves got a one-off +100 (`gifts`).
 
-- `labUi.ts` + `moveEdits.ts`: strike lab ("Лаборатория ударов" at the top of the setup
-  sheet). `Sim.lab` (striker obeys commands only, dummy stands/blocks/dodges, nothing hurts:
-  `hurt()` just logs `labHits`), slow motion, fixed camera angles (`view.camView`). Editor
-  changes duration, hit window, reach, lunge, power, path, path shape (`Move.shape`,
-  overrides SHAPES/KICKS) and keyframe poses; saved as diffs in localStorage
-  `arena-moves-v1`, applied to the shared MOVES at start (`loadEdits`), so all fights use
-  them. "Скопировать код" gives `УДАР1:<base64 json>` for the user to paste to me.
-  Planned next: "when to use" conditions per move for the AI, per-move fight stats.
+- `labUi.ts` + `combos.ts`: combination lab ("Лаборатория связок" at the top of the setup
+  sheet; the user rejected the slider strike editor: "миллион ползунков"). Tap blows in
+  order (tap a step to cycle its zone), "Показать" plays it on a dummy (`Sim.lab`: striker
+  obeys only, dummy stands/blocks/dodges, nothing hurts, `hurt()` logs `labHits`), slow
+  motion, fixed camera angles (`view.camView`). Saved combos (localStorage
+  `arena-combos-v1`, code `КОМБО1:`) are used by the AI: in `think`, for entry/bait/punish,
+  50% chance to pick a saved combo whose first blow is in range (`Fighter.script` drives
+  the chain in the combo flow of `runAction`). Tools: `combo1`, `combo2`.
+  `moveEdits.ts` (strike diffs, `Move.shape`, code `УДАР1:`) stays without UI; the user
+  wants to shape single strikes with the mouse instead (not built yet).
 
 ## Testing (no phone needed)
 

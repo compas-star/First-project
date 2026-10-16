@@ -1,7 +1,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import type { FighterParams } from './config';
-import { MOVES, MOVE_BY_ID, FOLLOW, type Move, type Striker } from './moves';
+import { MOVES, MOVE_BY_ID, FOLLOW, type Move, type Striker, type Zone } from './moves';
 import { makeFeet, resetFeet, updateFeet, legOverride, anchorFeet, measureBalance, type Foot } from './feet';
 import { DISCIPLINE_BY_ID, styleStriking, styleGrappling, type Discipline, type Stance } from './disciplines';
 import { punchOverride, aimPointOf } from './strikes';
@@ -331,6 +331,8 @@ export class Fighter {
   /** Guard habits from what he has been hit with: elbows down for the body, gloves up for the head. */
   guardLow = 0;
   guardHigh = 0;
+  /** A combination of the player's being thrown: its blows and the next one's index. */
+  script: { steps: { move: string; zone: Zone }[]; i: number } | null = null;
   /** The lab dummy's stance changes. */
   labPose: Lab | null = null;
   /** Pelvis orientation when the floor roles were (re)set, to turn smoothly into them. */
@@ -2023,7 +2025,21 @@ export class Sim {
     }
     // Combinations flow: the next blow starts while the last one is coming back.
     if (a.kind === 'attack' && u >= 0.72 && f.comboLeft > 0 && f.enemy.state === 'ok') {
-      const next = this.nextInCombo(f, a);
+      // A combination of his own (built in the lab) goes in its order.
+      const step = f.script?.steps[f.script.i];
+      if (step) {
+        f.script!.i++;
+        f.comboLeft--;
+        const m = MOVE_BY_ID[step.move];
+        if (f.canUse(m) && this.footReady(f, m)) {
+          this.startAction(f, 'attack', { move: m, zone: m.zones.includes(step.zone) ? step.zone : m.zones[0], reply: a.reply });
+          f.say(`и ${m.name}`);
+          return;
+        }
+        f.comboLeft = 0;
+        f.script = null;
+      }
+      const next = f.script ? null : this.nextInCombo(f, a);
       f.comboLeft--;
       if (next) {
         const zone = a.zone === 'body' ? (this.rng() < 0.75 ? 'head' : 'body') : this.rng() < f.style.bodyLove ? 'body' : 'head';

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { PartName } from './physics';
 import { partPoint, solveArmIK, solveLegIK, v } from './physics';
-import type { KickPath, PunchPath } from './moves';
+import type { KickPath, PunchPath, PathShape } from './moves';
 import type { Action, Fighter } from './sim';
 
 // Aimed punches. Instead of replaying a fixed arm animation, the fist follows a
@@ -10,16 +10,7 @@ import type { Action, Fighter } from './sim';
 // (forward, up, outward from that shoulder), in meters for a 1.8 m fighter.
 
 
-interface PathShape {
-  /** Where the fist goes while loading the punch, relative to the shoulder. */
-  chamber: [number, number, number];
-  /** Bezier control point of the strike leg; null for a straight line. */
-  via: [number, number, number] | null;
-  /** Elbow hint. */
-  pole: [number, number, number];
-}
-
-const SHAPES: Record<PunchPath, PathShape> = {
+export const SHAPES: Record<PunchPath, PathShape> = {
   straight: { chamber: [0.2, 0.02, 0.06], via: null, pole: [0, -1, 0.7] },
   hook: { chamber: [0.14, -0.02, 0.36], via: [0.42, 0.02, 0.4], pole: [0, 0.35, 1] },
   upper: { chamber: [0.14, -0.34, 0.06], via: [0.3, -0.2, 0.02], pole: [-0.3, -1, 0.35] },
@@ -29,7 +20,7 @@ const SHAPES: Record<PunchPath, PathShape> = {
 };
 
 /** Kicks, relative to the hip joint: (forward, up, outward from that hip). */
-const KICKS: Record<KickPath, PathShape> = {
+export const KICKS: Record<KickPath, PathShape> = {
   // Knee up, then push the sole straight into the target.
   teep: { chamber: [0.32, -0.42, 0.02], via: null, pole: [0.6, 1, 0] },
   // Knee up and out, the shin swings round onto the target.
@@ -160,7 +151,7 @@ export function punchOverride(
   tmp.subVectors(aim, shoulder).normalize();
   aim.addScaledVector(tmp, (kick ? 0.1 : 0.14) * s);
 
-  const shape = kick ? KICKS[m.path as KickPath] : SHAPES[m.path as PunchPath];
+  const shape = m.shape ?? (kick ? KICKS[m.path as KickPath] : SHAPES[m.path as PunchPath]);
   pathPoint(a, shape, a.handStart, s, hand, !kick && m.path === 'straight');
 
   pole.set(0, 0, 0).addScaledVector(fwd, shape.pole[0]).addScaledVector(up, shape.pole[1]).addScaledVector(out, shape.pole[2]);

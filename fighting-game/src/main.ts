@@ -14,6 +14,8 @@ import { View } from './view';
 import { MAPS, MAP_BY_ID, type MapId } from './maps';
 import { SKINS, defaultSkin } from './skins';
 import { CareerUi } from './careerUi';
+import { LabUi } from './labUi';
+import { loadEdits } from './moveEdits';
 import { toParams, type FightResult } from './career';
 import type { Rules } from './sim';
 
@@ -435,7 +437,7 @@ function frame(now: number): void {
   view.hitStop -= realDt;
   if (!paused && !training && !frozen) {
     // On a slow phone the physics may not keep up; then time simply runs slower.
-    worldDt = sim.advance(realDt * viewScale * (sim.winner ? 1 : speed));
+    worldDt = sim.advance(realDt * viewScale * (sim.winner ? 1 : speed) * (lab.active ? lab.slow : 1));
   }
 
   // Between rounds: the card, then the next round (by tap or after a few seconds).
@@ -469,6 +471,7 @@ function frame(now: number): void {
     }
   }
 
+  if (lab.active) lab.update();
   view.render(realDt, worldDt, viewScale);
   updateHud();
   requestAnimationFrame(frame);
@@ -838,6 +841,26 @@ function finishCareerFight(): void {
   cf.done(r);
 }
 
+// ---------- Strike lab ----------
+
+const lab = new LabUi(
+  {
+    build(a, b) {
+      runFight(a, b, MAP_BY_ID.dojo, QUICK);
+      return sim;
+    },
+    exit() {
+      startFight();
+    },
+  },
+  view as unknown as { camView: string },
+);
+
+$('btnLab').addEventListener('click', () => {
+  $('sheet').hidden = true;
+  lab.start(params[0], params[1]);
+});
+
 $('btnCareer').addEventListener('click', () => {
   paused = true;
   $('sheet').hidden = true;
@@ -845,6 +868,7 @@ $('btnCareer').addEventListener('click', () => {
 });
 
 renderPresets();
+loadEdits();
 RAPIER.init().then(() => {
   startFight();
   resize();

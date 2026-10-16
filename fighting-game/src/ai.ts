@@ -168,7 +168,7 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
   const counters = sim
     .usableMoves(f)
     .filter((c) => f.windupOf(c) * 1.15 < tti && dist <= sim.attackRange(f, c) + c.lunge * f.scale * 0.8);
-  if (counters.length) {
+  if (counters.length && !sim.lab) {
     const roomy = tti > f.windupOf(MOVE_BY_ID.jab) * 3;
     const want = 0.2 + 0.55 * f.p.aggression * f.tech + (roomy ? 0.35 : 0) + counterBonus(f);
     if (sim.rng() < want) {

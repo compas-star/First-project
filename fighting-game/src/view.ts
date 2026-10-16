@@ -319,6 +319,8 @@ export class View {
   /** Fighter the camera closes in on after a knockout. */
   koFocus: Fighter | null = null;
   private koZoom = 0;
+  /** A fixed camera angle around the fight (the lab), or automatic. */
+  camView: 'auto' | 'side' | 'front' | 'back' | 'top' = 'auto';
   /** Real seconds since the player last turned the camera. */
   private sinceTouch = 99;
   private touching = false;
@@ -619,7 +621,15 @@ export class View {
     const off = this.camera.position.clone().sub(this.controls.target);
     // Unless the player is steering, swing round to look at the fight from the side.
     this.sinceTouch += realDt;
-    if (!this.touching && this.sinceTouch > 3 && sep > 0.3) {
+    if (this.camView !== 'auto' && !this.touching && sep > 0.1) {
+      // Fixed angle from the line between the fighters: red is the striker.
+      const axis = Math.atan2(b.pos.x - a.pos.x, b.pos.z - a.pos.z);
+      const yaw = axis + (this.camView === 'side' || this.camView === 'top' ? Math.PI / 2 : this.camView === 'front' ? 0.4 : Math.PI - 0.4);
+      const pitch = this.camView === 'top' ? 1.25 : 0.22;
+      const len = off.length();
+      const goal = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(len);
+      off.lerp(goal, 1 - Math.exp(-realDt * 5));
+    } else if (!this.touching && this.sinceTouch > 3 && sep > 0.3) {
       const axis = Math.atan2(b.pos.x - a.pos.x, b.pos.z - a.pos.z);
       const cur = Math.atan2(off.x, off.z);
       const best = axis + Math.PI / 2;

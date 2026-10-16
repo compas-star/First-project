@@ -15,6 +15,16 @@ export type Zone = 'head' | 'body' | 'leg';
 export type PunchPath = 'straight' | 'hook' | 'upper' | 'swing' | 'over';
 export type KickPath = 'teep' | 'round' | 'low' | 'back';
 
+/** Shape of an aimed strike's path, in the striker's body frame (see strikes.ts). */
+export interface PathShape {
+  /** Where the fist or foot goes while loading the strike, relative to the shoulder or hip. */
+  chamber: [number, number, number];
+  /** Bezier control point of the strike leg; null for a straight line. */
+  via: [number, number, number] | null;
+  /** Elbow or knee hint. */
+  pole: [number, number, number];
+}
+
 export interface Move {
   id: string;
   name: string;
@@ -40,6 +50,8 @@ export interface Move {
   path?: PunchPath | KickPath;
   /** Whole-body turn over the move, radians (spinning techniques). */
   spin?: number;
+  /** Its own path shape instead of the path's standard one (set in the move editor). */
+  shape?: PathShape;
   keys: Keyframe[];
 }
 

@@ -274,6 +274,12 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
       out.lEl -= relax * 0.6;
       out.rEl -= relax * 0.5;
     }
+    // The lab dummy, set by hand.
+    if (f.labPose) {
+      out.crouch += f.labPose.crouch;
+      out.spineLean += f.labPose.lean;
+      out.spineSide += f.labPose.side;
+    }
     // Guard habits: hit to the body, the elbows come down to the ribs; to the head, the gloves rise.
     out.lShF += 12 * f.guardHigh - 8 * f.guardLow;
     out.rShF += 12 * f.guardHigh - 8 * f.guardLow;

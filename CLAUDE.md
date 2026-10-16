@@ -79,6 +79,15 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   the gain shown), fight ladder, preview (side-by-side stats, odds) before each fight,
   result screen after. Start: $300 and 100 tokens; old saves got a one-off +100 (`gifts`).
 
+- `labUi.ts` + `moveEdits.ts`: strike lab ("Лаборатория ударов" at the top of the setup
+  sheet). `Sim.lab` (striker obeys commands only, dummy stands/blocks/dodges, nothing hurts:
+  `hurt()` just logs `labHits`), slow motion, fixed camera angles (`view.camView`). Editor
+  changes duration, hit window, reach, lunge, power, path, path shape (`Move.shape`,
+  overrides SHAPES/KICKS) and keyframe poses; saved as diffs in localStorage
+  `arena-moves-v1`, applied to the shared MOVES at start (`loadEdits`), so all fights use
+  them. "Скопировать код" gives `УДАР1:<base64 json>` for the user to paste to me.
+  Planned next: "when to use" conditions per move for the AI, per-move fight stats.
+
 ## Testing (no phone needed)
 
 - Headless sims: `fighting-game/tools/run.sh <script> [args]` (bundles with esbuild):

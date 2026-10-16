@@ -193,6 +193,20 @@ export type GroundPos = 'guard' | 'side' | 'mount';
  * from the top, pass, mount, choke or lock an arm; from the bottom cover,
  * get back to guard, sweep, stand up, or catch a triangle or an armbar.
  */
+/** Settings of the strike lab. */
+export interface Lab {
+  /** Distance the striker keeps, center to center, meters for a 1.8 m man. */
+  dist: number;
+  /** What the dummy does: stands, blocks, or slips and blocks like a fighter. */
+  dummy: 'still' | 'block' | 'dodge';
+  /** Dummy's stance: lower, leaning forward, head to the side (pose units). */
+  crouch: number;
+  lean: number;
+  side: number;
+  /** Dummy turned from facing the striker, radians. */
+  turn: number;
+}
+
 export type Gesture = 'paw' | 'flinch' | 'shake' | 'hold' | 'nod' | 'beckon' | 'wipe';
 
 export interface Grapple {
@@ -317,6 +331,8 @@ export class Fighter {
   /** Guard habits from what he has been hit with: elbows down for the body, gloves up for the head. */
   guardLow = 0;
   guardHigh = 0;
+  /** The lab dummy's stance changes. */
+  labPose: Lab | null = null;
   /** Pelvis orientation when the floor roles were (re)set, to turn smoothly into them. */
   groundFrom = new THREE.Quaternion();
   fall: FallKind = 'back';
@@ -610,6 +626,9 @@ export class Sim {
   /** RAPIER.init() must have finished before a Sim is created. */
   readonly map: MapDef;
   readonly rules: Rules;
+  /** Strike lab: the red fighter strikes on command at a dummy; nothing hurts. */
+  lab: Lab | null = null;
+  labHits: { move: string; zone: string; dmg: number; blocked: boolean; t: number }[] = [];
   /** Rounds: current round (1-based), time into it, and a break between rounds. */
   round = 1;
   roundT = 0;
@@ -934,7 +953,17 @@ export class Sim {
       const moving = Math.min(1, f.groundSpeed / (f.stride * f.body + 1e-6));
       // Tense muscles burn the wind too: he gets it back only when he can let go.
       f.stamina = Math.min(1, Math.max(0, f.stamina) + busy * (0.088 - 0.04 * moving) * (1 - 0.45 * f.tension) * f.cardio * dl);
-      if (!this.winner) {
+      const lab = this.lab;
+      if (lab) {
+        // The lab: the striker does only what he is told, the dummy at most defends.
+        f.stamina = 1;
+        f.circleSpeed = 0;
+        if (f.team === 0) f.wantDist = lab.dist * f.scale;
+        else {
+          f.labPose = lab;
+          if (lab.dummy !== 'still') react(f, f.enemy, this);
+        }
+      } else if (!this.winner) {
         react(f, f.enemy, this);
         if (this.t >= f.nextThinkW) {
           f.thinkSeq++;
@@ -947,7 +976,7 @@ export class Sim {
       const a = f.action;
       f.clock += dl;
       this.bodyFeel(f, h);
-      if (!a || a.kind === 'block' || a.kind === 'parry') this.footwork(f, dl, a ? 0.4 : 1);
+      if (!a || a.kind === 'block' || a.kind === 'parry') this.footwork(f, dl, lab && f.team === 1 ? 0 : a ? 0.4 : 1);
       if (f.dazed && a?.kind !== 'getup') {
         // Rubber legs: drifting off line, and now and then the knees give.
         tmpA.set(Math.cos(f.facing), 0, -Math.sin(f.facing));
@@ -972,7 +1001,7 @@ export class Sim {
       }
       if (!lockTurn && a?.kind !== 'victory') {
         tmpA.subVectors(f.enemy.pos, f.pos);
-        const want = Math.atan2(tmpA.x, tmpA.z);
+        const want = Math.atan2(tmpA.x, tmpA.z) + (this.lab && f.team === 1 ? this.lab.turn : 0);
         let diff = want - f.facing;
         diff = Math.atan2(Math.sin(diff), Math.cos(diff));
         const maxTurn = 11 * dl;
@@ -1679,6 +1708,11 @@ export class Sim {
    * knocks a man out; they suffer on their own (see limbDmg).
    */
   hurt(def: Fighter, m: Move, zone: string, dmg: number, blocked: boolean, seen: boolean): void {
+    // In the lab nobody gets hurt: the blow is only written down.
+    if (this.lab) {
+      this.labHits.push({ move: m.id, zone, dmg, blocked, t: this.t });
+      return;
+    }
     const stone = def.has('stone') ? 2 : 1;
     // Judges count clean, effective blows: the head most, the body next, arms barely.
     this.roundDealt[1 - def.team] += blocked ? 0.1 * dmg : dmg * (zone === 'head' ? 1.3 : zone === 'arm' ? 0.25 : 1);

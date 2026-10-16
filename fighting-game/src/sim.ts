@@ -286,6 +286,19 @@ export class Fighter {
   wobbleUntilW = 0;
   /** Rising from the floor: tilt of the body when the getup began and pelvis height. */
   getupTilt = new THREE.Quaternion();
+  /**
+   * 0..1 how tense the muscles are: loose at a distance (the arms and head carry
+   * their own weight and swing a little), tight when he is close, threatened or busy.
+   */
+  tension = 0.6;
+  /** Where the hips point; they follow the shoulders a moment behind on a turn. */
+  hipYaw = 0;
+  /** Weight between the feet, -1 back .. 1 front, drifting irregularly. */
+  rock = 0;
+  /** How fast the weight is moving between the feet, for the footwork. */
+  rockV = 0;
+  /** 0..1 how much he is bouncing right now: the rhythm comes and goes. */
+  rhythm = 1;
   /** Pelvis orientation when the floor roles were (re)set, to turn smoothly into them. */
   groundFrom = new THREE.Quaternion();
   fall: FallKind = 'back';
@@ -544,6 +557,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 const IDENTITY = new THREE.Quaternion();
 const tmpQ2 = new THREE.Quaternion();
 const tmpQ3 = new THREE.Quaternion();
+const tmpLook = new THREE.Vector3();
 const tmpQv = new THREE.Vector3();
 /** Lying on the back: the body tipped back a quarter turn, feet toward where he faced. */
 const SUPINE = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
@@ -901,6 +915,7 @@ export class Sim {
 
       const a = f.action;
       f.clock += dl;
+      this.bodyFeel(f, h);
       if (!a || a.kind === 'block' || a.kind === 'parry') this.footwork(f, dl, a ? 0.4 : 1);
       if (f.dazed && a?.kind !== 'getup') {
         // Rubber legs: drifting off line, and now and then the knees give.
@@ -1030,6 +1045,10 @@ export class Sim {
           : undefined,
         rootTilt,
         pelvisY,
+        relax: f.state === 'ok' ? 1 - f.tension : 0,
+        look: f.state === 'ok' && f.enemy.state !== 'ground' && f.action?.kind !== 'getup' && f.action?.kind !== 'victory'
+          ? v(f.enemy.rag.byName.head.body.translation(), tmpLook) : undefined,
+        lookTuck: 6 + 10 * f.tech,
         override: aimed || standing || groundAimed ? this.override : undefined,
         partTone,
       },
@@ -1078,7 +1097,9 @@ export class Sim {
       }
       want.addScaledVector(side, f.circleDir * f.circleSpeed * f.stride);
       // Rhythm: a light in-and-out bounce of a trained fighter.
-      want.addScaledVector(d, Math.sin(f.clock * 2 * Math.PI * 1.4 + f.style.phase[0]) * 0.18 * f.style.bounce * f.bounceK * f.stride);
+      want.addScaledVector(d, Math.sin(f.clock * 2 * Math.PI * 1.4 + f.style.phase[0]) * 0.18 * f.style.bounce * f.bounceK * f.rhythm * f.stride);
+      // The weight drifting between the feet moves the hips a few centimetres.
+      want.addScaledVector(d, f.rockV * 0.05 * f.scale);
     }
     // On the ropes or against the wall: circle out toward open floor.
     const inward = { x: 0, z: 0 };
@@ -1086,6 +1107,39 @@ export class Sim {
     const near = 1.5 * f.scale;
     if (left < near) want.addScaledVector(tmpP.set(inward.x, 0, inward.z), ((near - left) / near) * f.stride * 0.9);
     f.self.lerp(want.multiplyScalar(mul), Math.min(1, 7 * dl));
+  }
+
+  /**
+   * What makes a standing body look alive rather than held up on strings: how tense
+   * he is, the hips trailing the shoulders on a turn, and the weight rocking between
+   * the feet at an uneven pace.
+   */
+  private bodyFeel(f: Fighter, h: number): void {
+    const e = f.enemy;
+    const dist = f.pos.distanceTo(e.pos);
+    const range = this.attackRange(f, MOVE_BY_ID.jab) + 0.4 * f.scale;
+    const near = THREE.MathUtils.clamp((2.2 * range - dist) / (1.2 * range), 0, 1);
+    const threat = e.state === 'ok' && (e.action?.kind === 'attack' || e.action?.kind === 'shoot') && dist < 2 * range ? 1 : 0;
+    const busy = f.action && f.action.kind !== 'block' ? 1 : f.action ? 0.85 : 0;
+    let want = Math.max(0.25 + 0.6 * near, threat, busy);
+    if (f.dazed) want *= 0.6;
+    // Tightening is a reflex, letting go takes a while.
+    const rate = want > f.tension ? 9 * f.mind : 1.4 * f.body;
+    f.tension += (want - f.tension) * Math.min(1, rate * h);
+
+    let d = f.facing - f.hipYaw;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    // A strike or a dodge turns the hips by itself (the pose does it); here only the trailing.
+    f.hipYaw += d * Math.min(1, h * f.body * (f.action?.kind === 'attack' ? 30 : 9));
+
+    const t = f.clock;
+    const ph = f.style.phase;
+    // Uneven drift: three slow waves that never line up the same way twice.
+    f.rock = 0.55 * Math.sin(t * 0.9 + ph[0]) + 0.3 * Math.sin(t * 2.1 + ph[1]) + 0.15 * Math.sin(t * 4.3 + ph[2]);
+    f.rockV = 0.5 * Math.cos(t * 0.9 + ph[0]) + 0.63 * Math.cos(t * 2.1 + ph[1]) + 0.65 * Math.cos(t * 4.3 + ph[2]);
+    // Bouncing for a while, then flat-footed and still, then again: never a metronome.
+    const g = Math.sin(t * 0.31 + ph[2]) + 0.5 * Math.sin(t * 0.83 + ph[0]);
+    f.rhythm = THREE.MathUtils.smoothstep(g, -0.6, 0.6);
   }
 
   /** Muscle tone through a fall: rigid for a knockout, half-tense while folding, then loose. */

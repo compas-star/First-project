@@ -284,6 +284,15 @@ export interface Drive {
   stability?: number;
   /** Extra tilt of the whole target pose, used to rise from lying to standing. */
   rootTilt?: THREE.Quaternion;
+  /**
+   * 0..1 how relaxed: lower muscle stiffness for the arms, head and chest, so they
+   * lag and swing with their own weight. 0 = fully tense.
+   */
+  relax?: number;
+  /** A point the eyes stay on: the head turns to it ahead of the body. */
+  look?: THREE.Vector3;
+  /** Chin tucked this many degrees below the line to the look point. */
+  lookTuck?: number;
   /** Pelvis height to hold instead of the pose height (getting up). */
   pelvisY?: number;
   /**
@@ -376,6 +385,34 @@ function inertiaTimes(body: RAPIER.RigidBody, a: THREE.Vector3, out: THREE.Vecto
   return (e[0] + e[3] + e[5]) / 3;
 }
 
+const lookD = new THREE.Vector3();
+const lookQ = new THREE.Quaternion();
+const lookE = new THREE.Euler(0, 0, 0, 'YXZ');
+
+/**
+ * Turns the head's target toward a point: mostly the eyes on it, chin tucked, while
+ * keeping some of the pose's own head movement (a slip still tilts the head).
+ */
+function lookAt(head: Part, at: THREE.Vector3, tuckDeg: number, want: THREE.Quaternion): void {
+  const hp = head.body.translation();
+  lookD.set(at.x - hp.x, at.y - hp.y, at.z - hp.z);
+  const len = lookD.length();
+  if (len < 0.2) return;
+  lookD.divideScalar(len);
+  const yaw = Math.atan2(lookD.x, lookD.z);
+  // Positive X rotation turns the face down.
+  const pitch = Math.asin(THREE.MathUtils.clamp(-lookD.y, -1, 1)) + tuckDeg * DEG;
+  // Keep the pose's roll (side tilt of a slip), replace where the face points.
+  lookE.setFromQuaternion(want, 'YXZ');
+  let dy = yaw - lookE.y;
+  dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  // The neck turns only so far from the pose.
+  const y = lookE.y + THREE.MathUtils.clamp(dy, -1.1, 1.1);
+  const x = THREE.MathUtils.lerp(lookE.x, pitch, 0.7);
+  lookQ.setFromEuler(lookE.set(x, y, lookE.z, 'YXZ'));
+  want.slerp(lookQ, 0.8);
+}
+
 function capped(tau: THREE.Vector3, cap: number): THREE.Vector3 {
   const len = tau.length();
   if (len > cap) tau.multiplyScalar(cap / len);
@@ -421,8 +458,12 @@ export function drive(r: Ragdoll, d: Drive, h: number): void {
       const ov = d.override?.[p.name];
       if (ov) want.copy(ov);
       else t[p.key].getWorldQuaternion(want);
+      if (p.name === 'head' && d.look && !ov) lookAt(p, d.look, d.lookTuck ?? 10, want);
       // Limbs have their own inertia: arms and the head follow a little behind the trunk.
-      const fq = FREQ[p.name] ?? 1;
+      // Relaxed, they follow further behind, carried by the body rather than held.
+      const rx = d.relax ?? 0;
+      const soft = rx > 0 ? (ARMS.has(p.name) ? 1 - 0.75 * rx : p.name === 'head' ? 1 - 0.6 * rx : p.name === 'chest' ? 1 - 0.35 * rx : 1) : 1;
+      const fq = (FREQ[p.name] ?? 1) * Math.sqrt(soft);
       rotErr(want, cur, alphaW).multiplyScalar(kp * fq * fq).addScaledVector(w, -kd * fq).multiplyScalar(stand * pt);
     }
     let Ibar = inertiaTimes(p.body, alphaW, alphaW);

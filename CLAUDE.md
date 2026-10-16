@@ -145,7 +145,15 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   to the floor. Tool: `gvs <styleA> <styleB> [n]`.
   `window.__sim` is exposed for Playwright checks (e.g. force `startGrapple`).
 
-## Next steps (planned with the user)
+- Alive stance (`Sim.bodyFeel`): `tension` (loose at distance, reflex-tight when close,
+  threatened or busy) lowers arm/head/chest PD stiffness via `Drive.relax`, so they lag
+  with their own weight; `hipYaw` trails the facing (shoulders lead a turn, pose adds the
+  lag to pelvisTwist); `rock` = irregular weight drift front/back (trunk lean + a few cm
+  of hip motion), `rhythm` gates the bounce on and off; breathing. The head looks at the
+  enemy's head (`Drive.look`, chin tucked by technique, keeps the pose's roll).
+  Tool: `pspeed` (fastest parts by state). Known: rare shin spikes ~30-38 m/s (old issue).
+
+
 
 1. Done: training (genome/train/school), memory across fights.
 2. Done (first pass): kinetic chain (hips and trunk lead the arm in `pose.ts`), weight

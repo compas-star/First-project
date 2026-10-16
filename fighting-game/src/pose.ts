@@ -171,7 +171,21 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
       out.spineSide += 12 * w * Math.sin(t * 1.3 + st.phase[0]);
       out.spineLean += 6 * w * (1 + Math.sin(t * 2.6 + st.phase[2]));
     }
-    out.crouch += 0.03 * st.bounce * disc.bounce * (1 + Math.sin(t * 2 * Math.PI * 2.8 + st.phase[0]));
+    out.crouch += 0.03 * st.bounce * disc.bounce * f.rhythm * (1 + Math.sin(t * 2 * Math.PI * 2.8 + st.phase[0]));
+    // Weight on the front foot: the trunk over it, knees a touch deeper; on the back foot, upright.
+    out.spineLean += 5 * f.rock;
+    out.crouch += 0.012 * (1 + f.rock);
+    // Breathing, faster and deeper as the wind goes.
+    const br = Math.sin(t * (1.6 + 2.4 * f.fatigue) + st.phase[1]);
+    out.spineLean += (1.2 + 2 * f.fatigue) * br;
+    out.lShS += 2 * br;
+    out.rShS += 2 * br;
+    // Loose at a distance: the shoulders sit low, the elbows open a little.
+    const loose = 1 - f.tension;
+    out.lShF -= 6 * loose;
+    out.rShF -= 5 * loose;
+    out.lEl -= 8 * loose;
+    out.rEl -= 6 * loose;
     // Arms swing a little with the steps; the legs themselves are placed by the feet.
     const amp = Math.min(1, f.groundSpeed / (f.stride * f.body * 0.6));
     const s = Math.sin(f.walkPhase);
@@ -210,6 +224,12 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
       out.crouch -= 0.02 * tired;
     }
   }
+  // On a turn the shoulders go first and the hips follow a moment later.
+  let lag = f.hipYaw - f.facing;
+  lag = (Math.atan2(Math.sin(lag), Math.cos(lag)) * 180) / Math.PI;
+  lag = THREE.MathUtils.clamp(lag, -35, 35);
+  out.pelvisTwist += lag;
+  out.spineTwist -= 0.8 * lag;
   if (a) {
     const u = a.t / a.dur;
     switch (a.kind) {

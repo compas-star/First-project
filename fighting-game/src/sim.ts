@@ -76,6 +76,9 @@ const STRIKE_TEMPO = 1.9;
 /** Points along the shin, shin frame for a 1.8 m fighter; the last is the foot itself. */
 const SHIN_POINTS = [new THREE.Vector3(0, -0.2, 0.04), new THREE.Vector3(0, -0.33, 0.06), STRIKERS.rFoot.at];
 const tmpQ2v = new THREE.Vector3();
+const armA = new THREE.Vector3();
+const armB = new THREE.Vector3();
+const armC = new THREE.Vector3();
 
 const FOOT_OF_STRIKER: Partial<Record<Striker, 0 | 1>> = { lFoot: 0, lKnee: 0, rFoot: 1, rKnee: 1 };
 export const LIMB_NAME: Record<Limb, string> = { lArm: 'левая рука', rArm: 'правая рука', lLeg: 'левая нога', rLeg: 'правая нога' };
@@ -1450,6 +1453,19 @@ export class Sim {
     return weighted[0][0];
   }
 
+  /** Is this point on an arm well away from the trunk and the head? */
+  private armAway(e: Fighter, at: THREE.Vector3): boolean {
+    const chest = e.rag.byName.chest;
+    const head = e.rag.byName.head;
+    partPoint(chest, chest.hitA, armA);
+    partPoint(chest, chest.hitB, armB);
+    const toTrunk = segSegDist(at, at, armA, armB, armC) - chest.hitR;
+    partPoint(head, head.hitA, armA);
+    partPoint(head, head.hitB, armB);
+    const toHead = segSegDist(at, at, armA, armB, armC) - head.hitR;
+    return Math.min(toTrunk, toHead) > 0.12 * e.scale;
+  }
+
   /** Did the striking fist or foot touch the enemy during the strike window? */
   private checkStrike(f: Fighter, h: number): void {
     const a = f.action;
@@ -1485,6 +1501,9 @@ export class Sim {
         partPoint(ep, ep.hitA, segA);
         partPoint(ep, ep.hitB, segB);
         const d = segSegDist(prevs[i], cur[i], segA, segB, closest) - (sr + ep.hitR);
+        // An arm only takes the blow where it covers the body: the shoulder, or a guard held
+        // against the face and ribs. A blow brushing an arm held out goes on past it.
+        if (d < bestGap && ep.def.zone === 'arm' && this.armAway(e, closest)) continue;
         if (d < bestGap) {
           bestGap = d;
           best = ep;

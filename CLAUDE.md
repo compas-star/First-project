@@ -107,6 +107,13 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   "До пика" (chosen fighter: every stat = his cap). Save transfer (`saveCode.ts`, screen
   'save' from home and the journal): every localStorage key `arena-*` as code `СЕЙВ1:`
   (gzip+base64, ~17k chars); loading replaces this device's game.
+  Cloud copy (user: the game must not get lost): `cloud.ts`, the artifact's `db` + `user`
+  capabilities (published with `capabilities: {db: {}, user: {}}`), one private document
+  `data/users/<id>/save` = {code: СЕЙВ1 code, at}. `career.save()` calls `saveHook.after`
+  (= `cloudDirty`); a write at most every 20 s, and on pagehide/hidden. A browser without a
+  local career (cleared, other device) restores the cloud copy at startup (`cloudStart`).
+  Save screen: cloud status, "Сохранить сейчас", "Загрузить из облака". Outside claude.ai
+  or signed out: `claude.use` absent/null -> quiet no-op. Tested with a mock runtime.
   Weight classes (user: two-metre bikers beat everyone): `WCLASSES` light <=70, middle 71-85,
   heavy 86+ kg, `classOf(f)` by weight. Opponents, tournament fields, NPC bouts and NPC
   tournaments only within a class (`worldField(c, t, n, cls)`, `opponent(t, cls)`,

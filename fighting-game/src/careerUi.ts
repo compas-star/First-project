@@ -14,6 +14,7 @@ import {
 } from './career';
 import { DISCIPLINE_BY_ID } from './disciplines';
 import { exportSave, importSave } from './saveCode';
+import { cloudFlush, cloudRestore, cloudAt, cloudState } from './cloud';
 
 export interface CareerHooks {
   /** Show this fight in the arena; `done` gets the result when it is over. */
@@ -162,7 +163,7 @@ export class CareerUi {
         <button type="button" data-act="to" data-s="market">Рынок</button>
         <button type="button" data-act="to" data-s="log">Журнал</button>
       </div>
-      <button type="button" data-act="to" data-s="save">💾 Перенести сохранение на другое устройство</button>
+      <button type="button" data-act="to" data-s="save">💾 Сохранение и перенос</button>
       <div class="newsbox"><div class="h2">Новости мира боёв</div>${(c.news ?? []).slice(0, 4).map((x) => `<div>${esc(x)}</div>`).join('')}<div class="fnote">Бойцы мира дерутся каждый день, даже когда игра закрыта.</div></div>`;
   }
 
@@ -512,13 +513,21 @@ export class CareerUi {
     return `<div class="h1">Журнал</div>
       <div class="newsbox"><div class="h2">Новости</div>${(this.c.news ?? []).map((x) => `<div>${esc(x)}</div>`).join('')}</div>
       <div class="log">${this.c.log.map((s) => `<div>${esc(s)}</div>`).join('')}</div>
-      <button type="button" data-act="to" data-s="save">💾 Перенести сохранение</button>
+      <button type="button" data-act="to" data-s="save">💾 Сохранение и перенос</button>
       <button type="button" data-act="reset">Начать карьеру заново</button>`;
   }
 
   /** Copy the save out as a code, or paste one in from another device. */
   private saveView(): string {
-    return `<div class="h1">Перенос сохранения</div>
+    const ago = cloudAt ? Math.max(0, Math.round((Date.now() - cloudAt) / 60000)) : -1;
+    const cloud = cloudState === 'on'
+      ? `<div class="pill green">☁ Облачное сохранение включено: игра сама копируется в твой аккаунт claude.ai. ${ago < 0 ? 'Копии ещё нет.' : ago === 0 ? 'Последняя копия — только что.' : `Последняя копия — ${ago} мин назад.`}</div>
+        <div class="row"><button type="button" data-act="cloudsave">Сохранить сейчас</button><button type="button" data-act="cloudload">Загрузить из облака</button></div>
+        <div class="fnote">Если браузер потеряет игру, при следующем открытии она вернётся из облака сама.</div>`
+      : `<div class="pill">☁ Облако недоступно здесь (игра открыта не на claude.ai или ты не вошёл). Используй код ниже.</div>`;
+    return `<div class="h1">Сохранение</div>
+      ${cloud}
+      <div class="h2">Перенос кодом</div>
       <div class="fnote">Код — это вся игра: карьера, бойцы, деньги, связки, нарисованные удары, настройки.</div>
       <div class="h2">1. На этом устройстве</div>
       <button type="button" class="primary wide" data-act="savemake">Сделать код</button>
@@ -558,6 +567,18 @@ export class CareerUi {
       }
       case 'no':
         return say(null);
+      case 'cloudsave':
+        cloudFlush(true).then((ok) => say(ok ? 'Сохранено в облако' : 'Не получилось сохранить, попробуй позже'));
+        return;
+      case 'cloudload':
+        return ask('Заменить игру в этом браузере копией из облака?', () => {
+          cloudRestore().then((err) => {
+            if (err) return say(err);
+            this.c = load() ?? newCareer();
+            this.toast = 'Игра загружена из облака';
+            this.go('home');
+          });
+        });
       case 'savemake':
         save(c);
         exportSave().then((code) => {

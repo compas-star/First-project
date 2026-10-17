@@ -1096,12 +1096,16 @@ export function load(): Career | null {
   }
 }
 
+/** Called after every save (main.ts hooks the cloud copy here). */
+export const saveHook: { after: (() => void) | null } = { after: null };
+
 export function save(c: Career): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(c));
   } catch {
     /* storage unavailable */
   }
+  saveHook.after?.();
 }
 
 export function reset(): Career {

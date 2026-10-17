@@ -18,7 +18,8 @@ import { Sound } from './sound';
 import { LabUi } from './labUi';
 import { loadEdits } from './moveEdits';
 import { Recorder } from './recorder';
-import { toParams, relOf, type FightResult } from './career';
+import { toParams, relOf, load as loadCareer, saveHook, type FightResult } from './career';
+import { cloudStart, cloudDirty } from './cloud';
 import type { Rules } from './sim';
 
 type Eyes = 'fastest' | 'red' | 'blue' | 'real';
@@ -813,6 +814,15 @@ new ResizeObserver(resize).observe($('scene'));
 
 // ---------- Manager mode ----------
 
+// Did this browser already have a game before the career screen made a fresh one?
+let hadLocal = false;
+try {
+  hadLocal = !!localStorage.getItem('arena-career-v1');
+} catch {
+  /* storage unavailable */
+}
+saveHook.after = cloudDirty;
+
 const career = new CareerUi({
   fight(me, opp, tier, title, done) {
     careerFight = { done };
@@ -916,6 +926,12 @@ $('btnLab').addEventListener('click', () => {
   lab.start(params[0], params[1]);
 });
 
+// The cloud copy: kept up to date, and brought back into a browser that lost the game.
+void cloudStart(hadLocal, () => {
+  career.c = loadCareer() ?? career.c;
+  loadEdits();
+  if (career.open) career.render();
+});
 $('btnCareer').addEventListener('click', () => {
   paused = true;
   $('sheet').hidden = true;

@@ -49,6 +49,137 @@ function mesh(g: THREE.BufferGeometry, m: THREE.Material, shadow = true): THREE.
   return o;
 }
 
+
+/** A sky dome: a vertical gradient, with extras drawn on it (stars, glow, silhouettes). */
+function skyDome(stops: [number, string][], draw?: (g: CanvasRenderingContext2D, w: number, h: number) => void, r = 95): THREE.Mesh {
+  const tex = canvas(1024, 512, (g) => {
+    const gr = g.createLinearGradient(0, 0, 0, 512);
+    for (const [k, c] of stops) gr.addColorStop(k, c);
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 1024, 512);
+    draw?.(g, 1024, 512);
+  });
+  tex.wrapS = THREE.RepeatWrapping;
+  // Seen from inside: flip so text reads the right way.
+  tex.repeat.x = -1;
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 16), new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false }));
+  dome.renderOrder = -10;
+  return dome;
+}
+
+/** Stars scattered over the upper half of a dome texture. */
+function stars(g: CanvasRenderingContext2D, w: number, h: number, n: number, top = 0.55): void {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * 0.8 + 0.2;
+    g.fillStyle = `rgba(220,230,255,${a})`;
+    const s = Math.random() < 0.08 ? 2 : 1;
+    g.fillRect(Math.random() * w, Math.random() * h * top, s, s);
+  }
+}
+
+/** A soft beam of light from a lamp: an additive cone that fades toward the floor. */
+function beam(group: THREE.Group, from: THREE.Vector3, to: THREE.Vector3, radius: number, color: number, strength = 0.18): THREE.Mesh {
+  const len = from.distanceTo(to);
+  const fade = canvas(4, 256, (g) => {
+    const gr = g.createLinearGradient(0, 0, 0, 256);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 4, 256);
+  });
+  const geo = new THREE.CylinderGeometry(0.15, radius, len, 24, 1, true);
+  geo.translate(0, -len / 2, 0);
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color, alphaMap: fade, transparent: true, opacity: strength, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.FrontSide, fog: false,
+  }));
+  m.position.copy(from);
+  m.lookAt(to);
+  m.rotateX(-Math.PI / 2);
+  group.add(m);
+  return m;
+}
+
+/** A glowing sign: text drawn with a neon halo onto a plane. */
+function neonSign(text: string, color: string, w: number, h: number, font = '900 110px "Russo One", Arial Black, sans-serif'): THREE.Mesh {
+  const tex = canvas(512, Math.round(512 * h / w), (g) => {
+    const H = g.canvas.height;
+    g.fillStyle = '#05060a';
+    g.fillRect(0, 0, 512, H);
+    g.strokeStyle = color;
+    g.lineWidth = 6;
+    g.shadowColor = color;
+    g.shadowBlur = 24;
+    g.strokeRect(10, 10, 492, H - 20);
+    g.fillStyle = '#fff';
+    g.font = font;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(text, 256, H / 2 + 4);
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = color;
+    g.globalAlpha = 0.55;
+    g.fillRect(0, 0, 512, H);
+  });
+  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 1.5, roughness: 0.5 }));
+}
+
+/** Falling streaks (rain) or slow drifting flakes (petals, ash) in a box round the fight. */
+function fallers(group: THREE.Group, n: number, half: number, height: number, kind: 'rain' | 'petal', color: number): (t: number) => void {
+  const pos = new Float32Array(n * 6);
+  const seed = Array.from({ length: n }, () => Math.random());
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const obj = kind === 'rain'
+    ? new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.45, depthWrite: false }))
+    : new THREE.Points(geo, new THREE.PointsMaterial({ color, size: 0.035, transparent: true, opacity: 0.9, depthWrite: false }));
+  obj.frustumCulled = false;
+  group.add(obj);
+  const xs = seed.map(() => (Math.random() * 2 - 1) * half);
+  const zs = seed.map(() => (Math.random() * 2 - 1) * half);
+  return (t) => {
+    for (let i = 0; i < n; i++) {
+      const sp = kind === 'rain' ? 9 + seed[i] * 3 : 0.5 + seed[i] * 0.4;
+      const y = height - ((t * sp + seed[i] * height) % height);
+      const sway = kind === 'rain' ? 0 : Math.sin(t * 1.3 + seed[i] * 20) * 0.6;
+      const x = xs[i] + sway + (kind === 'rain' ? -0.04 * y : 0);
+      const z = zs[i] + (kind === 'rain' ? 0 : Math.cos(t * 0.9 + seed[i] * 13) * 0.4);
+      pos.set([x, y, z, x + (kind === 'rain' ? 0.05 : 0), y + (kind === 'rain' ? 0.35 : 0), z], i * 6);
+    }
+    geo.attributes.position.needsUpdate = true;
+  };
+}
+
+/** Camera flashes in the crowd: tiny white bursts, more when something big lands. */
+function flashes(group: THREE.Group, inner: number, outer: number, y0: number, y1: number): (t: number, excite: number) => void {
+  const n = 14;
+  const mats: THREE.MeshBasicMaterial[] = [];
+  const ms: THREE.Mesh[] = [];
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, fog: false, depthWrite: false, blending: THREE.AdditiveBlending });
+    const o = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 4), m);
+    o.scale.setScalar(1.5);
+    group.add(o);
+    mats.push(m);
+    ms.push(o);
+  }
+  const life = new Float32Array(n);
+  let last = 0;
+  return (t, excite) => {
+    const dt = Math.min(0.1, Math.max(0, t - last));
+    last = t;
+    for (let i = 0; i < n; i++) {
+      life[i] -= dt * 6;
+      if (life[i] <= 0 && Math.random() < dt * (0.25 + 4 * excite)) {
+        life[i] = 1;
+        const a = Math.random() * Math.PI * 2;
+        const r = inner + Math.random() * (outer - inner);
+        ms[i].position.set(Math.sin(a) * r, y0 + Math.random() * (y1 - y0), Math.cos(a) * r);
+      }
+      mats[i].opacity = Math.max(0, life[i]);
+    }
+  };
+}
+
 /** A crowd of simple figures on tiers around the fight; they bounce when something big lands. */
 function crowd(group: THREE.Group, inner: number, rows: number, baseY: number, shape: 'square' | 'circle'): (t: number, excite: number) => void {
   const per = 34;
@@ -102,13 +233,13 @@ function ring(map: MapDef): Arena {
   const group = new THREE.Group();
   const S = map.size;
   const top = canvas(1024, 1024, (g) => {
-    g.fillStyle = '#c9ced8';
+    g.fillStyle = '#34406a';
     g.fillRect(0, 0, 1024, 1024);
     noise(g, 1024, 1024, 9000, 'rgba(0,0,0,0.04)', 3);
-    g.strokeStyle = 'rgba(30,40,70,0.25)';
+    g.strokeStyle = 'rgba(255,255,255,0.25)';
     g.lineWidth = 6;
     g.strokeRect(40, 40, 944, 944);
-    g.fillStyle = 'rgba(30,40,80,0.22)';
+    g.fillStyle = 'rgba(242,193,78,0.35)';
     g.font = '900 130px "Russo One", Arial Black, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
@@ -182,11 +313,40 @@ function ring(map: MapDef): Arena {
   spot.position.set(0, 7.2, 0);
   spot.target.position.set(0, 0, 0);
   group.add(spot, spot.target);
+  // Beams from the rig down onto the canvas, through the smoke of the hall.
+  for (const x of [-S * 0.6, S * 0.6]) for (const z of [-S * 0.6, S * 0.6]) {
+    beam(group, new THREE.Vector3(x, 7.3, z), new THREE.Vector3(x * 0.4, 0, z * 0.4), 1.4, 0xfff0d0, 0.05);
+  }
+  // Coloured sweeping lights over the crowd.
+  const sweeps = [0xff3f8e, 0x3fb6ff, 0xffc23f, 0x9a5bff].map((c, i) => {
+    const b = beam(group, new THREE.Vector3(Math.sin(i * 1.57) * (S + 10), 11, Math.cos(i * 1.57) * (S + 10)), new THREE.Vector3(0, 0, 0), 1.6, c, 0.06);
+    return { b, i };
+  });
+  // The hall: a dark dome, haze toward the floor, banners with the event's name.
+  group.add(skyDome([[0, '#020205'], [0.55, '#0b0a18'], [0.75, '#1a1030'], [1, '#05040a']], (g, w, h) => {
+    for (let i = 0; i < 6; i++) {
+      const x = (i / 6) * w;
+      g.fillStyle = i % 2 ? '#7a1028' : '#10306a';
+      g.fillRect(x + 30, h * 0.38, 110, 70);
+      g.fillStyle = '#f2c14e';
+      g.font = '700 22px Arial Black, sans-serif';
+      g.fillText('НОЧЬ БОЁВ', x + 36, h * 0.38 + 42);
+    }
+  }, 40));
   const bounce = crowd(group, S + 3.2, 5, -1.1, 'square');
+  const flash = flashes(group, S + 3.5, S + 8, -0.2, 2.6);
   return {
     group, background: 0x07080c, fog: [0x07080c, 14, 34], sun: 1.2, hemi: 0.45,
     crate: std(0x8b6a45, 0.85),
-    update: (t, e) => bounce(t, e),
+    update: (t, e) => {
+      bounce(t, e);
+      flash(t, e);
+      for (const { b, i } of sweeps) {
+        const a = t * 0.35 + i * 1.57;
+        b.lookAt(Math.sin(a) * (S + 6), -1, Math.cos(a * 1.3) * (S + 6));
+        b.rotateX(-Math.PI / 2);
+      }
+    },
   };
 }
 
@@ -194,16 +354,16 @@ function cage(map: MapDef): Arena {
   const group = new THREE.Group();
   const S = map.size;
   const mat = canvas(1024, 1024, (g) => {
-    g.fillStyle = '#d6d8dc';
+    g.fillStyle = '#2a2c33';
     g.fillRect(0, 0, 1024, 1024);
-    noise(g, 1024, 1024, 8000, 'rgba(0,0,0,0.05)', 3);
+    noise(g, 1024, 1024, 8000, 'rgba(255,255,255,0.03)', 3);
     g.translate(512, 512);
-    g.strokeStyle = 'rgba(180,30,30,0.35)';
+    g.strokeStyle = 'rgba(220,40,40,0.7)';
     g.lineWidth = 10;
     g.beginPath();
     g.arc(0, 0, 180, 0, Math.PI * 2);
     g.stroke();
-    g.fillStyle = 'rgba(20,20,20,0.35)';
+    g.fillStyle = 'rgba(255,255,255,0.22)';
     g.font = '900 120px "Russo One", Arial Black, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
@@ -250,11 +410,36 @@ function cage(map: MapDef): Arena {
   const spot = new THREE.SpotLight(0xf6f3ff, 55, 20, Math.PI / 4.5, 0.5, 1.4);
   spot.position.set(0, 7.5, 0);
   group.add(spot, spot.target);
+  // A cold white ring of lamps over the cage, beams through the haze.
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    beam(group, new THREE.Vector3(Math.sin(a) * S * 0.7, 8, Math.cos(a) * S * 0.7), new THREE.Vector3(Math.sin(a) * S * 0.3, 0, Math.cos(a) * S * 0.3), 1.2, 0xdfe8ff, 0.04);
+  }
+  const ringLamp = mesh(new THREE.TorusGeometry(S * 0.7, 0.08, 6, 48), std(0xffffff, 0.3, 0, { emissive: 0xe8f0ff, emissiveIntensity: 2 }), false);
+  ringLamp.rotation.x = Math.PI / 2;
+  ringLamp.position.y = 8;
+  group.add(ringLamp);
+  group.add(skyDome([[0, '#010103'], [0.6, '#070b14'], [0.78, '#12203a'], [1, '#030407']], (g, w, h) => {
+    // Big screens round the hall.
+    for (let i = 0; i < 4; i++) {
+      const x = (i / 4) * w + 60;
+      g.fillStyle = '#0b1830';
+      g.fillRect(x, h * 0.36, 150, 80);
+      g.fillStyle = '#d33';
+      g.fillRect(x + 6, h * 0.36 + 6, 66, 68);
+      g.fillStyle = '#36f';
+      g.fillRect(x + 78, h * 0.36 + 6, 66, 68);
+    }
+  }, 42));
   const bounce = crowd(group, S + 3.5, 6, 0, 'circle');
+  const flash = flashes(group, S + 3.8, S + 9, 0.6, 4);
   return {
     group, background: 0x050608, fog: [0x050608, 14, 34], sun: 1.1, hemi: 0.4,
     crate: std(0x8b6a45, 0.85),
-    update: (t, e) => bounce(t, e),
+    update: (t, e) => {
+      bounce(t, e);
+      flash(t, e);
+    },
   };
 }
 
@@ -277,7 +462,7 @@ function alley(map: MapDef): Arena {
       g.stroke();
     }
   }, [1, 2]);
-  const floor = mesh(new THREE.PlaneGeometry(ALLEY_HALF * 2 + 1.2, L * 2), std(0xffffff, 0.75, 0, { map: asphalt }), false);
+  const floor = mesh(new THREE.PlaneGeometry(ALLEY_HALF * 2 + 1.2, L * 2), std(0xffffff, 0.35, 0.25, { map: asphalt }), false);
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   group.add(floor);
@@ -343,14 +528,58 @@ function alley(map: MapDef): Arena {
   const lamp = new THREE.PointLight(0xffd59a, 22, 12, 1.5);
   lamp.position.copy(bulb.position).y -= 0.2;
   group.add(pole, bulb, lamp);
+  // More signs down the alley: a cyan noodle bar, a red hotel, a green pharmacy cross.
+  const signs: [string, string, number, number, number, number][] = [
+    ['ЛАПША', '#3ff0ff', -1, 3.6, 4.5, 0x3ff0ff],
+    ['ОТЕЛЬ', '#ff3a3a', 1, 4.6, 6.5, 0xff3a3a],
+    ['24/7', '#7dff5a', -1, 2.9, -5, 0x7dff5a],
+    ['КЛУБ', '#b66bff', 1, 3.1, -7.5, 0xb66bff],
+  ];
+  const signLights: THREE.PointLight[] = [];
+  for (const [txt, css, side, y, z, c] of signs) {
+    const sg = neonSign(txt, css, 1.8, 0.6);
+    sg.position.set(side * (ALLEY_HALF + 0.25), y, z);
+    sg.rotation.y = -side * Math.PI / 2;
+    const l = new THREE.PointLight(c, 8, 7, 1.7);
+    l.position.set(side * (ALLEY_HALF - 0.5), y, z);
+    group.add(sg, l);
+    signLights.push(l);
+  }
+  // A fire in an oil drum: warm light that breathes.
+  const drum = mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.85, 14), std(0x3a2a1e, 0.7, 0.5));
+  drum.position.set(ALLEY_HALF - 0.5, 0.43, 5.5);
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.6, 8), new THREE.MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.85 }));
+  flame.position.set(ALLEY_HALF - 0.5, 1.15, 5.5);
+  const fireLight = new THREE.PointLight(0xff7a2a, 10, 8, 1.6);
+  fireLight.position.set(ALLEY_HALF - 0.5, 1.4, 5.5);
+  group.add(drum, flame, fireLight);
+  // Fire escapes: dark iron landings high on the walls.
+  const iron = std(0x15161a, 0.6, 0.6);
+  for (const [sgn, z] of [[-1, -3], [1, 1.5], [-1, 7]] as const) {
+    for (const y of [3.2, 5.6]) {
+      const land = mesh(new THREE.BoxGeometry(0.9, 0.06, 2.2), iron, false);
+      land.position.set(sgn * (ALLEY_HALF - 0.15), y, z);
+      const rail = mesh(new THREE.BoxGeometry(0.04, 0.8, 2.2), iron, false);
+      rail.position.set(sgn * (ALLEY_HALF - 0.6), y + 0.4, z);
+      group.add(land, rail);
+    }
+  }
+  // A strip of night sky over the alley, city glow on the horizon.
+  group.add(skyDome([[0, '#04040a'], [0.45, '#140c26'], [0.62, '#4a1840'], [0.72, '#140a18'], [1, '#040406']], (g, w, h) => stars(g, w, h, 160, 0.4)));
+  const rain = fallers(group, 380, ALLEY_HALF + 0.2, 8, 'rain', 0xaac4ff);
   let flick = 0;
   return {
-    group, background: 0x07080d, fog: [0x07080d, 8, 26], sun: 0.35, hemi: 0.35,
+    group, background: 0x07080d, fog: [0x0a0814, 8, 26], sun: 0.35, hemi: 0.35,
     crate: std(0x2f4a33, 0.6, 0.5),
     update: (t) => {
       flick = Math.sin(t * 23) > 0.97 ? 0.3 : 1;
       neonMat.emissiveIntensity = 1.6 * flick;
       neonLight.intensity = 14 * flick;
+      signLights[1].intensity = Math.sin(t * 17 + 1) > 0.96 ? 1 : 8;
+      const f = 0.8 + 0.2 * Math.sin(t * 13) + 0.1 * Math.sin(t * 31);
+      fireLight.intensity = 10 * f;
+      flame.scale.set(1, f, 1);
+      rain(t);
     },
   };
 }
@@ -445,10 +674,27 @@ function dojo(map: MapDef): Arena {
     light.position.copy(l.position);
     group.add(l, light);
   }
+  // Evening outside: a sunset over mountains, cherry petals drifting in.
+  group.add(skyDome([[0, '#1d1240'], [0.35, '#6a2a5a'], [0.55, '#e0704a'], [0.62, '#ffc070'], [0.7, '#3a2030'], [1, '#120a08']], (g, w, h) => {
+    g.fillStyle = '#ffe6a8';
+    g.beginPath();
+    g.arc(w * 0.3, h * 0.6, 34, 0, Math.PI * 2);
+    g.fill();
+    for (const [c, base, amp] of [['#4a2a48', 0.6, 60], ['#2a1830', 0.66, 40]] as const) {
+      g.fillStyle = c;
+      g.beginPath();
+      g.moveTo(0, h);
+      for (let x = 0; x <= w; x += 16) g.lineTo(x, h * base - Math.abs(Math.sin(x * 0.011) * amp + Math.sin(x * 0.031) * amp * 0.4));
+      g.lineTo(w, h);
+      g.fill();
+    }
+  }, 60));
+  beam(group, new THREE.Vector3(-S - 2, 5, -S), new THREE.Vector3(S * 0.3, 0, S * 0.2), 1.8, 0xffb070, 0.1);
+  const petals = fallers(group, 120, S + 1, 4, 'petal', 0xffb3cf);
   return {
     group, background: 0x1a120c, fog: [0x1a120c, 12, 30], sun: 0.9, hemi: 0.7,
     crate: std(0x8b6a45, 0.85),
-    update: () => {},
+    update: (t) => petals(t),
   };
 }
 
@@ -522,15 +768,39 @@ function roof(map: MapDef): Arena {
   group.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xbfd0ff, size: 0.35, fog: false })));
   const moon = new THREE.Mesh(new THREE.SphereGeometry(4, 20, 14), new THREE.MeshBasicMaterial({ color: 0xf1ecd6, fog: false }));
   moon.position.set(-40, 38, -60);
-  group.add(moon);
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(7, 20, 14), new THREE.MeshBasicMaterial({ color: 0xffe0b0, transparent: true, opacity: 0.18, fog: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+  glow.position.copy(moon.position);
+  group.add(moon, glow);
   // An antenna with a blinking red light.
   const mast = mesh(new THREE.CylinderGeometry(0.05, 0.08, 4, 8), std(0x3a3c42, 0.5, 0.6));
   mast.position.set(S - 0.6, 2, -S + 0.6);
   const blink = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
   blink.position.set(S - 0.6, 4.05, -S + 0.6);
   group.add(mast, blink);
+  group.add(skyDome([[0, '#030614'], [0.4, '#1a1440'], [0.56, '#7a2a6a'], [0.64, '#ff6a5a'], [0.7, '#2a1030'], [1, '#05040a']], (g, w, h) => stars(g, w, h, 300, 0.45), 100));
+  // A billboard on the next roof and a water tower behind us.
+  const board = neonSign('АРЕНА', '#ff3fa8', 6, 2);
+  board.position.set(-S - 7, 6, -S - 6);
+  board.rotation.y = Math.PI / 4;
+  const legs = mesh(new THREE.BoxGeometry(0.2, 6, 0.2), std(0x1a1b20, 0.6, 0.5), false);
+  legs.position.set(-S - 7, 2.5, -S - 6);
+  group.add(board, legs);
+  const tankM = std(0x5a3a28, 0.8);
+  const tank = mesh(new THREE.CylinderGeometry(1, 1, 1.8, 16), tankM);
+  tank.position.set(S + 3, 3.2, S - 2);
+  const cap = mesh(new THREE.ConeGeometry(1.1, 0.7, 16), tankM);
+  cap.position.set(S + 3, 4.45, S - 2);
+  group.add(tank, cap);
+  for (const [dx, dz] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) {
+    const l = mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.4, 6), std(0x222228, 0.6, 0.5));
+    l.position.set(S + 3 + dx, 1.1, S - 2 + dz);
+    group.add(l);
+  }
+  const boardLight = new THREE.PointLight(0xff3fa8, 18, 16, 1.5);
+  boardLight.position.set(-S - 5, 5, -S - 4);
+  group.add(boardLight);
   return {
-    group, background: 0x0a1020, fog: [0x0a1020, 30, 110], sun: 0.6, hemi: 0.55,
+    group, background: 0x0a1020, fog: [0x1a1030, 30, 110], sun: 0.6, hemi: 0.55,
     crate: std(0x8a9096, 0.45, 0.6),
     update: (t) => {
       blink.visible = Math.sin(t * 3) > 0.6;
@@ -549,6 +819,17 @@ function voidArena(map: MapDef, floorTex: THREE.Texture): Arena {
   );
   lip.position.y = -0.6;
   group.add(floor, lip);
+  group.add(skyDome([[0, '#05030c'], [0.5, '#120a2a'], [0.7, '#0a1830'], [1, '#020208']], (g, w, h) => {
+    for (let i = 0; i < 40; i++) {
+      const x = Math.random() * w, y = h * (0.2 + Math.random() * 0.5), r = 40 + Math.random() * 120;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, i % 2 ? 'rgba(180,60,200,0.18)' : 'rgba(60,140,255,0.16)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    stars(g, w, h, 500, 0.8);
+  }));
   return {
     group, background: 0x0b0e14, fog: [0x0b0e14, 22, 55], sun: 2.2, hemi: 0.9,
     crate: std(0x8b6a45, 0.85),

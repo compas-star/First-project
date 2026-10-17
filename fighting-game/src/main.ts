@@ -112,11 +112,12 @@ view.sound = sound;
 (window as unknown as { __sound: Sound }).__sound = sound;
 $('btnSound').textContent = sound.enabled ? '🔊' : '🔇';
 // Graphics: smooth, or the pixel look at a few pixel sizes (remembered).
-const PIXEL_STEPS = [0, 3, 4, 2];
-let pixelIx = 1;
+// Only a light pixel backdrop or smooth (user: 3 and 4 were too blocky).
+const PIXEL_STEPS = [2, 0];
+let pixelIx = 0;
 try {
   const saved = localStorage.getItem('arena-gfx-v1');
-  if (saved !== null) pixelIx = Math.max(0, PIXEL_STEPS.indexOf(Number(saved)));
+  if (saved !== null) pixelIx = Number(saved) === 0 ? 1 : 0;
 } catch {
   /* storage unavailable */
 }
@@ -124,7 +125,7 @@ const showPixel = () => {
   const n = PIXEL_STEPS[pixelIx];
   view.setPixel(n);
   document.body.classList.toggle('pixel', n > 0);
-  $('btnPixel').textContent = n ? `▦ пиксели ${n}` : '▦ гладко';
+  $('btnPixel').textContent = n ? '▦ пиксели' : '▦ гладко';
 };
 showPixel();
 $('btnPixel').addEventListener('click', () => {

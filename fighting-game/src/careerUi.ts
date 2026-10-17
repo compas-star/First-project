@@ -7,7 +7,7 @@ import {
   load, save, reset, newCareer, tick, startTraining, gainOf, busy, refreshMarket, buy, sell,
   rating, talentWord, value, opponent, afterFight, tourFight, roundName, short, odds,
   person, current, myMatch, settle, settleOthers, finished, closeTour,
-  rankings, rankOf, relOf, relWord, rivalsOf, titleBout, tierOf, TITLE_PURSE,
+  rankings, rankOf, relOf, WCLASSES, classOf, sameClass, isChamp, champOf, type WClass, relWord, rivalsOf, titleBout, tierOf, TITLE_PURSE,
   DAY_MS, MARKET_DAYS, dayName, weekday, weekStart, eventsOn, evById, dayCost, nextDay, canBook, book, unbook, rebook,
   challenge, startTour, evTitle, bookedOn,
   type Career, type CareerFighter, type Tier, type FightResult, type StatKey, type Ev,
@@ -36,6 +36,8 @@ export class CareerUi {
   private bill: { tier: Tier; opp: CareerFighter; tour: boolean; title?: boolean; ev?: Ev } | null = null;
   /** The day open in the calendar. */
   private calDay = 0;
+  /** The weight class shown in the rankings. */
+  private rankCls: WClass | null = null;
   /** A question waiting for Да / Нет (the browser's confirm() is blocked inside the artifact). */
   private asking: { text: string; run: () => void } | null = null;
   /** The fighter shown on the profile screen. */
@@ -196,7 +198,7 @@ export class CareerUi {
         <div>
           <div class="fname">${esc(f.name)}</div>
           <div class="fmeta">${esc(d.name)} · ${f.height.toFixed(2)} м · ${f.weight} кг · бои ${f.record.w}–${f.record.l}</div>
-          <div class="fmeta">${this.c.champion === f.id ? '<b class="belt">🏆 Чемпион мира</b>' : `<b>#${rankOf(this.c, f)}</b> в мировом рейтинге`}${rivalsOf(this.c, f).length ? ` · <span class="rival">враги: ${rivalsOf(this.c, f).map((x) => esc(short(x))).join(', ')}</span>` : ''}</div>
+          <div class="fmeta">${isChamp(this.c, f) ? `<b class="belt">🏆 Чемпион мира</b>, ${classOf(f).name.toLowerCase()}` : `<b>#${rankOf(this.c, f)}</b> в рейтинге, ${classOf(f).name.toLowerCase()}`}${rivalsOf(this.c, f).length ? ` · <span class="rival">враги: ${rivalsOf(this.c, f).map((x) => esc(short(x))).join(', ')}</span>` : ''}</div>
         </div>
         <div class="rate"><b>${rating(f)}</b><span>рейтинг</span></div>
       </div>
@@ -299,8 +301,8 @@ export class CareerUi {
       head = `Турнир на ${t.size} · ${esc(t.name)}`;
       info = `соперники ${tierRating(t)} · все раунды в один день · взнос $${t.fee} · приз $${t.prize} и ${t.tokens} ◆`;
     } else {
-      const champ = c.champion ? person(c, c.champion) : null;
-      head = '🏆 Бой за пояс чемпиона мира';
+      const champ = champOf(c, classOf(f));
+      head = `🏆 Бой за пояс чемпиона мира · ${classOf(f).name.toLowerCase()}`;
       info = `${champ ? `чемпион ${esc(short(champ))}` : ''} · 5 раундов · $${TITLE_PURSE[0]} за победу, $${TITLE_PURSE[1]} за поражение`;
     }
     let body = '';
@@ -332,7 +334,7 @@ export class CareerUi {
       const cls = (x: number, y: number) => (x > y * 1.03 ? 'better' : x < y * 0.97 ? 'worse' : '');
       return `<div class="vrow"><b class="${cls(a, z)}">${fmtStat(k, a)}</b><span>${STAT_INFO[k].name}</span><b class="${cls(z, a)}">${fmtStat(k, z)}</b></div>`;
     }).join('');
-    const title = b.title ? (this.c.champion === me.id ? 'Защита пояса чемпиона' : 'Бой за пояс чемпиона мира') : b.tour ? `Турнир «${b.tier.name}», ${roundName(current(this.c.tour!).length)}` : `Разовый бой · ${b.tier.name}`;
+    const title = b.title ? (isChamp(this.c, me) ? 'Защита пояса чемпиона' : 'Бой за пояс чемпиона мира') : b.tour ? `Турнир «${b.tier.name}», ${roundName(current(this.c.tour!).length)}` : `Разовый бой · ${b.tier.name}`;
     const feel = relOf(this.c, me, o);
     return `<div class="h1">${esc(title)}</div>
       <div class="vs">
@@ -460,17 +462,19 @@ export class CareerUi {
   }
 
   private rankLabel(f: CareerFighter): string {
-    return this.c.champion === f.id ? '🏆 чемпион' : `#${rankOf(this.c, f)}`;
+    return isChamp(this.c, f) ? '🏆 чемпион' : `#${rankOf(this.c, f)}`;
   }
 
   /** The world's rankings: the champion, the top twenty, and where ours stand. */
   private rankView(): string {
     const c = this.c;
-    const all = rankings(c);
-    const mine = new Set(c.roster.map((x) => x.id));
     const me = this.me();
+    const cls = this.rankCls ?? classOf(me);
+    const all = rankings(c, cls);
+    const mine = new Set(c.roster.map((x) => x.id));
+    const champ = !!c.belts?.[cls.id];
     const row = (f: CareerFighter, i: number) => {
-      const place = c.champion === f.id ? '🏆' : `${i + (c.champion ? 0 : 1)}`;
+      const place = isChamp(c, f) ? '🏆' : `${i + (champ ? 0 : 1)}`;
       const feel = relOf(c, me, f);
       return `<button type="button" class="rrow${mine.has(f.id) ? ' mine' : ''}" data-act="profile" data-id="${f.id}">
         <span class="rpl">${place}</span><span class="rnm">${esc(short(f))}${feel <= -50 && f !== me ? ' <i class="rival">⚔</i>' : ''}</span>
@@ -478,8 +482,10 @@ export class CareerUi {
     };
     const top = all.slice(0, 21).map((f, i) => row(f, i)).join('');
     const below = all.map((f, i) => [f, i] as const).filter(([f, i]) => i > 20 && mine.has(f.id)).map(([f, i]) => row(f, i)).join('');
+    const tabs = WCLASSES.map((w) => `<button type="button" class="${w === cls ? 'primary' : ''}" data-act="rankcls" data-c="${w.id}">${w.name}<br><small>${w.lo === 56 ? 'до 70' : w.hi > 100 ? 'от 86' : '71–85'} кг</small></button>`).join('');
     return `<div class="h1">Мировой рейтинг</div>
-      <div class="fnote">Место зависит от очков: победа над тем, кто выше, даёт много, над слабым — мало. Чемпион — тот, у кого пояс; отобрать его можно только в бою за пояс (нужно быть в первой тройке). ⚔ — заклятый враг твоего бойца.</div>
+      <div class="row3">${tabs}</div>
+      <div class="fnote">Бои — только внутри своего веса, в каждом весе свой пояс. Место зависит от очков: победа над тем, кто выше, даёт много, над слабым — мало. Чемпион — тот, у кого пояс; отобрать его можно только в бою за пояс (нужно быть в первой тройке). ⚔ — заклятый враг твоего бойца.</div>
       <div class="rlist">${top}${below ? `<div class="fnote">…</div>${below}` : ''}</div>`;
   }
 
@@ -498,8 +504,8 @@ export class CareerUi {
       ${this.hero(f, false)}
       <div class="fmeta">Лига: «${esc(t.name)}» · побед нокаутом ${f.record.ko}</div>
       ${ours ? '' : `<div class="newsbox"><div class="h2">Отношения с твоими</div>${feelings || '<div>—</div>'}</div>
-      <button type="button" class="primary wide" data-act="challenge" ${f.id === c.champion ? 'disabled' : ''}>Вызвать ${esc(short(this.me()))} против него</button>
-      ${f.id === c.champion ? '<div class="fnote">С чемпионом дерутся только за пояс.</div>' : ''}`}`;
+      <button type="button" class="primary wide" data-act="challenge" ${isChamp(c, f) || !sameClass(f, this.me()) ? 'disabled' : ''}>Вызвать ${esc(short(this.me()))} против него</button>
+      ${isChamp(c, f) ? '<div class="fnote">С чемпионом дерутся только за пояс.</div>' : !sameClass(f, this.me()) ? `<div class="fnote">Он в другом весе (${classOf(f).name.toLowerCase()}), твой боец — ${classOf(this.me()).name.toLowerCase()}.</div>` : ''}`}`;
   }
 
   private logView(): string {
@@ -659,6 +665,9 @@ export class CareerUi {
           return ask(err === 'tour' ? 'Твой боец ещё в турнире. Сняться и закончить день?' : 'Сегодня у твоего бойца бой. Не выходить на бой и закончить день? (известность −1)', () => done(nextDay(c, true)));
         return done(err);
       }
+      case 'rankcls':
+        this.rankCls = WCLASSES.find((w) => w.id === b.dataset.c) ?? null;
+        return say(null);
       case 'calday':
         this.calDay = Number(b.dataset.d);
         return say(null);

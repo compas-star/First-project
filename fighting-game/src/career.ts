@@ -105,8 +105,10 @@ export interface Career {
   seenHelp?: boolean;
   /** Everyone else in the fight world: they fight each other, rise and fall. */
   world?: CareerFighter[];
-  /** Holder of the belt (any fighter's id). */
+  /** Holder of the belt before weight classes (kept for old saves). */
   champion?: string | null;
+  /** Holder of each weight class's belt. */
+  belts?: Record<string, string | null>;
   /** Feelings between two fighters, -100 (sworn enemies) .. 100, by pair key. */
   rel?: Record<string, number>;
   /** What happened in the fight world, newest first. */
@@ -171,6 +173,24 @@ const STORIES: Story[] = [
   { text: 'Танцор брейка. Ни одного боя, но поймать его невозможно.', disc: ['kickboxing', 'street'], bias: { evasion: 0.2, bodySpeed: 0.06, strength: -0.12, skill: -0.06 }, height: [1.68, 1.82], weight: [58, 72], aggression: [0.2, 0.5] },
 ];
 
+// ---------- Weight classes ----------
+
+export interface WClass {
+  id: 'light' | 'middle' | 'heavy';
+  name: string;
+  lo: number;
+  hi: number;
+}
+
+/** Fights are made inside a weight class: a two-metre biker does not meet a 65 kg kid. */
+export const WCLASSES: WClass[] = [
+  { id: 'light', name: 'Лёгкий вес', lo: 56, hi: 70 },
+  { id: 'middle', name: 'Средний вес', lo: 71, hi: 85 },
+  { id: 'heavy', name: 'Тяжёлый вес', lo: 86, hi: 122 },
+];
+export const classOf = (f: CareerFighter): WClass => (f.weight <= 70 ? WCLASSES[0] : f.weight <= 85 ? WCLASSES[1] : WCLASSES[2]);
+export const sameClass = (a: CareerFighter, b: CareerFighter) => classOf(a) === classOf(b);
+
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 const pickOf = <T>(xs: T[]): T => xs[Math.floor(Math.random() * xs.length)];
 const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
@@ -195,8 +215,10 @@ let idSeq = Date.now() % 1e6;
  * A fighter with a story. `level` is where he stands now (0 = fresh off the street),
  * `talent` how far he can go (0..1, 1 = a future world champion).
  */
-export function makeFighter(level: number, talent: number): CareerFighter {
-  const st = pickOf(STORIES);
+export function makeFighter(level: number, talent: number, cls?: WClass): CareerFighter {
+  // A story that fits the weight class, if one is asked for.
+  const fits = cls ? STORIES.filter((x) => x.weight[0] <= cls.hi && x.weight[1] >= cls.lo) : STORIES;
+  const st = pickOf(fits.length ? fits : STORIES);
   const stats = {} as Stats;
   const caps = {} as Stats;
   for (const k of STAT_KEYS) {
@@ -213,8 +235,7 @@ export function makeFighter(level: number, talent: number): CareerFighter {
     name: `${pickOf(FIRST)} «${pickOf(NICK)}» ${pickOf(LAST)}`,
     story: st.text,
     discipline: pickOf(st.disc),
-    height: Math.round(rnd(...st.height) * 100) / 100,
-    weight: Math.round(rnd(...st.weight)),
+    ...bodyOf(st, cls),
     aggression: Math.round(rnd(...st.aggression) * 100) / 100,
     stats,
     caps,
@@ -224,6 +245,17 @@ export function makeFighter(level: number, talent: number): CareerFighter {
     busyFrom: 0,
     busyWhat: '',
   };
+}
+
+/** Height and weight from his story, inside the weight class when there is one. */
+function bodyOf(st: Story, cls?: WClass): { height: number; weight: number } {
+  if (!cls) return { height: Math.round(rnd(...st.height) * 100) / 100, weight: Math.round(rnd(...st.weight)) };
+  const lo = Math.max(st.weight[0], cls.lo);
+  const hi = Math.min(st.weight[1], cls.hi);
+  const weight = Math.round(lo <= hi ? rnd(lo, hi) : rnd(cls.lo, cls.hi));
+  // Height goes with the weight: a light man is not two metres tall.
+  const h = clamp(rnd(...st.height), 1.6 + (weight - 56) * 0.0055, 1.74 + (weight - 56) * 0.0055);
+  return { height: Math.round(h * 100) / 100, weight };
 }
 
 /** One number for how good he is right now, 0..100. Speed matters most in this game. */
@@ -485,6 +517,7 @@ export function rebook(c: Career, e: Ev): void {
 
 /** A call-out: the next fight night of his league that ours is free for. */
 export function challenge(c: Career, f: CareerFighter, opp: CareerFighter): string | null {
+  if (!sameClass(f, opp)) return `Он в другом весе (${classOf(opp).name.toLowerCase()}): бои только в своей категории`;
   const t = tierOf(opp);
   if (f.fame < t.fame) return `Чтобы вызвать его, нужна известность ${t.fame} (лига «${t.name}»)`;
   const e = c.events.find((x) => x.kind === 'night' && x.tier === t.id && !canBook(c, f, x));
@@ -544,8 +577,8 @@ export function sell(c: Career, f: CareerFighter): string | null {
 
 // ---------- Fights ----------
 
-export function opponent(t: Tier): CareerFighter {
-  const f = makeFighter(rnd(t.level[0], t.level[1]), rnd(0.2, 0.8));
+export function opponent(t: Tier, cls?: WClass): CareerFighter {
+  const f = makeFighter(rnd(t.level[0], t.level[1]), rnd(0.2, 0.8), cls);
   f.record = { w: Math.floor(rnd(0, 6 + t.fame / 4)), l: Math.floor(rnd(0, 5)), ko: 0 };
   f.record.ko = Math.floor(f.record.w * rnd(0.2, 0.7));
   return f;
@@ -626,7 +659,7 @@ export function startTour(c: Career, f: CareerFighter, e: Ev): string | null {
   if (e.day !== c.day || e.f !== f.id) return 'Турнир не сегодня';
   if (busy(c, f)) return `${short(f)} не готов к бою`;
   const t = TIER_BY_ID[e.tier];
-  const field = worldField(c, t, t.size - 1);
+  const field = worldField(c, t, t.size - 1, classOf(f));
   // The draw: everyone shuffled into pairs.
   const ids = [f.id, ...field.map((x) => x.id)];
   for (let i = ids.length - 1; i > 0; i--) {
@@ -733,7 +766,8 @@ export function closeTour(c: Career): string {
 
 // ---------- The world: rankings, the belt, feelings ----------
 
-const WORLD_SIZE = 60;
+/** Fighters in each weight class of the world. */
+const PER_CLASS = 24;
 export const TITLE_PURSE: [number, number] = [15000, 3000];
 
 const eloOf = (f: CareerFighter) => 900 + 12 * rating(f);
@@ -746,18 +780,24 @@ export function tierOf(f: CareerFighter): Tier {
 
 function makeWorld(): CareerFighter[] {
   const taken = new Set<string>();
-  return Array.from({ length: WORLD_SIZE }, (_, i) => {
-    const L = Math.pow(i / (WORLD_SIZE - 1), 0.85);
-    let f = makeFighter(L, clamp(L + rnd(-0.1, 0.25), 0, 1));
+  const out: CareerFighter[] = [];
+  for (const cls of WCLASSES) for (let i = 0; i < PER_CLASS; i++) out.push(worldMan(taken, cls, Math.pow(i / (PER_CLASS - 1), 0.85)));
+  return out;
+}
+
+/** One man of the world: his level, record and ranking points fitting where he stands. */
+function worldMan(taken: Set<string>, cls: WClass, L: number): CareerFighter {
+  {
+    let f = makeFighter(L, clamp(L + rnd(-0.1, 0.25), 0, 1), cls);
     // Everyone in the world has his own name.
-    for (let k = 0; k < 20 && taken.has(short(f)); k++) f = makeFighter(L, clamp(L + rnd(-0.1, 0.25), 0, 1));
+    for (let k = 0; k < 20 && taken.has(short(f)); k++) f = makeFighter(L, clamp(L + rnd(-0.1, 0.25), 0, 1), cls);
     taken.add(short(f));
     f.elo = eloOf(f) + rnd(-30, 30);
     const fights = Math.round(2 + 25 * L + rnd(0, 6));
     const w = Math.round(fights * clamp(0.45 + 0.35 * L + rnd(-0.15, 0.15), 0.2, 0.95));
     f.record = { w, l: fights - w, ko: Math.round(w * rnd(0.2, 0.7)) };
     return f;
-  });
+  }
 }
 
 /** Builds the world for a new career, or for a save from before it existed. */
@@ -768,25 +808,49 @@ export function ensureWorld(c: Career): void {
     c.news = ['В мире бойцов новый менеджер. Тебя пока никто не знает.'];
     c.worldAt = Date.now();
     c.nights = 0;
-    c.champion = [...c.world].sort((a, b) => b.elo! - a.elo!)[0].id;
   }
   c.rel ??= {};
   c.news ??= [];
   for (const f of c.roster) f.elo ??= eloOf(f);
+  // Weight classes (also for saves from before them): every class full enough, with a belt.
+  if (!c.belts) {
+    const taken = new Set(c.world.map(short));
+    for (const cls of WCLASSES) {
+      const have = c.world.filter((x) => classOf(x) === cls).length;
+      for (let i = have; i < PER_CLASS; i++) c.world.push(worldMan(taken, cls, Math.pow(Math.random(), 0.85)));
+    }
+    c.belts = {};
+    const old = c.champion ? everyone(c).find((x) => x.id === c.champion) : null;
+    for (const cls of WCLASSES) {
+      const best = c.world.filter((x) => classOf(x) === cls).sort((a, b) => b.elo! - a.elo!)[0];
+      c.belts[cls.id] = old && classOf(old) === cls ? old.id : best.id;
+    }
+    c.champion = null;
+  }
 }
+
+/** Is he the champion of his weight class? */
+export const isChamp = (c: Career, f: CareerFighter) => c.belts?.[classOf(f).id] === f.id;
+/** The champion of a class, if any. */
+export const champOf = (c: Career, cls: WClass): CareerFighter | null => {
+  const id = c.belts?.[cls.id];
+  return id ? everyone(c).find((x) => x.id === id) ?? null : null;
+};
+const holdsBelt = (c: Career, f: CareerFighter) => Object.values(c.belts ?? {}).includes(f.id);
 
 export const everyone = (c: Career) => [...c.roster, ...(c.world ?? [])];
 
-/** Everyone by ranking points; the champion is listed first. */
-export function rankings(c: Career): CareerFighter[] {
-  const all = everyone(c).sort((a, b) => (b.elo ?? 0) - (a.elo ?? 0));
-  const champ = all.find((x) => x.id === c.champion);
+/** Everyone of a weight class by ranking points; the champion is listed first. */
+export function rankings(c: Career, cls: WClass): CareerFighter[] {
+  const all = everyone(c).filter((x) => classOf(x) === cls).sort((a, b) => (b.elo ?? 0) - (a.elo ?? 0));
+  const champ = all.find((x) => x.id === c.belts?.[cls.id]);
   return champ ? [champ, ...all.filter((x) => x !== champ)] : all;
 }
 
-/** Place in the rankings: 0 for the champion, then 1, 2, ... */
+/** Place in his class's rankings: 0 for the champion, then 1, 2, ... */
 export function rankOf(c: Career, f: CareerFighter): number {
-  return rankings(c).indexOf(f) + (c.champion ? 0 : 1);
+  const cls = classOf(f);
+  return rankings(c, cls).indexOf(f) + (c.belts?.[cls.id] ? 0 : 1);
 }
 
 const relKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
@@ -844,24 +908,25 @@ export function recordBout(c: Career, w: CareerFighter, l: CareerFighter, ko: bo
     news(c, line);
     out.push(line);
   }
-  if (title && c.champion === l.id) {
-    c.champion = w.id;
-    const line = `НОВЫЙ ЧЕМПИОН: ${w.name}${ko ? ' нокаутом' : ' решением судей'}`;
+  const cls = classOf(w);
+  if (title && c.belts?.[cls.id] === l.id) {
+    c.belts[cls.id] = w.id;
+    const line = `НОВЫЙ ЧЕМПИОН (${cls.name.toLowerCase()}): ${w.name}${ko ? ' нокаутом' : ' решением судей'}`;
     news(c, line);
     out.push(line);
-  } else if (title && c.champion === w.id) {
-    const line = `Защита пояса: ${short(w)} — ${short(l)}, пояс остаётся у чемпиона`;
+  } else if (title && c.belts?.[cls.id] === w.id) {
+    const line = `Защита пояса (${cls.name.toLowerCase()}): ${short(w)} — ${short(l)}, пояс остаётся у чемпиона`;
     news(c, line);
     out.push(line);
   }
   return out;
 }
 
-/** Fighters of the world who belong in this league, to fight ours. */
-function worldField(c: Career, t: Tier, n: number): CareerFighter[] {
+/** Fighters of the world who belong in this league and weight class, to fight ours. */
+function worldField(c: Career, t: Tier, n: number, cls: WClass): CareerFighter[] {
   ensureWorld(c);
   const busyIds = new Set(c.tour ? c.tour.field.map((x) => x.id) : []);
-  const pool = c.world!.filter((x) => tierOf(x) === t && x.id !== c.champion && !busyIds.has(x.id));
+  const pool = c.world!.filter((x) => tierOf(x) === t && classOf(x) === cls && !holdsBelt(c, x) && !busyIds.has(x.id));
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -869,7 +934,7 @@ function worldField(c: Career, t: Tier, n: number): CareerFighter[] {
   const out = pool.slice(0, n);
   // Not enough men in this league: new faces come in.
   while (out.length < n) {
-    const f = opponent(t);
+    const f = opponent(t, cls);
     f.elo = eloOf(f);
     c.world!.push(f);
     out.push(f);
@@ -879,7 +944,7 @@ function worldField(c: Career, t: Tier, n: number): CareerFighter[] {
 
 /** An opponent from the world for a single fight in this league: someone near his level. */
 export function worldOpponent(c: Career, t: Tier, f: CareerFighter): CareerFighter {
-  const pool = worldField(c, t, 6);
+  const pool = worldField(c, t, 6, classOf(f));
   pool.sort((a, b) => Math.abs((a.elo ?? 0) - (f.elo ?? 0)) - Math.abs((b.elo ?? 0) - (f.elo ?? 0)));
   return pool[Math.floor(Math.random() * Math.min(3, pool.length))];
 }
@@ -887,8 +952,9 @@ export function worldOpponent(c: Career, t: Tier, f: CareerFighter): CareerFight
 /** Who the title is fought against now: the champion, or (ours holding it) the best contender. */
 export function titleBout(c: Career, f: CareerFighter): CareerFighter | null {
   ensureWorld(c);
-  if (c.champion === f.id) return rankings(c).find((x) => x.id !== f.id && !c.roster.includes(x)) ?? null;
-  const champ = c.champion ? person(c, c.champion) : null;
+  const cls = classOf(f);
+  if (isChamp(c, f)) return rankings(c, cls).find((x) => x.id !== f.id && !c.roster.includes(x)) ?? null;
+  const champ = champOf(c, cls);
   if (!champ || c.roster.includes(champ)) return null;
   // Only the top three contenders get a shot.
   return rankOf(c, f) <= 3 ? champ : null;
@@ -899,30 +965,35 @@ function worldDay(c: Career, day: number): string[] {
   ensureWorld(c);
   const out: string[] = [];
   const inTour = new Set(c.tour ? c.tour.field.map((x) => x.id) : []);
-  const npcs = c.world!.filter((x) => !inTour.has(x.id) && x.id !== c.champion).sort((a, b) => b.elo! - a.elo!);
-  // Bouts between men of about the same standing.
-  for (let k = 0; k < 6 && npcs.length > 2; k++) {
+  // Bouts between men of about the same standing, in the same weight class.
+  for (let k = 0; k < 6; k++) {
+    const cls = WCLASSES[k % WCLASSES.length];
+    const npcs = c.world!.filter((x) => classOf(x) === cls && !inTour.has(x.id) && !holdsBelt(c, x)).sort((a, b) => b.elo! - a.elo!);
+    if (npcs.length < 2) continue;
     const i = Math.floor(Math.random() * (npcs.length - 1));
     const a = npcs[i];
     const b = npcs[i + 1];
-    npcs.splice(i, 2);
     const aWins = Math.random() < odds(a, b);
     const ko = Math.random() < 0.4;
     out.push(...recordBout(c, aWins ? a : b, aWins ? b : a, ko));
     if (k < 1) news(c, `Бой: ${short(a)} — ${short(b)}, победил ${short(aWins ? a : b)}${ko ? ' нокаутом' : ''}`);
   }
   for (const e of eventsOn(c, day)) {
-    if (e.f && e.done) continue;
-    // The title night without ours: the champion defends against the best contender.
-    const champ = c.champion ? person(c, c.champion) : null;
-    if (e.kind === 'title' && champ && !c.roster.includes(champ)) {
-      const contender = rankings(c).find((x) => x !== champ && !c.roster.includes(x) && !inTour.has(x.id));
-      if (contender) {
-        const cWins = Math.random() < odds(contender, champ);
-        out.push(...recordBout(c, cWins ? contender : champ, cWins ? champ : contender, Math.random() < 0.45, true));
+    // The title night: in every class the champion defends, except where ours fought for it.
+    if (e.kind === 'title') {
+      const oursCls = e.f && e.done ? classOf(person(c, e.f)) : null;
+      for (const cls of WCLASSES) {
+        if (cls === oursCls) continue;
+        const champ = champOf(c, cls);
+        if (!champ || c.roster.includes(champ)) continue;
+        const contender = rankings(c, cls).find((x) => x !== champ && !c.roster.includes(x) && !inTour.has(x.id));
+        if (contender) {
+          const cWins = Math.random() < odds(contender, champ);
+          out.push(...recordBout(c, cWins ? contender : champ, cWins ? champ : contender, Math.random() < 0.45, true));
+        }
       }
     }
-    if (e.kind === 'tour') npcTour(c, TIER_BY_ID[e.tier]);
+    if (e.kind === 'tour' && !(e.f && e.done)) npcTour(c, TIER_BY_ID[e.tier], pickOf(WCLASSES));
   }
   // Bad blood: someone calls someone out, now and then one of yours.
   const all = everyone(c);
@@ -943,9 +1014,9 @@ function worldDay(c: Career, day: number): string[] {
 }
 
 /** A league's tournament without ours: played out by the odds, the winner in the news. */
-function npcTour(c: Career, t: Tier): void {
+function npcTour(c: Career, t: Tier, cls: WClass): void {
   const inTour = new Set(c.tour ? c.tour.field.map((x) => x.id) : []);
-  let pool = c.world!.filter((x) => tierOf(x) === t && x.id !== c.champion && !inTour.has(x.id));
+  let pool = c.world!.filter((x) => tierOf(x) === t && classOf(x) === cls && !holdsBelt(c, x) && !inTour.has(x.id));
   const n = pool.length >= 8 ? 8 : pool.length >= 4 ? 4 : 0;
   if (!n) return;
   pool = pool.sort(() => Math.random() - 0.5).slice(0, n);
@@ -959,7 +1030,7 @@ function npcTour(c: Career, t: Tier): void {
     }
     pool = next;
   }
-  news(c, `Турнир «${t.name}» выиграл ${short(pool[0])}`);
+  news(c, `Турнир «${t.name}» (${cls.name.toLowerCase()}) выиграл ${short(pool[0])}`);
 }
 
 // ---------- Save ----------

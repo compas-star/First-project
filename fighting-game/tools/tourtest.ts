@@ -1,5 +1,5 @@
 // The calendar and the bracket without the screen: book, wait for the day, win through or lose early.
-import { newCareer, book, startTour, tourFight, settleOthers, current, myMatch, finished, closeTour, roundName, nextDay, waiting, dayName, busy, startTraining, INTENSITY, canBook } from '../src/career';
+import { classOf, newCareer, book, startTour, tourFight, settleOthers, current, myMatch, finished, closeTour, roundName, nextDay, waiting, dayName, busy, startTraining, INTENSITY, canBook } from '../src/career';
 const win = { won: true, ko: false, reason: '', trauma: 0, body: 0, broken: 0, seconds: 60 };
 const lose = { ...win, won: false, reason: 'нокаут', ko: true, trauma: 0.8 };
 for (const plan of ['win', 'lose']) {
@@ -17,7 +17,7 @@ for (const plan of ['win', 'lose']) {
     nextDay(c);
   }
   console.log('  day', c.day, 'waiting', waiting(c)?.kind, 'train today ->', startTraining(c, f, 'bodySpeed', INTENSITY[0]), '| nextDay ->', nextDay(c));
-  console.log('  start', startTour(c, f, e) ?? 'ok', 'size', c.tour!.field.length + 1);
+  console.log('  start', startTour(c, f, e) ?? 'ok', 'size', c.tour!.field.length + 1, 'ours', classOf(f).name, f.weight, 'field weights', c.tour!.field.map((x) => x.weight).join(','));
   let guard = 0;
   while (c.tour && !finished(c.tour) && guard++ < 10) {
     const t = c.tour;

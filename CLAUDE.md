@@ -107,6 +107,14 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   "До пика" (chosen fighter: every stat = his cap). Save transfer (`saveCode.ts`, screen
   'save' from home and the journal): every localStorage key `arena-*` as code `СЕЙВ1:`
   (gzip+base64, ~17k chars); loading replaces this device's game.
+  Weight classes (user: two-metre bikers beat everyone): `WCLASSES` light <=70, middle 71-85,
+  heavy 86+ kg, `classOf(f)` by weight. Opponents, tournament fields, NPC bouts and NPC
+  tournaments only within a class (`worldField(c, t, n, cls)`, `opponent(t, cls)`,
+  `makeFighter(level, talent, cls)` picks a fitting story and keeps height in line with
+  weight); a belt per class (`Career.belts`, `isChamp`, `champOf`, `rankings(c, cls)`,
+  `rankOf` within his class; on title days every class's champion defends). Call-outs only
+  in his class. World: 24 per class (`PER_CLASS`); old saves get filled up and the old single
+  champion keeps the belt of his class (`ensureWorld`). Rankings screen has class tabs.
   Living world (`Career.world`, 60 named fighters, `ensureWorld` also upgrades old saves):
   Elo ranking points (`recordBout` for every bout, ours and theirs), `rankings`/`rankOf`,
   a belt (`Career.champion`, changes only in title bouts; top-3 get a shot via `titleBout`,

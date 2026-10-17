@@ -1506,3 +1506,12 @@ button:disabled {
   word-break: break-all;
   resize: vertical;
 }
+.row3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.row3 button {
+  font-size: 12.5px;
+  padding: 8px 4px;
+}

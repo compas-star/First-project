@@ -108,7 +108,8 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   'save' from home and the journal): every localStorage key `arena-*` as code `СЕЙВ1:`
   (gzip+base64, ~17k chars); loading replaces this device's game.
   Cloud copy (user: the game must not get lost): `cloud.ts`, the artifact's `db` + `user`
-  capabilities (published with `capabilities: {db: {}, user: {}}`), one private document
+  capabilities (declared once with `capabilities: {db: {}, user: {}}`; later publishes omit
+  `capabilities`, which keeps them), one private document
   `data/users/<id>/save` = {code: СЕЙВ1 code, at}. `career.save()` calls `saveHook.after`
   (= `cloudDirty`); a write at most every 20 s, and on pagehide/hidden. A browser without a
   local career (cleared, other device) restores the cloud copy at startup (`cloudStart`).

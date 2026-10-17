@@ -65,6 +65,13 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
 - `skins.ts`: looks built from primitives on the rig (`dress`), 13 skins; team colour
   always shows on something. `FighterParams.skin`, default by style.
 - `view.ts`: rendering, afterimages, effects, auto-framing camera, KO slow-mo zoom.
+- `sound.ts`: all sound synthesized in WebAudio (no files), started on the first tap: blows
+  (head = crack + thud, body = deep thud, block = dull pat, scaled by damage), swings
+  (sim event 'swing' on every real attack), bodies landing, crunch (break/liver), bell
+  (round start, three strokes at the end), crowd murmur whose level and brightness follow
+  `view.excite` (per map `CROWD` in view.ts), "ooh" on moments, roar on the KO. Slow motion
+  lowers the pitch. 🔊/🔇 button in the dock (`arena-sound-v1`). Max 5 new sounds a frame.
+  Also: sweat spray on clean head shots.
 - `main.ts`: HUD, time scale ("eyes"), setup sheet, presets.
 - `career.ts` + `careerUi.ts`: manager mode ("Карьера" button; the sandbox stays as is).
   Fighters with a story, stats (`bodySpeed, strength, mindSpeed, skill, evasion, cardio`)

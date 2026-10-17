@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import type { Sound } from './sound';
+
+/** How loud the crowd is on each map. */
+const CROWD: Record<string, number> = { ring: 1, cage: 1, dojo: 0.35, roof: 0.5, alley: 0.45, void: 0 };
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildRig, rigNodes, type Rig } from './rig';
 import { syncRig, v, q } from './physics';
@@ -306,6 +310,10 @@ export class View {
   private sun: THREE.DirectionalLight;
   private arena: Arena | null = null;
   private arenaId = '';
+  /** Sound for the fight (set by main); null = silent (headless tools). */
+  sound: Sound | null = null;
+  private viewScale = 1;
+  private koHeard: Sim | null = null;
   /** Crowd excitement 0..1: jumps on big blows and knockdowns, settles back. */
   private excite = 0;
   private clockT = 0;
@@ -458,8 +466,15 @@ export class View {
   consumeEvents(): void {
     const sim = this.sim;
     if (!sim) return;
+    const snd = this.sound;
+    const slow = this.viewScale;
     for (const ev of sim.events) {
-      if (ev.type === 'hit') {
+      if (ev.type === 'swing') {
+        snd?.swing(ev.power, slow);
+      } else if (ev.type === 'hit') {
+        snd?.hit(ev.dmg, ev.zone, ev.blocked, slow);
+        // Sweat flies off a head that is hit clean.
+        if (!ev.blocked && ev.zone === 'в голову' && ev.dmg > 3) this.burst(ev.pos, Math.min(30, 6 + ev.dmg), 1.8 + ev.dmg * 0.08, new THREE.Color(0xd8ecff), 0.5);
         const n = Math.min(70, Math.round(8 + ev.power * 5));
         const col = new THREE.Color(ev.stone ? 0xb9b4aa : ev.blocked ? 0x9fc4ff : 0xffd27a);
         this.burst(ev.pos, n, 1.5 + ev.power * 0.7, col, 0.35);
@@ -480,6 +495,7 @@ export class View {
         const marks = ev.dmg < 5 ? '' : ev.dmg < 10 ? '!' : ev.dmg < 16 ? '!!' : '!!!';
         this.pop(ev.pos, ev.blocked ? 'в блок' : `${ev.fromBehind ? 'в спину' : ev.zone}${marks}`, ev.target.team);
       } else if (ev.type === 'land') {
+        snd?.land(ev.power, slow);
         this.burst(ev.pos.clone().setY(0.1), Math.min(60, 10 + ev.power * 3), 1 + ev.power * 0.25, new THREE.Color(0x8b93a6), 0.6);
         if (ev.power > 6) this.wave(ev.pos, Math.min(8, ev.power * 0.35));
         this.shake = Math.max(this.shake, Math.min(0.3, ev.power * 0.02));
@@ -491,17 +507,21 @@ export class View {
         this.burst(ev.pos.clone().setY(0.15), 70, 4 + ev.radius, new THREE.Color(0xd9c8a0), 0.7);
         this.shake = Math.max(this.shake, 0.4);
       } else if (ev.type === 'break') {
+        snd?.crunch(slow);
         this.burst(ev.pos, 30, 3, new THREE.Color(0xff5a4a), 0.5);
         this.pop(ev.pos.clone().setY(ev.pos.y + 0.3), `перелом: ${LIMB_NAME[ev.limb]}`, ev.target.team);
         this.shake = Math.max(this.shake, 0.2);
       } else if (ev.type === 'liver') {
+        snd?.crunch(slow);
         this.pop(ev.pos, 'печень!', ev.target.team);
         this.excite = 1;
         this.shake = Math.max(this.shake, 0.15);
       } else if (ev.type === 'moment') {
+        if (this.excite < 0.8) snd?.roar(0.5);
         this.excite = 1;
         this.onMoment?.(ev.text, ev.focus);
       } else if (ev.type === 'bell') {
+        snd?.bell(ev.round > 1 ? 1 : 2);
         this.excite = Math.max(this.excite, 0.7);
       } else if (ev.type === 'catch') {
         this.burst(ev.pos, 18, 1.5, new THREE.Color(0xffffff), 0.3);
@@ -554,7 +574,15 @@ export class View {
     const sim = this.sim;
     if (!sim) return;
     this.hitStopCool -= realDt;
+    this.viewScale = viewScale;
+    this.sound?.frame(this.excite, CROWD[sim.map.id] ?? 0.4, worldDt > 0);
     this.consumeEvents();
+    // The end: the crowd roars and the bell rings it out.
+    if (sim.winner && this.koHeard !== sim) {
+      this.koHeard = sim;
+      this.sound?.roar(1);
+      this.sound?.bell(3);
+    }
     this.clockT += realDt;
     if (sim.fighters.some((f) => f.state !== 'ok')) this.excite = Math.max(this.excite, 0.8);
     this.excite = Math.max(0, this.excite - realDt * 0.25);

@@ -586,7 +586,8 @@ export type SimEvent =
   | { type: 'catch'; pos: THREE.Vector3; target: Fighter }
   | { type: 'liver'; pos: THREE.Vector3; target: Fighter }
   | { type: 'bell'; round: number }
-  | { type: 'moment'; text: string; focus: Fighter };
+  | { type: 'moment'; text: string; focus: Fighter }
+  | { type: 'swing'; power: number };
 
 const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
@@ -863,6 +864,7 @@ export class Sim {
       this.gesture(f.enemy, 'flinch', 0.3, 0.1 / f.enemy.mind);
     }
     if (m && kind === 'attack' && !opts.feint) {
+      this.events.push({ type: 'swing', power: m.power });
       f.recentMoves.push(m.id);
       if (f.recentMoves.length > 3) f.recentMoves.shift();
       f.mem.tries[m.id] = (f.mem.tries[m.id] ?? 0) + 1;

@@ -14,6 +14,7 @@ import { View } from './view';
 import { MAPS, MAP_BY_ID, type MapId } from './maps';
 import { SKINS, defaultSkin } from './skins';
 import { CareerUi } from './careerUi';
+import { Sound } from './sound';
 import { LabUi } from './labUi';
 import { loadEdits } from './moveEdits';
 import { Recorder } from './recorder';
@@ -104,6 +105,12 @@ let koTimer = 0;
 let koReal = 0;
 
 const view = new View($('scene'), $('labels'));
+const sound = new Sound();
+view.sound = sound;
+$('btnSound').textContent = sound.enabled ? '🔊' : '🔇';
+$('btnSound').addEventListener('click', () => {
+  $('btnSound').textContent = sound.toggle() ? '🔊' : '🔇';
+});
 
 // ---------- Training ----------
 // Sparring runs headless in slices between frames; habits are saved after every round.

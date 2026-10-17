@@ -137,6 +137,27 @@ $('btnPixel').addEventListener('click', () => {
   }
   showPixel();
 });
+// Fighters: comic people, or dark silhouettes with a rim in the team colour.
+let figure: 'comic' | 'shadow' = 'shadow';
+try {
+  if (localStorage.getItem('arena-figure-v1') === 'comic') figure = 'comic';
+} catch {
+  /* storage unavailable */
+}
+const showFigure = () => {
+  view.setFigure(figure);
+  $('btnFigure').textContent = figure === 'shadow' ? '👤 тени' : '👤 комикс';
+};
+showFigure();
+$('btnFigure').addEventListener('click', () => {
+  figure = figure === 'shadow' ? 'comic' : 'shadow';
+  try {
+    localStorage.setItem('arena-figure-v1', figure);
+  } catch {
+    /* storage unavailable */
+  }
+  showFigure();
+});
 $('btnSound').addEventListener('click', () => {
   $('btnSound').textContent = sound.toggle() ? '🔊' : '🔇';
 });

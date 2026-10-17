@@ -116,6 +116,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   colours (`ComicSkin` from `comicBody`): a landed blow bruises bare skin around the nearest
   vertex of that part (red, going purple with more), a broken limb darkens; head blows still
   add small marks/cuts, now put on the face's surface. `window.__view` is exposed for tests.
+  Shadow look (user: draw them well or more abstract), the default: `FighterView.setFigure`
+  swaps every body mesh to one dark `MeshToonMaterial` with a fresnel rim in the team colour
+  (`onBeforeCompile`) and a team-colour outline (`userData.outlineParameters`); originals in
+  `userData.fig` (`toonAll` skips them). Dock button "👤 тени / комикс" (`arena-figure-v1`).
+  Crowd: torso+legs, head, hair, arms thrown up with excitement, some phones up.
 - `main.ts`: HUD, time scale ("eyes"), setup sheet, presets.
 - `career.ts` + `careerUi.ts`: manager mode ("Карьера" button; the sandbox stays as is).
   Fighters with a story, stats (`bodySpeed, strength, mindSpeed, skill, evasion, cardio`)

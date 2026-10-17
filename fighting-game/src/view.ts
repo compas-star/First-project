@@ -267,6 +267,42 @@ class FighterView {
     this.skinMat.roughness = 0.7 - 0.45 * tired;
   }
 
+  private shadowMat: THREE.MeshToonMaterial | null = null;
+
+  /**
+   * Shadow look: every visible part of the body becomes one dark cel-shaded material with a
+   * glowing rim and outline in the team colour. 'comic' puts the drawn materials back.
+   */
+  setFigure(mode: 'comic' | 'shadow'): void {
+    if (mode === 'shadow' && !this.shadowMat) {
+      const team = new THREE.Color(this.f.p.color);
+      const m = new THREE.MeshToonMaterial({ color: 0x1b1a22 });
+      m.onBeforeCompile = (sh) => {
+        sh.uniforms.rimColor = { value: team };
+        sh.fragmentShader = 'uniform vec3 rimColor;\n' + sh.fragmentShader.replace(
+          '#include <opaque_fragment>',
+          `#include <opaque_fragment>
+          { float rim = 1.0 - abs(dot(normalize(normal), normalize(vViewPosition)));
+            gl_FragColor.rgb += rimColor * (pow(rim, 3.2) * 1.2); }`,
+        );
+      };
+      m.userData.outlineParameters = { thickness: 0.009, color: [team.r, team.g, team.b], alpha: 1, visible: true };
+      this.shadowMat = m;
+    }
+    this.rig.root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || Array.isArray(m.material)) return;
+      const ud = m.userData as { fig?: THREE.Material };
+      if (mode === 'shadow') {
+        if (!ud.fig) ud.fig = m.material;
+        m.material = this.shadowMat!;
+      } else if (ud.fig) {
+        m.material = ud.fig;
+        delete ud.fig;
+      }
+    });
+  }
+
   /** A broken limb turns dark, so it is clear why it hangs. */
   private showInjuries(): void {
     const groups: Record<Limb, THREE.Object3D> = {
@@ -448,6 +484,13 @@ export class View {
   }
 
   /** Switches the pixel look (0 = off, else the size of one pixel in screen pixels). */
+  figure: 'comic' | 'shadow' = 'comic';
+  setFigure(mode: 'comic' | 'shadow'): void {
+    this.figure = mode;
+    for (const fv of this.fighters) fv.setFigure(mode);
+    this.toonAll();
+  }
+
   setPixel(n: number): void {
     this.pixel = n;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -557,7 +600,8 @@ export class View {
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh || Array.isArray(m.material)) return;
-      const ud = m.userData as { orig?: THREE.Material };
+      const ud = m.userData as { orig?: THREE.Material; fig?: THREE.Material };
+      if (ud.fig) return;
       if (this.pixel) {
         const orig = ud.orig ?? m.material;
         // Floors, walls, the sky: no outline on surfaces that big.
@@ -628,6 +672,7 @@ export class View {
       this.hemi.intensity = this.arena.hemi;
     }
     this.fighters = sim.fighters.map((f) => new FighterView(f, this.scene, this.labels));
+    for (const fv of this.fighters) fv.setFigure(this.figure);
     if (this.pixel) queueMicrotask(() => this.toonAll());
 
     const wood = this.arena!.crate;

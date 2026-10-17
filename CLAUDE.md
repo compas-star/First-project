@@ -74,15 +74,20 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   lowers the pitch. Levels measured offline (`window.__sound.start(OfflineAudioContext)`): crowd
   RMS ~0.008 at rest, ~0.03 at full excitement, a head hit ~0.03 RMS. 🔊/🔇 button in the dock (`arena-sound-v1`). Max 5 new sounds a frame.
   Also: sweat spray on clean head shots.
-- Pixel look (user: graphics in the career's street-pixel style), on by default, dock button
-  "▦ пиксели N" cycles 3 / 4 / 2 / smooth (`arena-gfx-v1`, `view.setPixel(n)`): renderer pixel
-  ratio 1/n, canvas `image-rendering: pixelated`; lit materials swapped for cel-shaded
-  `MeshToonMaterial` twins with a 4-step ramp (`toonAll`, originals kept in userData.orig;
-  surfaces >2.5 m get no outline); `OutlineEffect` black outlines; scene goes into a
-  half-float target, then a palette pass (`renderPixel`): tone map + night grade (shadows
-  purple) + 9-level posterize with a 4x4 Bayer dither; exposure 0.82. `body.pixel` CSS: HUD,
-  bars cut into segments, dock, bubbles, KO card in Press Start 2P / Pixelify Sans; big clean
-  blows pop comic words (БАМ!, ХРЯСЬ!...) instead of the zone.
+- Pixel look (user: graphics in the career's style; then: fighters too blurry, want them
+  comic-like, the backdrop may stay pixel), on by default, dock button "▦ пиксели N" cycles
+  3 / 4 / 2 / smooth (`arena-gfx-v1`, `view.setPixel(n)`). Two layers (`renderPixel`): the
+  world (layer 0: arena, crowd, sparks) into a target n x smaller (half-float, nearest), then
+  a palette pass to the screen (tone map + night grade, shadows purple + 9-level posterize
+  with a 4x4 Bayer dither in big-pixel coords, no dither on bright floors); the fighters
+  (rig + ghosts put on layer 1 every frame) drawn on top at full resolution through
+  `OutlineEffect` (thickness 0.011, its autoClear and the scene background off for that pass),
+  shadow map not redrawn. Lit materials -> `MeshToonMaterial` twins with a 3-step comic ramp
+  (`toonAll`, originals in userData.orig; >2.5 m surfaces no outline). Lights enabled on both
+  layers; the sun's shadow camera sees layer 1 so fighters still cast shadows. Known: fighters
+  are always drawn over the world (ropes in front of them do not cover them). `body.pixel`
+  CSS: HUD, segmented bars, dock, bubbles, KO card in Press Start 2P / Pixelify Sans; big
+  clean blows pop comic words (БАМ!, ХРЯСЬ!...) instead of the zone.
 - `main.ts`: HUD, time scale ("eyes"), setup sheet, presets.
 - `career.ts` + `careerUi.ts`: manager mode ("Карьера" button; the sandbox stays as is).
   Fighters with a story, stats (`bodySpeed, strength, mindSpeed, skill, evasion, cardio`)

@@ -298,6 +298,7 @@ export class View {
   private toonRamp: THREE.DataTexture | null = null;
   private toonCache = new Map<THREE.Material, THREE.Material>();
   private toonBig = new Map<THREE.Material, THREE.Material>();
+  private litArena: unknown = null;
   /** Pixel look: the scene goes to a small target, then through a palette pass to the screen. */
   private rt: THREE.WebGLRenderTarget | null = null;
   private post: { scene: THREE.Scene; cam: THREE.OrthographicCamera; mat: THREE.ShaderMaterial } | null = null;
@@ -427,34 +428,39 @@ export class View {
   /** Switches the pixel look (0 = off, else the size of one pixel in screen pixels). */
   setPixel(n: number): void {
     this.pixel = n;
-    this.renderer.setPixelRatio(n ? 1 / n : Math.min(window.devicePixelRatio, 2));
-    this.canvas.style.imageRendering = n ? 'pixelated' : '';
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.canvas.style.imageRendering = '';
     // A touch darker: a night fight, and bright floors do not burn out in the palette.
     this.renderer.toneMappingExposure = n ? 0.82 : 1;
     this.renderer.shadowMap.type = n ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
-    if (n && !this.outline) this.outline = new OutlineEffect(this.renderer, { defaultThickness: 0.004, defaultColor: [0.02, 0.01, 0.03], defaultAlpha: 1 });
+    if (n && !this.outline) this.outline = new OutlineEffect(this.renderer, { defaultThickness: 0.011, defaultColor: [0.02, 0.01, 0.03], defaultAlpha: 1 });
     this.toonAll();
     this.resize();
   }
 
   /**
-   * The pixel look: outlined, cel-shaded scene into a small target, then a palette pass:
-   * a night grade (shadows lean purple), colours cut to a few steps with an ordered 4x4
-   * dither, as old games had it. The canvas itself is small; CSS blows it up sharp.
+   * The pixel look, in two layers. The world (arena, crowd, sparks) is drawn small, then
+   * blown up sharp through a palette pass: a night grade (shadows lean purple), colours cut
+   * to a few steps with an ordered 4x4 dither, as old games had it. The fighters are drawn
+   * on top at full resolution like comic figures: hard cel bands and thick black outlines.
    */
   private renderPixel(): void {
     const r = this.renderer;
     const size = r.getDrawingBufferSize(new THREE.Vector2());
-    if (!this.rt || this.rt.width !== size.x || this.rt.height !== size.y) {
+    // One big pixel = n screen points, whatever the device's pixel density.
+    const n = this.pixel * r.getPixelRatio();
+    const w = Math.max(1, Math.round(size.x / n));
+    const h = Math.max(1, Math.round(size.y / n));
+    if (!this.rt || this.rt.width !== w || this.rt.height !== h) {
       this.rt?.dispose();
-      this.rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+      this.rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
     }
     if (!this.post) {
       const mat = new THREE.ShaderMaterial({
-        uniforms: { tDiffuse: { value: null }, levels: { value: 9 } },
+        uniforms: { tDiffuse: { value: null }, levels: { value: 9 }, res: { value: new THREE.Vector2() } },
         vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
         fragmentShader: `
-          uniform sampler2D tDiffuse; uniform float levels; varying vec2 vUv;
+          uniform sampler2D tDiffuse; uniform float levels; uniform vec2 res; varying vec2 vUv;
           #define B2(a) fract(dot(floor(a), vec2(0.5, floor(a).y * 0.75)))
           #define B4(a) (B2(0.5 * (a)) * 0.25 + B2(a))
           void main() {
@@ -466,7 +472,9 @@ export class View {
             // Night grade: dark parts lean purple-blue, bright parts stay warm.
             col = mix(col * vec3(0.82, 0.78, 1.12) + vec3(0.025, 0.0, 0.05), col, smoothstep(0.08, 0.7, l));
             col = mix(vec3(l), col, 1.15);
-            float d = B4(gl_FragCoord.xy) - 0.5;
+            // The dither follows the big pixels, not the screen's.
+            // Bright floors stay clean; the dither lives in the mid and dark tones.
+            float d = (B4(floor(vUv * res)) - 0.5) * (1.0 - smoothstep(0.7, 0.92, l));
             col = floor(clamp(col, 0.0, 1.0) * levels + 0.5 + d * 0.6) / levels;
             gl_FragColor = vec4(col, 1.0);
           }`,
@@ -477,11 +485,49 @@ export class View {
       scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
       this.post = { scene, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mat };
     }
+    // Fighters live on layer 1: left out of the world pass, but still casting their shadows there.
+    for (const fv of this.fighters) {
+      fv.rig.root.traverse((o) => o.layers.set(1));
+      for (const g of fv.ghosts) g.root.traverse((o) => o.layers.set(1));
+    }
+    this.sun.shadow.camera.layers.enable(1);
+    // Lights shine on both layers (the arena's lamps too, once per arena).
+    if (this.litArena !== this.arena) {
+      this.litArena = this.arena;
+      this.scene.traverse((o) => {
+        if ((o as THREE.Light).isLight) o.layers.enableAll();
+      });
+    }
+    const cam = this.camera;
+    // 1) The world, small.
+    cam.layers.set(0);
     r.setRenderTarget(this.rt);
-    this.outline!.render(this.scene, this.camera);
+    r.render(this.scene, cam);
     r.setRenderTarget(null);
+    // 2) Blown up through the palette.
     this.post.mat.uniforms.tDiffuse.value = this.rt.texture;
+    this.post.mat.uniforms.res.value.set(w, h);
     r.render(this.post.scene, this.post.cam);
+    // 3) The fighters on top, sharp, outlined.
+    const keepClear = r.autoClear;
+    const keepShadows = r.shadowMap.autoUpdate;
+    r.autoClear = false;
+    r.shadowMap.autoUpdate = false;
+    r.clearDepth();
+    cam.layers.set(1);
+    // The outline pass clears by its own setting: here it must draw over the world.
+    const ol = this.outline as unknown as { autoClear: boolean };
+    const olClear = ol.autoClear;
+    ol.autoClear = false;
+    // No sky in this pass: the world is already on screen.
+    const bg = this.scene.background;
+    this.scene.background = null;
+    this.outline!.render(this.scene, cam);
+    this.scene.background = bg;
+    ol.autoClear = olClear;
+    cam.layers.enableAll();
+    r.autoClear = keepClear;
+    r.shadowMap.autoUpdate = keepShadows;
   }
 
   /** Lit surfaces get the cel-shaded twin of their material in the pixel look, and back. */
@@ -515,8 +561,9 @@ export class View {
     if (!t) {
       if (!this.toonRamp) {
         // Dark, mid, lit, highlight: four hard bands.
-        const d = new Uint8Array([70, 70, 70, 255, 140, 140, 140, 255, 215, 215, 215, 255, 255, 255, 255, 255]);
-        this.toonRamp = new THREE.DataTexture(d, 4, 1, THREE.RGBAFormat);
+        // Comic shading: deep shadow, flat colour, a hard highlight.
+        const d = new Uint8Array([55, 55, 55, 255, 175, 175, 175, 255, 255, 255, 255, 255]);
+        this.toonRamp = new THREE.DataTexture(d, 3, 1, THREE.RGBAFormat);
         this.toonRamp.minFilter = this.toonRamp.magFilter = THREE.NearestFilter;
         this.toonRamp.needsUpdate = true;
       }

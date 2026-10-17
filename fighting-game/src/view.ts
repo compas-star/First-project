@@ -10,7 +10,7 @@ import { syncRig, v, q } from './physics';
 import { ARENA_R, FLOOR_R, LIMB_NAME, type Fighter, type Limb, type Sim } from './sim';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildArena, type Arena } from './arena';
-import { dress, defaultSkin } from './skins';
+import { dress, defaultSkin, comicLook } from './skins';
 import { comicBody } from './body';
 
 // Rendering: the arena, fighters and effects. Effects run partly on real time
@@ -97,18 +97,8 @@ class FighterView {
       color: new THREE.Color(f.p.color).multiplyScalar(0.35).lerp(new THREE.Color(0x5a2a6a), 0.5),
       roughness: 0.8,
     });
-    // Test of the new look: the red fighter wears the comic body.
-    if (f.team === 0) {
-      comicBody(this.rig, f.girth, {
-        skin: [0xe8b48f, 0xc98a5e, 0x8d5a3b, 0xf1c6a5, 0x6e4430][Math.abs(seed) % 5],
-        shorts: f.p.color,
-        band: 0xf2efe8,
-        gloves: 0x18181d,
-        hair: [0x1d1612, 0x3b2a1c, 0x0e0e10][Math.abs(seed >> 3) % 3],
-        muscle: THREE.MathUtils.clamp((f.p.strength - 0.6) / 0.8, 0, 1),
-        belly: THREE.MathUtils.clamp((f.girth - 1.15) * 2, 0, 1),
-      });
-    }
+    // The comic look: one skinned body, outfit and head by the skin.
+    comicBody(this.rig, f.girth, comicLook(f.p.skin ?? defaultSkin(f.p.discipline), f.p.color, seed, f.p.strength, f.girth));
     this.nodes = rigNodes(this.rig);
     scene.add(this.rig.root);
 

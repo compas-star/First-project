@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Rig } from './rig';
+import type { ComicLook } from './body';
 import type { DisciplineId } from './disciplines';
 
 // Looks. A skin repaints the body parts and hangs simple shapes on the rig:
@@ -14,7 +15,8 @@ import type { DisciplineId } from './disciplines';
 
 export type SkinId =
   | 'boxer' | 'mma' | 'kick' | 'nakmuay' | 'karateka' | 'luchador' | 'biker'
-  | 'ninja' | 'gladiator' | 'robot' | 'clerk' | 'sumo' | 'zombie' | 'wrestler' | 'bjj';
+  | 'ninja' | 'gladiator' | 'robot' | 'clerk' | 'sumo' | 'zombie' | 'wrestler' | 'bjj'
+  | 'rider' | 'artist' | 'brute' | 'feral';
 
 export interface Skin {
   id: SkinId;
@@ -38,6 +40,10 @@ export const SKINS: Skin[] = [
   { id: 'clerk', name: 'Офисный клерк', desc: 'Рубашка, галстук, брюки и очки. Пришёл после работы.' },
   { id: 'sumo', name: 'Сумоист', desc: 'Маваси и пучок волос на макушке.' },
   { id: 'zombie', name: 'Зомби', desc: 'Серо-зелёная кожа, рваная одежда, горящие глаза.' },
+  { id: 'rider', name: 'Призрачный байкер', desc: 'Горящий череп, кожанка с шипами, цепь через грудь. Пламя на плечах.' },
+  { id: 'artist', name: 'Художник', desc: 'Сбежал со страницы комикса: светлый хвост, рваные джинсы, карандаш за ухом.' },
+  { id: 'brute', name: 'Громила', desc: 'Зелёная гора мышц, маленький лоб, огромная челюсть, драные штаны.' },
+  { id: 'feral', name: 'Зверь', desc: 'Бакенбарды, взъерошенные волосы, три стальных когтя из кулака.' },
 ];
 
 export const SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s])) as Record<SkinId, Skin>;
@@ -373,4 +379,64 @@ export function dress(r: Rig, id: SkinId, team: number, girth: number, seed: num
     }
   }
   return skin;
+}
+
+/**
+ * The comic look of a skin: grotesque proportions, outfit, head and hands. The team colour
+ * always shows on something big (shorts, trousers, a mask or a jacket's trim).
+ */
+export function comicLook(id: SkinId, team: number, seed: number, strength: number, girth: number): ComicLook {
+  const tone = TONES[Math.abs(seed) % TONES.length];
+  const hair = [0x1d1612, 0x3b2a1c, 0x6b4a2a, 0x0e0e10][Math.abs(seed >> 3) % 4];
+  const bulk = Math.min(1.6, Math.max(0.8, 0.7 + 0.45 * strength + 0.25 * (girth - 1)));
+  const belly = Math.min(1, Math.max(0, (girth - 1.15) * 2));
+  const base: ComicLook = {
+    skin: tone, bulk, arms: bulk, belly, head: 'face', hair: 'crop', hairColor: hair, beard: false,
+    hands: 'mma', handColor: 0x18181d, top: 'none', topColor: 0xffffff, bottom: 'trunks', bottomColor: team, band: 0xf2efe8,
+    shoes: 0, shoeColor: 0x111111, extras: [],
+  };
+  const dark = new THREE.Color(team).multiplyScalar(0.45).getHex();
+  switch (id) {
+    case 'boxer':
+      return { ...base, hands: 'boxing', handColor: team, bottom: 'trunks', shoes: 0.3, shoeColor: 0x151515, hair: 'crop' };
+    case 'mma':
+      return { ...base, bottom: 'shorts', hair: Math.abs(seed) % 2 ? 'crop' : 'mohawk', extras: ['scar'] };
+    case 'kick':
+      return { ...base, hands: 'boxing', handColor: 0x111111, bottom: 'long', bottomColor: team, hair: 'spiky' };
+    case 'nakmuay':
+      return { ...base, hands: 'boxing', handColor: 0xb71c1c, bottom: 'trunks', hair: 'headband', maskColor: team, band: 0xf2c14e };
+    case 'karateka':
+      return { ...base, hands: 'bare', top: 'gi', topColor: 0xf2f2ee, bottom: 'long', bottomColor: 0xf2f2ee, hair: 'headband', maskColor: team };
+    case 'bjj':
+      return { ...base, hands: 'bare', top: 'gi', topColor: 0x2b3b8f, bottom: 'long', bottomColor: 0x2b3b8f, hair: 'crop', beard: true, band: team };
+    case 'wrestler':
+      return { ...base, hands: 'bare', bottom: 'singlet', bottomColor: team, shoes: 0.25, shoeColor: dark, hair: 'crop' };
+    case 'luchador':
+      return { ...base, head: 'mask', maskColor: team, bottom: 'long', bottomColor: dark, hands: 'wraps', shoes: 0.3, shoeColor: team, extras: ['kneepads'] };
+    case 'biker':
+      return { ...base, top: 'vest', topColor: 0x1a1414, bottom: 'long', bottomColor: 0x2d4a78, hair: 'bandana', maskColor: team, beard: true, shoes: 0.25, shoeColor: 0x2a1a10, hands: 'fingerless', handColor: 0x1a1414, extras: ['shades', 'belt'] };
+    case 'ninja':
+      return { ...base, head: 'mask', maskColor: 0x111116, top: 'long', topColor: 0x15151b, bottom: 'long', bottomColor: 0x15151b, hands: 'wraps', band: team, extras: [] };
+    case 'gladiator':
+      return { ...base, head: 'helmet', maskColor: 0xb08a3e, bottom: 'shorts', bottomColor: 0x6b3f22, band: team, shoes: 0.2, shoeColor: 0x6b3f22, hands: 'wraps', extras: ['belt'] };
+    case 'robot':
+      return { ...base, skin: 0x9aa4b0, head: 'helmet', maskColor: 0x5d6672, bottom: 'shorts', bottomColor: team, hands: 'bare', glow: 0x42f5e6, extras: ['antenna'] };
+    case 'clerk':
+      return { ...base, top: 'long', topColor: 0xeef0f4, bottom: 'long', bottomColor: 0x2b2f3a, shoes: 0.12, shoeColor: 0x111111, hands: 'bare', hair: 'crop', band: team, extras: ['shades'] };
+    case 'sumo':
+      return { ...base, bulk: 1.3, arms: 1.1, belly: 1, bottom: 'mawashi', bottomColor: team, hands: 'bare', hair: 'topknot' };
+    case 'zombie':
+      return { ...base, skin: 0x8fa37c, glow: 0xffe14a, top: 'tee', topColor: 0x6b6250, bottom: 'torn', bottomColor: 0x3a4a5a, band: team, hands: 'bare', hair: 'long', hairColor: 0x2a2a20 };
+    case 'rider':
+      // A flaming skull on a biker: leather, spikes, a chain, fire on the shoulders.
+      return { ...base, head: 'skull', glow: 0xff3a10, top: 'jacket', topColor: 0x141012, bottom: 'long', bottomColor: 0x1f2433, band: team, shoes: 0.3, shoeColor: 0x141012, hands: 'fingerless', handColor: 0x141012, extras: ['spikes', 'chain', 'flames', 'belt'] };
+    case 'artist':
+      // Out of the comic page: a blond ponytail, torn jeans, fingerless gloves, a pencil.
+      return { ...base, hair: 'ponytail', hairColor: 0xf1d36b, top: 'vest', topColor: team, bottom: 'torn', bottomColor: 0x3f6db3, shoes: 0.22, shoeColor: 0xe8e2d6, hands: 'fingerless', handColor: 0x1a1a1a, extras: ['pencil'] };
+    case 'brute':
+      return { ...base, skin: 0x6fa456, bulk: 1.6, arms: 1.7, belly: 0.3, head: 'brute', hair: 'crop', hairColor: 0x1c2a14, bottom: 'torn', bottomColor: 0x5a2d82, band: team, hands: 'bare' };
+    case 'feral':
+      return { ...base, hair: 'spiky', hairColor: 0x161214, top: 'vest', topColor: 0xf2c418, bottom: 'long', bottomColor: 0x1d2a63, band: team, shoes: 0.25, shoeColor: 0x2a1a10, hands: 'claws', extras: ['belt'] };
+  }
+  return base;
 }

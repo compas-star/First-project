@@ -88,13 +88,21 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   are always drawn over the world (ropes in front of them do not cover them). `body.pixel`
   CSS: HUD, segmented bars, dock, bubbles, KO card in Press Start 2P / Pixelify Sans; big
   clean blows pop comic words (БАМ!, ХРЯСЬ!...) instead of the zone.
-- `body.ts` (TEST, red fighter only, user asked for a test before redoing everyone): comic body
-  instead of Toribash-like capsules. One `SkinnedMesh` over 11 bones (a `THREE.Bone` child on
-  each rig group, bound in the rest pose): tubes of rings with muscle profiles (deltoid,
-  biceps, forearm, quad, calf, waist/chest, belly), vertices near a joint shared 50/50 with
-  the next bone, vertex colours for skin / shorts / waistband / wraps; rigid comic head (jaw,
-  stubble, nose, ears, eyes, angled brows, hair cap), MMA gloves, bare feet; all toon.
-  Old meshes hidden; afterimages hide the skinned mesh (it would follow the live skeleton).
+- `body.ts` + `comicLook()` in skins.ts: every fighter is a comic character now (user: Toribash
+  look does not fit; wants grotesque comic characters with nods to Comix Zone, Ghost Rider...).
+  One `SkinnedMesh` over 11 bones (a `THREE.Bone` child on each rig group, bound in the rest
+  pose): tubes of rings with muscle profiles scaled by `bulk` (V-trunk, deltoids, biceps),
+  Popeye forearms (`arms`), `belly`; vertices near a joint shared 50/50 with the next bone;
+  vertex colours paint skin, ink lines on bare muscle (pecs, abs, deltoid, biceps, quads),
+  tops (vest/tee/long/jacket/gi), bottoms (trunks/shorts/long/torn/singlet/mawashi), shoes.
+  Rigid head (face / skull with flickering flames / mask / brute / helmet; hair crop, mohawk,
+  spiky + sideburns, ponytail, long, topknot, bandana, headband; beard, shades, scar, pencil),
+  hands (boxing, MMA, wraps, claws, fingerless, bare), feet, extras (spikes, chain, shoulder
+  flames, belt). Old capsule meshes are hidden (dress() still runs). New skins 'rider'
+  (Призрачный байкер), 'artist' (Художник), 'brute' (Громила), 'feral' (Зверь); presets
+  "Призрак и Художник" and "Громила и Зверь" at the end of PRESETS. Afterimages hide the
+  skinned mesh (it would follow the live skeleton). Bruise marks hang on hidden meshes (not
+  shown now).
 - `main.ts`: HUD, time scale ("eyes"), setup sheet, presets.
 - `career.ts` + `careerUi.ts`: manager mode ("Карьера" button; the sandbox stays as is).
   Fighters with a story, stats (`bodySpeed, strength, mindSpeed, skill, evasion, cardio`)

@@ -175,6 +175,22 @@ export const PRESETS: Preset[] = [
     red: { strength: 6, weight: 120, height: 2, skill: 0.6, powers: ['stone', 'shockwave'], skin: 'gladiator' },
     blue: { bodySpeed: 3, mindSpeed: 3, strength: 2, skill: 0.85, powers: ['dash', 'parry', 'regen'], skin: 'robot' },
   },
+  {
+    id: 'comix',
+    map: 'alley',
+    name: 'Призрак и Художник',
+    desc: 'Горящий череп в кожанке против парня, сбежавшего со страницы комикса.',
+    red: { weight: 92, height: 1.88, strength: 1.3, aggression: 0.8, discipline: 'street', skin: 'rider' },
+    blue: { weight: 74, height: 1.8, bodySpeed: 1.1, evasion: 0.6, skill: 0.75, discipline: 'kickboxing', skin: 'artist' },
+  },
+  {
+    id: 'brute-feral',
+    map: 'roof',
+    name: 'Громила и Зверь',
+    desc: 'Зелёная гора мышц против бешеного бойца с когтями.',
+    red: { weight: 130, height: 2.0, strength: 2, bodySpeed: 0.9, aggression: 0.85, discipline: 'street', skin: 'brute' },
+    blue: { weight: 80, height: 1.72, bodySpeed: 1.15, mindSpeed: 1.15, aggression: 0.9, discipline: 'mma', skin: 'feral' },
+  },
 ];
 
 export function applyPreset(p: Preset): [FighterParams, FighterParams] {

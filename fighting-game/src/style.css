@@ -1515,3 +1515,361 @@ button:disabled {
   font-size: 12.5px;
   padding: 8px 4px;
 }
+
+/* ============ Career: pixel street style (night alley, bricks, neon, chunky buttons) ============ */
+#career {
+  --px: 'Press Start 2P', 'Russo One', monospace;
+  --pxb: 'Pixelify Sans', 'Golos Text', system-ui, sans-serif;
+  --ink: #0a0709;
+  --wall: #241a1f;
+  --panel: #1c1820;
+  --panel2: #26212b;
+  --neon: #ff3d7f;
+  --cyan: #2de2e6;
+  --gold: #ffd23f;
+  --lime: #7dff7a;
+  --rust: #ff5a3c;
+  --fg: #f3eee6;
+  --muted: #b3a9b8;
+  --line: #000;
+  font: 500 15px/1.35 var(--pxb);
+  color: var(--fg);
+  image-rendering: pixelated;
+  background-color: var(--wall);
+  /* A brick wall, staggered rows, dark mortar; a streetlight glow at the top. */
+  background-image:
+    radial-gradient(120% 60% at 50% -10%, rgba(255, 200, 90, 0.16), transparent 60%),
+    linear-gradient(180deg, rgba(10, 7, 9, 0.15), rgba(10, 7, 9, 0.75)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='24' shape-rendering='crispEdges'%3E%3Crect width='48' height='24' fill='%23301f24'/%3E%3Crect y='0' width='48' height='2' fill='%2316100f'/%3E%3Crect y='12' width='48' height='2' fill='%2316100f'/%3E%3Crect x='0' y='0' width='2' height='12' fill='%2316100f'/%3E%3Crect x='24' y='12' width='2' height='12' fill='%2316100f'/%3E%3Crect x='4' y='3' width='14' height='2' fill='%233a272c'/%3E%3Crect x='30' y='15' width='10' height='2' fill='%233a272c'/%3E%3C/svg%3E");
+  background-size: auto, auto, 48px 24px;
+  background-attachment: local;
+}
+#career * {
+  border-radius: 0 !important;
+}
+#career button {
+  font: 400 10px/1.5 var(--px);
+  letter-spacing: 0.02em;
+  color: var(--fg);
+  background: var(--panel2);
+  border: 3px solid var(--ink);
+  box-shadow: inset 3px 3px 0 rgba(255, 255, 255, 0.12), inset -3px -3px 0 rgba(0, 0, 0, 0.45), 0 4px 0 var(--ink);
+  padding: 10px 10px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  transition: none;
+}
+#career button small,
+#career button span,
+#career button em {
+  text-transform: none;
+}
+#career button:active:not(:disabled) {
+  transform: translateY(4px);
+  box-shadow: inset 3px 3px 0 rgba(0, 0, 0, 0.35), 0 0 0 var(--ink);
+}
+#career button.primary {
+  background: var(--gold);
+  color: #1b1206;
+  box-shadow: inset 3px 3px 0 rgba(255, 255, 255, 0.55), inset -3px -3px 0 rgba(150, 90, 0, 0.55), 0 4px 0 var(--ink);
+}
+#career button:disabled {
+  opacity: 0.45;
+  filter: grayscale(0.6);
+}
+#career button small {
+  font: 500 12px/1.3 var(--pxb);
+}
+/* Headings: spray-painted, neon with a hard black shadow. */
+#career .h1 {
+  font: 400 16px/1.5 var(--px);
+  color: var(--neon);
+  text-shadow: 3px 3px 0 var(--ink), 0 0 12px rgba(255, 61, 127, 0.55);
+  text-transform: uppercase;
+}
+#career .h2 {
+  font: 400 11px/1.6 var(--px);
+  color: var(--cyan);
+  text-shadow: 2px 2px 0 var(--ink);
+  text-transform: uppercase;
+}
+#career .fnote {
+  font: 500 14px/1.4 var(--pxb);
+  color: var(--muted);
+}
+#career b {
+  font-weight: 700;
+}
+/* Panels: dark boards with a hard black frame and a pixel shadow. */
+#career .hero,
+#career .tcard,
+#career .daybar,
+#career .evcard,
+#career .newsbox,
+#career .help,
+#career .qbox,
+#career .resbox,
+#career .askbox,
+#career .tier,
+#career .titlecard,
+#career .vtable {
+  background: var(--panel);
+  border: 3px solid var(--ink);
+  box-shadow: inset 0 0 0 2px #3b3242, 5px 5px 0 rgba(0, 0, 0, 0.55);
+}
+#career .fname {
+  font: 400 13px/1.5 var(--px);
+  color: var(--gold);
+  text-shadow: 2px 2px 0 var(--ink);
+}
+#career .rate {
+  border: 3px solid var(--ink);
+  background: var(--neon);
+  color: #fff;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+#career .rate b {
+  font: 400 16px/1.2 var(--px);
+  text-shadow: 2px 2px 0 var(--ink);
+}
+#career .rate span {
+  color: #ffe1ec;
+}
+#career .fstory {
+  font-style: normal;
+  color: #d8cfc6;
+  border-left: 4px solid var(--neon);
+  padding-left: 8px;
+}
+/* Stat bars: chunky segments, the cap a white pixel post. */
+#career .sbar {
+  height: 12px;
+  background: #0f0c12;
+  border: 2px solid var(--ink);
+  box-shadow: inset 0 0 0 1px #3b3242;
+}
+#career .sbar i {
+  background: repeating-linear-gradient(90deg, var(--lime) 0 6px, #4fd34c 6px 8px);
+}
+#career .sbar em {
+  width: 3px;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--ink);
+}
+#career .stat b {
+  font: 400 10px/1.4 var(--px);
+  color: var(--lime);
+}
+#career .bar {
+  height: 10px;
+  background: #0f0c12;
+  border: 2px solid var(--ink);
+}
+#career .bar i {
+  background: repeating-linear-gradient(90deg, var(--gold) 0 6px, #d9a91d 6px 8px);
+}
+/* Tags and notes. */
+#career .pill {
+  font: 600 13px/1.35 var(--pxb);
+  border: 2px solid var(--ink);
+  background: #2c2632;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+#career .pill.green {
+  background: #183a1f;
+  color: var(--lime);
+}
+#career .pill.gold {
+  background: #3d3112;
+  color: var(--gold);
+}
+#career .pill.red {
+  background: #451818;
+  color: #ff8a7a;
+}
+#career .toast {
+  font: 600 14px/1.35 var(--pxb);
+  background: var(--gold);
+  color: #1b1206;
+  border: 3px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  transform: rotate(-0.6deg);
+}
+/* The top bar: a shop sign. */
+#career .ctop {
+  background: #120d11;
+  border-bottom: 4px solid var(--ink);
+  box-shadow: 0 3px 0 var(--neon);
+}
+#career .wallet {
+  font: 400 11px/1.4 var(--px);
+}
+#career .wallet b {
+  color: var(--gold);
+  text-shadow: 2px 2px 0 var(--ink);
+}
+#career .cheats {
+  font: 400 8px/1.4 var(--px);
+}
+#career .cheats button {
+  font-size: 8px;
+  padding: 6px 6px;
+}
+/* The big actions: posters on the wall. */
+#career .bigbtn {
+  padding: 16px 10px;
+  gap: 8px;
+}
+#career .bigbtn b {
+  font: 400 13px/1.4 var(--px);
+}
+#career .bigbtn span {
+  font: 500 13px/1.3 var(--pxb);
+  text-transform: none;
+}
+#career .nav4 button {
+  font-size: 9px;
+  padding: 12px 4px;
+}
+/* Gym rows and intensities. */
+#career .trow {
+  background: var(--panel);
+  text-align: left;
+}
+#career .trow.on {
+  background: #3a1630;
+  box-shadow: inset 0 0 0 3px var(--neon), 0 4px 0 var(--ink);
+}
+#career .trow-top b {
+  font: 400 10px/1.5 var(--px);
+  color: var(--fg);
+}
+#career .trow-top span {
+  font: 600 13px/1.3 var(--pxb);
+  text-transform: none;
+}
+#career .ibtn .gain {
+  font: 400 13px/1.5 var(--px);
+  color: var(--lime);
+  text-shadow: 2px 2px 0 var(--ink);
+}
+/* The training plan. */
+#career .qbox {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+#career .qrow {
+  display: grid;
+  grid-template-columns: 70px 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  background: #15111a;
+  border: 2px solid var(--ink);
+}
+#career .qrow > span {
+  font: 400 8px/1.4 var(--px);
+  color: var(--cyan);
+}
+#career .qrow > b {
+  font: 600 14px/1.2 var(--pxb);
+}
+#career .qrow > small {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 12px;
+}
+#career .qrow .qx {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  padding: 6px 9px;
+  margin: 0;
+  background: #451818;
+}
+#career .qrow.now {
+  border-color: var(--lime);
+  background: #142416;
+}
+/* Calendar: little tiles. */
+#career .cday {
+  border: 2px solid var(--ink);
+  background: #1b1720;
+  box-shadow: 0 2px 0 var(--ink);
+  font: 600 13px/1.1 var(--pxb);
+  padding: 4px 2px;
+  margin: 0;
+}
+#career .cday b {
+  font: 400 9px/1.4 var(--px);
+}
+#career .cday.today {
+  background: #123a3c;
+}
+#career .cday.ours {
+  box-shadow: inset 0 0 0 2px var(--gold), 0 2px 0 var(--ink);
+}
+#career .cday.on {
+  outline: 3px solid var(--neon);
+  outline-offset: -3px;
+}
+#career .cwd {
+  font: 400 8px/1.4 var(--px);
+  color: var(--cyan);
+}
+#career .evcard > b {
+  font: 600 15px/1.3 var(--pxb);
+  color: var(--gold);
+}
+#career .daybar .dtop > b {
+  font: 400 11px/1.5 var(--px);
+  color: var(--gold);
+  text-shadow: 2px 2px 0 var(--ink);
+}
+/* Rankings, brackets, versus. */
+#career .rrow {
+  text-transform: none;
+  font: 600 14px/1.2 var(--pxb);
+  margin-bottom: 0;
+}
+#career .rrow .rpl {
+  font: 400 9px/1.4 var(--px);
+  color: var(--cyan);
+}
+#career .rrow b {
+  font: 400 10px/1.4 var(--px);
+  color: var(--gold);
+}
+#career .rrow.mine {
+  background: #3a1630;
+}
+#career .vmid {
+  font: 400 18px/1 var(--px);
+  color: var(--neon);
+  text-shadow: 3px 3px 0 var(--ink);
+}
+#career .vside {
+  border: 3px solid var(--ink);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55);
+}
+#career .vside b {
+  font: 400 10px/1.5 var(--px);
+}
+#career .restitle {
+  font: 400 22px/1.3 var(--px);
+  text-shadow: 3px 3px 0 var(--ink);
+}
+#career .savecode {
+  border: 3px solid var(--ink);
+  background: #0f0c12;
+  font: 500 12px/1.3 var(--pxb);
+}
+#career .banner {
+  background: #3a1630;
+  border-color: var(--ink);
+}
+#career .gem {
+  font: normal 1em/1 system-ui, sans-serif;
+  color: var(--cyan);
+  text-shadow: none;
+}

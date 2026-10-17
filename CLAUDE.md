@@ -95,6 +95,15 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   Tiers Подвал → Мировой титул: single fights (purse) and 4/8-man
   tournaments (other bracket fights decided by `rating` odds). Stand-up only (`Rules.standing` turns off shots and pounces). Saved in localStorage
   `arena-career-v1`. `FighterParams.cardio` scales stamina costs and regen.
+  Training plan (user: one day per session, skip from the gym, queue several and skip all):
+  every intensity takes 1 day (hard k 2); tapping one adds to `CareerFighter.queue`, the
+  first starts today if he is free (`queueTraining`/`startQueued`), the next ones start at
+  each midnight (`endDay`); no money drops the rest of the plan. Gym shows the plan with ✕,
+  "Следующий день" and "Пропустить весь план" (`planSkip` = dayCost + 3 ◆ per later day,
+  `skipPlan` stops at a fight day). Look (user: pixel, street/alley): `#career` styles at
+  the end of style.css: brick-wall SVG background, 'Press Start 2P' headings/buttons and
+  'Pixelify Sans' text (both have Cyrillic), square chunky buttons with a 4px drop, neon
+  pink/cyan/gold. Press Start 2P has no ◆: `render()` wraps it in `.gem`.
   UI is screen-based (user: the first tabbed version was unclear): home (fighter card +
   big Train / Fight buttons, how-to card once), gym (pick stat row, then intensity with
   the gain shown), fight ladder, preview (side-by-side stats, odds) before each fight,

@@ -4,7 +4,7 @@
 // what you got.
 import {
   STAT_KEYS, STAT_INFO, INTENSITY, TIERS, TIER_BY_ID, MAX_ROSTER,
-  load, save, reset, newCareer, tick, startTraining, gainOf, busy, refreshMarket, buy, sell,
+  load, save, reset, newCareer, tick, queueTraining, planSkip, skipPlan, gainOf, busy, refreshMarket, buy, sell,
   rating, talentWord, value, opponent, afterFight, tourFight, roundName, short, odds,
   person, current, myMatch, settle, settleOthers, finished, closeTour,
   rankings, rankOf, relOf, WCLASSES, classOf, sameClass, isChamp, champOf, type WClass, relWord, rivalsOf, titleBout, tierOf, TITLE_PURSE,
@@ -85,7 +85,7 @@ export class CareerUi {
       const bar = el.querySelector<HTMLElement>('.bar i');
       if (bar) bar.style.width = `${Math.min(100, 100 - (100 * left) / DAY_MS)}%`;
       const nb = el.querySelector<HTMLElement>('[data-act="nextday"] b');
-      if (nb) nb.textContent = this.dayBtn();
+      if (nb) nb.innerHTML = this.dayBtn().replace(/◆/g, '<i class="gem">◆</i>');
     });
   }
 
@@ -129,7 +129,8 @@ export class CareerUi {
     const ask = this.asking
       ? `<div class="askbox"><div>${esc(this.asking.text)}</div><div class="row"><button type="button" class="primary" data-act="yes">Да</button><button type="button" data-act="no">Нет</button></div></div>`
       : '';
-    $('career').innerHTML = top + ask + (this.toast ? `<div class="toast">${esc(this.toast)}</div>` : '') + body;
+    // The pixel font has no ◆: the token sign is drawn in another font.
+    $('career').innerHTML = (top + ask + (this.toast ? `<div class="toast">${esc(this.toast)}</div>` : '') + body).replace(/◆/g, '<i class="gem">◆</i>');
     this.toast = '';
   }
 
@@ -227,7 +228,6 @@ export class CareerUi {
   private gym(): string {
     const f = this.me();
     const c = this.c;
-    const free = !busy(c, f) && c.tour?.fighter !== f.id;
     const rows = STAT_KEYS.map((k) => {
       const info = STAT_INFO[k];
       const room = f.caps[k] - f.stats[k];
@@ -239,21 +239,38 @@ export class CareerUi {
     }).join('');
     const its = INTENSITY.map((it) => {
       const g = gainOf(f, this.stat, it);
-      let fight = '';
-      for (let d = c.day; d < c.day + it.days; d++) if (bookedOn(c, f, d)) fight = d === c.day ? 'сегодня бой' : 'завтра бой';
-      const no = !free ? 'боец занят' : fight || (c.money < it.cost ? 'мало денег' : '');
+      const no = c.money < it.cost ? 'мало денег' : '';
       return `<button type="button" class="ibtn" data-act="train" data-it="${it.id}" ${no ? 'disabled' : ''}>
         <b>${it.name}</b>
         <span class="gain">+${fmtGain(this.stat, g)}</span>
-        <span>${it.days === 1 ? '1 день' : `${it.days} дня`} · $${it.cost}</span>
+        <span>1 день · $${it.cost}</span>
         <small>${it.injury ? `травма ${Math.round(it.injury * 100)}%` : 'без риска'}${no ? ` · ${no}` : ''}</small>
       </button>`;
     }).join('');
+    // Today's session and the plan after it, one day each.
+    const q = f.queue ?? [];
+    const now = f.session ? `<div class="qrow now"><span>Сегодня</span><b>${STAT_INFO[f.session.stat].name}</b><small>${esc(f.busyWhat)}</small></div>` : '';
+    const plan = q.map((x, i) => {
+      const it = INTENSITY.find((y) => y.id === x.it)!;
+      return `<div class="qrow"><span>${f.session || busy(c, f) ? `+${i + 1} дн.` : i === 0 ? 'Сегодня' : `+${i} дн.`}</span><b>${STAT_INFO[x.stat].name}</b><small>${it.name.toLowerCase()} · $${it.cost}</small><button type="button" class="qx" data-act="unqueue" data-i="${i}">✕</button></div>`;
+    }).join('');
+    const sk = planSkip(c, f);
+    const queueBox = now || plan
+      ? `<div class="qbox"><div class="h2">План тренировок</div>${now}${plan}
+          <div class="row">
+            <button type="button" data-act="nextday"><b>${this.dayBtn()}</b></button>
+            <button type="button" class="primary" data-act="skipplan" ${sk.days && c.tokens >= sk.tokens ? '' : 'disabled'}>Пропустить весь план<br><small>${sk.days} дн. · ${sk.tokens} ◆</small></button>
+          </div>
+          ${q.length ? '<button type="button" data-act="clearplan">Очистить план</button>' : ''}
+        </div>`
+      : '';
     return `<div class="h1">Зал · ${esc(short(f))}</div>
+      ${this.dayBar()}
       ${this.status(f)}
-      <div class="fnote">1) Выбери, что качать. 2) Выбери тренировку. Она занимает день (тяжёлая — два), прибавка — когда день закончится. В дни тренировки драться нельзя. Чем ближе к потолку, тем меньше даёт.</div>
+      <div class="fnote">Выбери качество, потом жми тренировки — каждая занимает один день и встаёт в план. Можно набрать несколько и пропустить их все за жетоны. Чем ближе к потолку, тем меньше даёт. В день боя тренировки нет.</div>
+      ${queueBox}
       <div class="trows">${rows}</div>
-      <div class="h2">${STAT_INFO[this.stat].name}: какая тренировка?</div>
+      <div class="h2">${STAT_INFO[this.stat].name}: добавить тренировку</div>
       <div class="ibtns">${its}</div>`;
   }
 
@@ -669,17 +686,31 @@ export class CareerUi {
         return say(null);
       case 'train': {
         const it = INTENSITY.find((x) => x.id === b.dataset.it)!;
-        const err = startTraining(c, me, this.stat, it);
-        if (err) return say(err);
-        this.toast = `${short(me)} в зале: ${STAT_INFO[this.stat].name.toLowerCase()}, ${it.days === 1 ? 'до конца дня' : `${it.days} дня`}`;
-        return this.go('home');
+        const err = queueTraining(c, me, this.stat, it);
+        return say(err ?? `+ ${STAT_INFO[this.stat].name.toLowerCase()} (${it.name.toLowerCase()}) в плане`);
+      }
+      case 'unqueue': {
+        me.queue?.splice(Number(b.dataset.i), 1);
+        save(c);
+        return say(null);
+      }
+      case 'clearplan':
+        me.queue = [];
+        save(c);
+        return say('План очищен');
+      case 'skipplan': {
+        const was = { ...me.stats };
+        const err = skipPlan(c, me);
+        const gains = (Object.keys(was) as StatKey[]).filter((k) => me.stats[k] - was[k] > 1e-6).map((k) => `${STAT_INFO[k].name} +${fmtGain(k, me.stats[k] - was[k])}`);
+        this.calDay = c.day;
+        return say([err, gains.length ? `Итог: ${gains.join(', ')}` : '', `Сейчас ${dayName(c.day)}`].filter(Boolean).join('. '));
       }
       case 'nextday': {
         const done = (err: string | null) => {
           if (err) return say(err);
           this.calDay = c.day;
           this.toast = `Новый день: ${dayName(c.day)}, ${weekday(c.day)}`;
-          return this.go(this.screen === 'cal' ? 'cal' : 'home');
+          return this.go(this.screen === 'cal' || this.screen === 'gym' ? this.screen : 'home');
         };
         const err = nextDay(c);
         if (err === 'tour' || err === 'fight')

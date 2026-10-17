@@ -42,6 +42,8 @@ export interface CareerFighter {
   session?: { stat: StatKey; gain: number; injury: number };
   /** Ranking points (Elo): wins over better men raise them more. */
   elo?: number;
+  /** Planned sessions, one a day, started as days go by. */
+  queue?: { stat: StatKey; it: Intensity['id'] }[];
 }
 
 export interface Tier {
@@ -315,7 +317,7 @@ export interface Intensity {
 export const INTENSITY: Intensity[] = [
   { id: 'light', name: 'Лёгкая', days: 1, cost: 10, k: 0.45, injury: 0 },
   { id: 'normal', name: 'Обычная', days: 1, cost: 30, k: 1, injury: 0.02 },
-  { id: 'hard', name: 'Тяжёлая', days: 2, cost: 75, k: 2.4, injury: 0.1 },
+  { id: 'hard', name: 'Тяжёлая', days: 1, cost: 75, k: 2, injury: 0.1 },
 ];
 
 /** What a session would add: small, and less the closer he is to his ceiling. */
@@ -344,6 +346,57 @@ export function startTraining(c: Career, f: CareerFighter, k: StatKey, it: Inten
   f.busyUntil = c.day + it.days;
   f.busyWhat = `${STAT_INFO[k].drill} (${it.name.toLowerCase()})`;
   save(c);
+  return null;
+}
+
+/** Adds a session to his plan; if he is free today, the first one starts right away. */
+export function queueTraining(c: Career, f: CareerFighter, k: StatKey, it: Intensity): string | null {
+  (f.queue ??= []).push({ stat: k, it: it.id });
+  const err = startQueued(c, f);
+  save(c);
+  return err;
+}
+
+/** Starts the next planned session if he can train today. Null = started or nothing to do. */
+export function startQueued(c: Career, f: CareerFighter): string | null {
+  const q = f.queue;
+  if (!q?.length || busy(c, f) || c.tour?.fighter === f.id || bookedOn(c, f, c.day)) return null;
+  const next = q[0];
+  const it = INTENSITY.find((x) => x.id === next.it)!;
+  const err = startTraining(c, f, next.stat, it);
+  if (err) {
+    // Cannot go on (no money): the rest of the plan is dropped, said once.
+    f.queue = [];
+    return err;
+  }
+  q.shift();
+  return null;
+}
+
+/** Days and tokens to get through what he is doing now and his whole plan. */
+export function planSkip(c: Career, f: CareerFighter): { days: number; tokens: number } {
+  const days = (busy(c, f) ? f.busyUntil - c.day : 0) + (f.queue?.length ?? 0);
+  return { days, tokens: days ? dayCost(c) + 3 * (days - 1) : 0 };
+}
+
+/** Skips day after day (paying tokens) until he is free and the plan is done. */
+export function skipPlan(c: Career, f: CareerFighter): string | null {
+  const need = planSkip(c, f);
+  if (!need.days) return 'План пуст';
+  if (c.tokens < need.tokens) return `Нужно ${need.tokens} ◆`;
+  for (let n = 0; n < 40 && (busy(c, f) || f.queue?.length); n++) {
+    const before = c.day;
+    const err = nextDay(c);
+    if (err === 'fight' || err === 'tour') return 'Сегодня бой: план остановлен, сходи на бой';
+    if (err) return err;
+    if (c.day === before) break;
+    // A day the plan could not go on (no money, a fight): stop there.
+    if (!busy(c, f) && f.queue?.length) {
+      const why = startQueued(c, f);
+      if (why) return `План остановлен: ${why.toLowerCase()}`;
+      if (!busy(c, f)) return bookedOn(c, f, c.day) ? 'Сегодня бой: план остановлен' : null;
+    }
+  }
   return null;
 }
 
@@ -468,6 +521,11 @@ function endDay(c: Career): string[] {
   }
   if (c.day - c.marketAt >= MARKET_DAYS) refreshMarket(c);
   plan(c);
+  // The new day's planned sessions begin.
+  for (const f of c.roster) {
+    const why = startQueued(c, f);
+    if (why) out.push(`${short(f)}: план тренировок встал (${why.toLowerCase()})`);
+  }
   out.unshift(`— ${dayName(c.day)}, ${weekday(c.day)} —`);
   return out;
 }

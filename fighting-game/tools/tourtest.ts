@@ -1,5 +1,5 @@
 // The calendar and the bracket without the screen: book, wait for the day, win through or lose early.
-import { classOf, newCareer, book, startTour, tourFight, settleOthers, current, myMatch, finished, closeTour, roundName, nextDay, waiting, dayName, busy, startTraining, INTENSITY, canBook } from '../src/career';
+import { queueTraining, planSkip, skipPlan, INTENSITY as IT, classOf, newCareer, book, startTour, tourFight, settleOthers, current, myMatch, finished, closeTour, roundName, nextDay, waiting, dayName, busy, startTraining, INTENSITY, canBook } from '../src/career';
 const win = { won: true, ko: false, reason: '', trauma: 0, body: 0, broken: 0, seconds: 60 };
 const lose = { ...win, won: false, reason: 'нокаут', ko: true, trauma: 0.8 };
 for (const plan of ['win', 'lose']) {
@@ -31,4 +31,14 @@ for (const plan of ['win', 'lose']) {
   console.log('  nextDay', nextDay(c) ?? 'ok', 'day', c.day, 'money', c.money, 'tokens', c.tokens, 'record', f.record, 'speed', f.stats.bodySpeed.toFixed(3));
   const n = c.events.find((x) => x.kind === 'night' && x.day >= c.day && x.tier === 'basement')!;
   console.log('  book night', n.day, canBook(c, f, n) ?? 'ok');
+}
+// The training plan: three sessions queued, skipped in one go.
+{
+  const c = newCareer();
+  c.money = 1000;
+  const f = c.roster[0];
+  const sp0 = f.stats.bodySpeed;
+  for (const k of [1, 1, 2]) queueTraining(c, f, 'bodySpeed', IT[k]);
+  console.log('plan: queue', f.queue!.length, 'busy', f.busyWhat, 'skip', JSON.stringify(planSkip(c, f)));
+  console.log('skip ->', skipPlan(c, f), 'day', c.day, 'speed +', (f.stats.bodySpeed - sp0).toFixed(3), 'tokens', c.tokens, 'queue', f.queue!.length, 'busy', f.busyUntil > c.day);
 }

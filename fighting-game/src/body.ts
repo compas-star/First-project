@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import type { Rig } from './rig';
 
-// Comic-book fighters: one continuous skinned body over the rig's joints instead of
-// separate capsules, grotesque comic proportions (V-shaped trunks, big forearms and fists),
-// ink lines drawn on the bare muscles, and a head, hands and outfit from a look. The
+// Fighters drawn like people in a comic: one continuous skinned body over the rig's joints
+// instead of separate capsules, human proportions with an athletic build, soft lines drawn
+// on the bare muscles, and a head, hands and outfit from a look. The
 // physics does not change: the skin follows the same eleven parts.
 //
 // Built in the rig's rest pose (arms and legs straight down). Each limb is a tube of
@@ -178,7 +178,7 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): THREE.MeshToonMa
   const U = L.bulk;
   const A = L.arms;
   const skin = C(L.skin);
-  const ink = skin.clone().multiplyScalar(0.42);
+  const ink = skin.clone().multiplyScalar(0.72);
   const topC = C(L.topColor);
   const topInk = topC.clone().multiplyScalar(0.55);
   const botC = C(L.bottomColor);
@@ -214,10 +214,10 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): THREE.MeshToonMa
   B.tube(0, [
     { y: 0.97, rx: 0.145 * G, rz: 0.106 * G },
     { y: 1.06, rx: (0.13 + 0.03 * belly) * G, rz: (0.1 + 0.045 * belly) * G, oz: 0.015 * belly },
-    { y: 1.17, rx: (0.15 + 0.03 * U + 0.01 * belly) * G, rz: (0.108 + 0.022 * belly + 0.01 * U) * G, oz: 0.01 * belly },
-    { y: 1.29, rx: (0.16 + 0.055 * U) * G, rz: (0.115 + 0.022 * U) * G, oz: 0.012 },
-    { y: 1.38, rx: (0.17 + 0.06 * U) * G, rz: (0.112 + 0.012 * U) * G, oz: 0.006 },
-    { y: 1.45, rx: (0.14 + 0.05 * U) * G, rz: 0.088 * G },
+    { y: 1.17, rx: (0.15 + 0.015 * U + 0.01 * belly) * G, rz: (0.108 + 0.022 * belly + 0.01 * U) * G, oz: 0.01 * belly },
+    { y: 1.29, rx: (0.16 + 0.03 * U) * G, rz: (0.112 + 0.016 * U) * G, oz: 0.012 },
+    { y: 1.38, rx: (0.17 + 0.032 * U) * G, rz: (0.108 + 0.01 * U) * G, oz: 0.006 },
+    { y: 1.45, rx: (0.14 + 0.028 * U) * G, rz: 0.088 * G },
     { y: 1.5, rx: 0.075 * G, rz: 0.062 * G },
   ], bi('spine'), bi('pelvis'), -1, (y, ang) => {
     if (y < 1.0 && L.top !== 'gi' && L.bottom !== 'singlet') return L.extras.includes('belt') ? C(0x2a1a10) : band;
@@ -242,7 +242,7 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): THREE.MeshToonMa
   }, 0.08, 0.05, 24);
 
   // The neck: bull-necked for the big ones.
-  const nk = 0.05 + 0.02 * U;
+  const nk = 0.048 + 0.012 * U;
   B.tube(0, [
     { y: 1.44, rx: (nk + 0.015) * G, rz: (nk + 0.01) * G },
     { y: 1.53, rx: nk * Math.sqrt(G), rz: nk * Math.sqrt(G), oz: 0.01 },
@@ -255,7 +255,7 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): THREE.MeshToonMa
     const el = bi(left ? 'lEl' : 'rEl');
     const hp = bi(left ? 'lHip' : 'rHip');
     const kn = bi(left ? 'lKn' : 'rKn');
-    const x = side * (0.19 + 0.025 * U) * G;
+    const x = side * (0.19 + 0.012 * U) * G;
     const armCol = (y: number, ang: number): THREE.Color => {
       if (y > sleeve) {
         if (L.top === 'jacket' && Math.abs(y - 0.9) < 0.02) return topInk;
@@ -270,16 +270,16 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): THREE.MeshToonMa
     // Shoulder cap (deltoid) and biceps, down to the elbow.
     B.tube(x, [
       { y: 1.48, rx: 0.05 * G, rz: 0.055 * G },
-      { y: 1.42, rx: (0.06 + 0.03 * U) * G, rz: (0.06 + 0.025 * U) * G },
-      { y: 1.33, rx: (0.05 + 0.025 * U) * G, rz: (0.052 + 0.026 * U) * G, oz: 0.006 },
-      { y: 1.24, rx: (0.046 + 0.02 * U) * G, rz: (0.05 + 0.026 * U) * G, oz: 0.012 },
+      { y: 1.42, rx: (0.058 + 0.016 * U) * G, rz: (0.058 + 0.014 * U) * G },
+      { y: 1.33, rx: (0.048 + 0.014 * U) * G, rz: (0.05 + 0.015 * U) * G, oz: 0.006 },
+      { y: 1.24, rx: (0.045 + 0.012 * U) * G, rz: (0.048 + 0.015 * U) * G, oz: 0.01 },
       { y: 1.13, rx: 0.042 * G, rz: 0.045 * G },
     ], sh, el, bi('spine'), armCol, 0.06, 0.07);
     // Forearm: Popeye forearms for the big ones, thin at the wrist.
     B.tube(x, [
       { y: 1.15, rx: 0.044 * G, rz: 0.046 * G },
-      { y: 1.05, rx: (0.042 + 0.022 * A) * G, rz: (0.04 + 0.018 * A) * G },
-      { y: 0.95, rx: (0.035 + 0.012 * A) * G, rz: (0.033 + 0.01 * A) * G },
+      { y: 1.05, rx: (0.042 + 0.01 * A) * G, rz: (0.04 + 0.008 * A) * G },
+      { y: 0.95, rx: (0.035 + 0.005 * A) * G, rz: (0.033 + 0.004 * A) * G },
       { y: 0.86, rx: 0.032 * G, rz: 0.03 * G },
     ], el, -1, sh, armCol, 0.05, 0.06);
     // Thigh and shin.
@@ -347,7 +347,7 @@ function comicHead(G: number, L: ComicLook): THREE.Group {
   const sg = Math.sqrt(G);
   // Comic heads sit a touch forward and big on a big neck.
   h.position.set(0, 0, 0.01);
-  h.scale.setScalar(1.12);
+  h.scale.setScalar(1.0);
   const skin = toon(L.skin);
   const dark = toon(C(L.skin).multiplyScalar(0.5).getHex());
   const inkM = toon(0x0c0a0c);
@@ -403,14 +403,13 @@ function comicHead(G: number, L: ComicLook): THREE.Group {
   for (const s of [1, -1]) {
     if (L.glow) mesh(h, new THREE.SphereGeometry(0.016, 10, 8), toon(L.glow, 2.4), [s * 0.036 * sg, 0.158, 0.092 * sg], [1.3, brute ? 0.6 : 0.8, 0.5]);
     else {
-      mesh(h, new THREE.SphereGeometry(0.018, 10, 8), white, [s * 0.036 * sg, 0.158, 0.088 * sg], [1.3, brute ? 0.6 : 0.85, 0.6]);
-      mesh(h, new THREE.SphereGeometry(0.0085, 8, 6), inkM, [s * 0.033 * sg, 0.157, 0.099 * sg]);
+      mesh(h, new THREE.SphereGeometry(0.013, 10, 8), white, [s * 0.035 * sg, 0.156, 0.088 * sg], [1.35, 0.6, 0.6]);
+      mesh(h, new THREE.SphereGeometry(0.0075, 8, 6), toon(0x2a1c14), [s * 0.034 * sg, 0.156, 0.096 * sg], [1, 0.9, 0.6]);
     }
-    mesh(h, new THREE.BoxGeometry(0.056, brute ? 0.022 : 0.016, 0.022), L.head === 'mask' ? inkM : hairM, [s * 0.037 * sg, 0.182, 0.094 * sg], [1, 1, 1], [0, 0, s * 0.32]);
+    mesh(h, new THREE.BoxGeometry(0.056, brute ? 0.022 : 0.016, 0.022), L.head === 'mask' ? inkM : hairM, [s * 0.036 * sg, 0.176, 0.094 * sg], [1, 0.8, 1], [0, 0, s * 0.14]);
   }
-  // A grim mouth, teeth bared.
-  mesh(h, new THREE.BoxGeometry(0.05, 0.016, 0.01), inkM, [0, 0.088, 0.09 * sg]);
-  mesh(h, new THREE.BoxGeometry(0.04, 0.006, 0.011), white, [0, 0.09, 0.091 * sg]);
+  // A closed mouth.
+  mesh(h, new THREE.BoxGeometry(0.042, 0.006, 0.01), toon(C(L.skin).multiplyScalar(0.45).getHex()), [0, 0.09, 0.09 * sg]);
   if (L.extras.includes('scar')) mesh(h, new THREE.BoxGeometry(0.008, 0.07, 0.006), toon(0x8a2a2a), [0.045 * sg, 0.16, 0.096 * sg], [1, 1, 1], [0, 0, 0.3]);
   if (L.extras.includes('shades')) {
     for (const s of [1, -1]) mesh(h, new THREE.BoxGeometry(0.05, 0.026, 0.01), inkM, [s * 0.036 * sg, 0.16, 0.1 * sg]);
@@ -468,7 +467,7 @@ function comicHead(G: number, L: ComicLook): THREE.Group {
 function hand(G: number, L: ComicLook, side: number): THREE.Group {
   const g = new THREE.Group();
   g.position.y = -0.29;
-  const A = 1 + 0.25 * (L.arms - 1);
+  const A = 1 + 0.1 * (L.arms - 1);
   const handM = toon(L.handColor);
   const skin = toon(L.skin);
   if (L.hands === 'boxing') {

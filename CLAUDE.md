@@ -88,8 +88,12 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   are always drawn over the world (ropes in front of them do not cover them). `body.pixel`
   CSS: HUD, segmented bars, dock, bubbles, KO card in Press Start 2P / Pixelify Sans; big
   clean blows pop comic words (БАМ!, ХРЯСЬ!...) instead of the zone.
-- `body.ts` + `comicLook()` in skins.ts: every fighter is a comic character now (user: Toribash
-  look does not fit; wants grotesque comic characters with nods to Comix Zone, Ghost Rider...).
+- `body.ts` + `comicLook()` in skins.ts: every fighter is a comic-drawn person (user: Toribash
+  look does not fit; then grotesque comic heroes; then "not so cartoony: all people, no green
+  ones or skeletons, references only if they fit"). Human proportions (bulk capped 1.35, mild
+  V and forearms), real skin tones, small eyes, closed mouth, soft muscle lines. The 'skull',
+  'brute', glow, claws, flames, antenna options still exist in body.ts but no skin uses them;
+  robot = 'Терминатор' (jacket, shades), zombie = 'Бродяга'.
   One `SkinnedMesh` over 11 bones (a `THREE.Bone` child on each rig group, bound in the rest
   pose): tubes of rings with muscle profiles scaled by `bulk` (V-trunk, deltoids, biceps),
   Popeye forearms (`arms`), `belly`; vertices near a joint shared 50/50 with the next bone;

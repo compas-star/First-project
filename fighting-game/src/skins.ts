@@ -440,3 +440,58 @@ export function comicLook(id: SkinId, team: number, seed: number, strength: numb
   }
   return base;
 }
+
+/**
+ * The low-poly look (after Absolver): muted cloth, a porcelain mask, wrapped hands and calves.
+ * The team colour is the sash, the scarf and the mask's pattern. The skin keeps a hint: boxers
+ * keep bare chests, karate and BJJ keep their gi.
+ */
+export function absolverLook(id: SkinId, team: number, seed: number, strength: number, girth: number): ComicLook {
+  const base = comicLook(id, team, seed, strength, girth);
+  const r = (n: number) => {
+    let h = (seed ^ Math.imul(n + 1, 0x9e3779b9)) | 0;
+    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  const PAL: [number, number, number][] = [
+    // cloth, second cloth, wraps
+    [0x6e2a22, 0x2a2622, 0xd8cdb4],
+    [0x2c3846, 0x8a7a5a, 0xcfc4ab],
+    [0x46473a, 0x6a3a28, 0xd2c6a8],
+    [0x2a2a2e, 0xb8a888, 0xe0d6c0],
+    [0x5a3a28, 0x2e4652, 0xc8bba0],
+    [0x7a6a4a, 0x2a2824, 0xdcd2ba],
+    [0x3a2a3e, 0x9a8a6a, 0xd4c8ae],
+  ];
+  const [c1, c2, wrap] = PAL[Math.floor(r(3) * PAL.length)];
+  const masks = [0xece6d8, 0xe2d6bc, 0xd0c8b8, 0x2a282c, 0xb89a6a];
+  const gi = id === 'karateka' || id === 'bjj';
+  const bare = id === 'boxer' || id === 'nakmuay' || id === 'sumo' || id === 'wrestler';
+  const tops: TopLook[] = ['long', 'vest', 'jacket', 'long'];
+  const hairs: ComicLook['hair'][] = ['long', 'topknot', 'crop', 'ponytail', 'bald', 'bandana'];
+  const extras: ComicLook['extras'] = ['scarf', 'tabard'];
+  if (r(9) < 0.35) extras.push('pauldron');
+  return {
+    ...base,
+    low: true,
+    bulk: Math.min(1.2, base.bulk),
+    arms: Math.min(1.1, base.arms),
+    belly: Math.min(0.4, base.belly),
+    head: 'mask',
+    maskKind: Math.floor(r(5) * 4),
+    maskColor: masks[Math.floor(r(7) * masks.length)],
+    hair: hairs[Math.floor(r(11) * hairs.length)],
+    hands: 'wraps',
+    handColor: wrap,
+    top: gi ? 'gi' : bare ? 'none' : tops[Math.floor(r(13) * tops.length)],
+    topColor: gi ? (id === 'bjj' ? 0x2c3846 : 0xe6dfcc) : c1,
+    bottom: id === 'sumo' ? 'mawashi' : 'long',
+    bottomColor: gi ? (id === 'bjj' ? 0x2c3846 : 0xe6dfcc) : c2,
+    band: team,
+    shoes: 0,
+    shoeColor: wrap,
+    extras: id === 'sumo' ? ['scarf'] : extras,
+  };
+}
+type TopLook = ComicLook['top'];

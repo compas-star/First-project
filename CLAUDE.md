@@ -121,6 +121,16 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   (`onBeforeCompile`) and a team-colour outline (`userData.outlineParameters`); originals in
   `userData.fig` (`toonAll` skips them). Dock button "👤 тени / комикс" (`arena-figure-v1`).
   Crowd: torso+legs, head, hair, arms thrown up with excitement, some phones up.
+  Absolver look (user picked it from a list of styles; the default now, "👤 маски"): the same
+  skinned body built low-poly (`ComicLook.low`: 45% of the sides, rings every 7.5 cm,
+  `MeshStandardMaterial` flatShading with `userData.keep` so `toonAll` leaves it, thin dark
+  outline), no ink; `maskHead` (porcelain icosahedron mask, slanted eye slits, pattern 0-3 in
+  the team colour: plain / stripe / war paint / brow; hood open in front, knot, ponytail, crop
+  or bald), `lowHand`/`lowFoot` (wrapped), extras scarf + tabard flaps + sash in the team colour,
+  sometimes a pauldron. `absolverLook()` in skins.ts: muted cloth palettes, loose trousers
+  gathered into calf wraps; gi for karate/BJJ, bare chest for boxers/Thai/wrestlers/sumo.
+  Switching to or from it rebuilds the fighters (`view.setFigure` -> `setSim`). Dock button
+  cycles маски / комикс / тени (`arena-figure-v2`). `view.debugCam` lets tests place the camera.
 - `main.ts`: HUD, time scale ("eyes"), setup sheet, presets.
 - `career.ts` + `careerUi.ts`: manager mode ("Карьера" button; the sandbox stays as is).
   Fighters with a story, stats (`bodySpeed, strength, mindSpeed, skill, evasion, cardio`)

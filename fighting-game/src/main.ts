@@ -10,7 +10,7 @@ import { train, type TrainProgress } from './train';
 import { schoolGenome, describeGenome, genesFor, type Genome } from './genome';
 
 const DISCIPLINE_IDS: string[] = DISCIPLINES.map((d) => d.id);
-import { View } from './view';
+import { View, type Figure } from './view';
 import { MAPS, MAP_BY_ID, type MapId } from './maps';
 import { SKINS, defaultSkin } from './skins';
 import { CareerUi } from './careerUi';
@@ -137,22 +137,25 @@ $('btnPixel').addEventListener('click', () => {
   }
   showPixel();
 });
-// Fighters: comic people, or dark silhouettes with a rim in the team colour.
-let figure: 'comic' | 'shadow' = 'shadow';
+// Fighters: low-poly masked fighters (Absolver look), comic people, or dark silhouettes.
+const FIGURES: Figure[] = ['absolver', 'comic', 'shadow'];
+const FIGURE_NAMES: Record<Figure, string> = { absolver: '👤 маски', comic: '👤 комикс', shadow: '👤 тени' };
+let figure: Figure = 'absolver';
 try {
-  if (localStorage.getItem('arena-figure-v1') === 'comic') figure = 'comic';
+  const saved = localStorage.getItem('arena-figure-v2') as Figure | null;
+  if (saved && FIGURES.includes(saved)) figure = saved;
 } catch {
   /* storage unavailable */
 }
 const showFigure = () => {
   view.setFigure(figure);
-  $('btnFigure').textContent = figure === 'shadow' ? '👤 тени' : '👤 комикс';
+  $('btnFigure').textContent = FIGURE_NAMES[figure];
 };
 showFigure();
 $('btnFigure').addEventListener('click', () => {
-  figure = figure === 'shadow' ? 'comic' : 'shadow';
+  figure = FIGURES[(FIGURES.indexOf(figure) + 1) % FIGURES.length];
   try {
-    localStorage.setItem('arena-figure-v1', figure);
+    localStorage.setItem('arena-figure-v2', figure);
   } catch {
     /* storage unavailable */
   }

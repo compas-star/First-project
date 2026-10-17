@@ -10,7 +10,7 @@ import { syncRig, v, q } from './physics';
 import { ARENA_R, FLOOR_R, LIMB_NAME, type Fighter, type Limb, type Sim } from './sim';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildArena, type Arena } from './arena';
-import { dress, defaultSkin, comicLook } from './skins';
+import { dress, defaultSkin, comicLook, absolverLook } from './skins';
 import { comicBody, type ComicSkin } from './body';
 
 // Rendering: the arena, fighters and effects. Effects run partly on real time
@@ -63,6 +63,8 @@ function floorTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+export type Figure = 'comic' | 'shadow' | 'absolver';
+
 class FighterView {
   rig: Rig;
   nodes: THREE.Object3D[];
@@ -89,6 +91,7 @@ class FighterView {
     readonly f: Fighter,
     scene: THREE.Scene,
     labels: HTMLElement,
+    figure: Figure = 'comic',
   ) {
     this.rig = buildRig(f.p.color, f.girth);
     let seed = 0;
@@ -99,7 +102,8 @@ class FighterView {
       roughness: 0.8,
     });
     // The comic look: one skinned body, outfit and head by the skin.
-    this.comic = comicBody(this.rig, f.girth, comicLook(f.p.skin ?? defaultSkin(f.p.discipline), f.p.color, seed, f.p.strength, f.girth));
+    const look = figure === 'absolver' ? absolverLook : comicLook;
+    this.comic = comicBody(this.rig, f.girth, look(f.p.skin ?? defaultSkin(f.p.discipline), f.p.color, seed, f.p.strength, f.girth));
     this.nodes = rigNodes(this.rig);
     scene.add(this.rig.root);
 
@@ -273,7 +277,7 @@ class FighterView {
    * Shadow look: every visible part of the body becomes one dark cel-shaded material with a
    * glowing rim and outline in the team colour. 'comic' puts the drawn materials back.
    */
-  setFigure(mode: 'comic' | 'shadow'): void {
+  setFigure(mode: Figure): void {
     if (mode === 'shadow' && !this.shadowMat) {
       const team = new THREE.Color(this.f.p.color);
       const m = new THREE.MeshToonMaterial({ color: 0x1b1a22 });
@@ -484,9 +488,14 @@ export class View {
   }
 
   /** Switches the pixel look (0 = off, else the size of one pixel in screen pixels). */
-  figure: 'comic' | 'shadow' = 'comic';
-  setFigure(mode: 'comic' | 'shadow'): void {
+  figure: Figure = 'comic';
+  /** Tests: place the camera by hand just before each render. */
+  debugCam?: (cam: THREE.PerspectiveCamera) => void;
+  setFigure(mode: Figure): void {
+    const rebuild = (mode === 'absolver') !== (this.figure === 'absolver');
     this.figure = mode;
+    // The low-poly body is built differently: make the fighters again.
+    if (rebuild && this.sim) this.setSim(this.sim);
     for (const fv of this.fighters) fv.setFigure(mode);
     this.toonAll();
   }
@@ -621,6 +630,7 @@ export class View {
 
   private toonOf(mat: THREE.Material, big: boolean): THREE.Material {
     const std = mat as THREE.MeshStandardMaterial;
+    if (mat.userData.keep) return mat;
     if (!std.isMeshStandardMaterial && !(mat as THREE.MeshPhongMaterial).isMeshPhongMaterial && !(mat as THREE.MeshLambertMaterial).isMeshLambertMaterial) return mat;
     const cache = big ? this.toonBig : this.toonCache;
     let t = cache.get(mat);
@@ -671,7 +681,7 @@ export class View {
       this.sun.intensity = this.arena.sun * 2.2;
       this.hemi.intensity = this.arena.hemi;
     }
-    this.fighters = sim.fighters.map((f) => new FighterView(f, this.scene, this.labels));
+    this.fighters = sim.fighters.map((f) => new FighterView(f, this.scene, this.labels, this.figure));
     for (const fv of this.fighters) fv.setFigure(this.figure);
     if (this.pixel) queueMicrotask(() => this.toonAll());
 
@@ -923,6 +933,7 @@ export class View {
       (Math.random() - 0.5) * this.shake,
     );
     this.camera.position.add(shakeOffset);
+    this.debugCam?.(this.camera);
     if (this.pixel && this.outline) this.renderPixel();
     else this.renderer.render(this.scene, this.camera);
     this.camera.position.sub(shakeOffset);

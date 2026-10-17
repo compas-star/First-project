@@ -127,8 +127,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   outline), no ink; `maskHead` (porcelain icosahedron mask, slanted eye slits, pattern 0-3 in
   the team colour: plain / stripe / war paint / brow; hood open in front, knot, ponytail, crop
   or bald), `lowHand`/`lowFoot` (wrapped), extras scarf + tabard flaps + sash in the team colour,
-  sometimes a pauldron. `absolverLook()` in skins.ts: muted cloth palettes, loose trousers
-  gathered into calf wraps; gi for karate/BJJ, bare chest for boxers/Thai/wrestlers/sumo.
+  (pauldron/tabard still exist, unused). `absolverLook()` in skins.ts (user: keep the bikers,
+  boxers etc., only angular and masked): the skin's own comic look (clothes, gloves, boots,
+  hair) built low-poly with a mask; mask colour per character (luchador team red, ninja black,
+  gladiator bronze, robot steel, else porcelain), pattern in the team colour (`maskAccent`),
+  bandana/headband in `capColor`; ninja hood, karate/ninja/rider scarf.
   Switching to or from it rebuilds the fighters (`view.setFigure` -> `setSim`). Dock button
   cycles маски / комикс / тени (`arena-figure-v2`). `view.debugCam` lets tests place the camera.
 - `main.ts`: HUD, time scale ("eyes"), setup sheet, presets.

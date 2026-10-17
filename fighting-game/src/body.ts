@@ -14,7 +14,7 @@ const BONES = ['pelvis', 'spine', 'head', 'lSh', 'lEl', 'rSh', 'rEl', 'lHip', 'l
 type BoneName = (typeof BONES)[number];
 
 export type HeadKind = 'face' | 'skull' | 'mask' | 'brute' | 'helmet';
-export type HairKind = 'crop' | 'bald' | 'mohawk' | 'ponytail' | 'long' | 'spiky' | 'topknot' | 'bandana' | 'headband';
+export type HairKind = 'crop' | 'bald' | 'mohawk' | 'ponytail' | 'long' | 'spiky' | 'topknot' | 'bandana' | 'headband' | 'hood';
 export type HandKind = 'boxing' | 'mma' | 'wraps' | 'claws' | 'fingerless' | 'bare';
 export type TopKind = 'none' | 'vest' | 'tee' | 'long' | 'jacket' | 'gi';
 export type BottomKind = 'trunks' | 'shorts' | 'long' | 'torn' | 'singlet' | 'mawashi';
@@ -49,6 +49,9 @@ export interface ComicLook {
   maskKind?: number;
   /** Mask / helmet colour. */
   maskColor?: number;
+  /** Low look: the mask's pattern colour (the team) and a bandana / headband colour. */
+  maskAccent?: number;
+  capColor?: number;
 }
 
 interface Ring {
@@ -302,7 +305,6 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): ComicSkin {
   const bottomCol = (y: number, ang: number): THREE.Color => {
     // Torn jeans: the knees show through ragged holes.
     if (L.bottom === 'torn' && y > 0.44 && y < 0.55 && front(ang, 0.9) && Math.sin(ang * 7 + y * 60) > -0.3) return skin;
-    if (L.low && y < 0.3) return C(L.handColor);
     if (L.bottom === 'long' && Math.abs(Math.sin(ang)) > 0.97) return botC.clone().multiplyScalar(0.7);
     return botC;
   };
@@ -395,7 +397,7 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): ComicSkin {
     // Thigh and shin.
     const hx = side * 0.1 * G;
     // Loose cloth trousers in the low look, gathered into wraps at the calf.
-    const bag = L.low && (L.bottom === 'long' || L.bottom === 'torn') ? 1.22 : 1;
+    const bag = L.low && L.top === 'gi' ? 1.18 : 1;
     const legCol = (y: number, ang: number): THREE.Color => {
       if (L.bottom === 'mawashi') return skin;
       if (y > legEnd) return bottomCol(y, ang);
@@ -403,7 +405,6 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): ComicSkin {
       if (L.extras.includes('kneepads') && y > 0.44 && y < 0.56) return C(0x1a1a1a);
       if (y < L.shoes) return y > L.shoes - 0.02 ? shoe.clone().multiplyScalar(0.6) : shoe;
       if (L.top === 'gi') return topC;
-      if (L.low && y < 0.3) return C(L.handColor);
       if (Math.abs(y - 0.6) < 0.007 && front(ang, 1.0)) return ink;
       return skin;
     };
@@ -589,7 +590,7 @@ function maskHead(G: number, L: ComicLook): THREE.Group {
   const hairM = toon(L.hairColor);
   const maskM = toon(L.maskColor ?? 0xece6d8);
   const dark = toon(0x121014);
-  const accent = toon(L.band);
+  const accent = toon(L.maskAccent ?? L.band);
   // Skull and neck in skin (seen at the back and sides), the mask over the face.
   mesh(h, new THREE.IcosahedronGeometry(0.098, 1), skinM, [0, 0.15, -0.012], [0.92 * sg, 1.08, 1.0 * sg]);
   const mask = mesh(h, new THREE.IcosahedronGeometry(0.1, 1), maskM, [0, 0.14, 0.03], [0.9 * sg, 1.12, 0.82 * sg]);
@@ -607,42 +608,80 @@ function maskHead(G: number, L: ComicLook): THREE.Group {
     // War paint: two slanted marks under each eye.
     for (const sd of [1, -1]) for (const dy of [0, 0.022]) mesh(h, new THREE.BoxGeometry(0.03, 0.007, 0.012), accent, [sd * 0.04 * sg, 0.128 - dy, 0.102 * sg], [1, 1, 1], [0, -sd * 0.4, sd * 0.35]);
   }
-  else if (k === 3) mesh(h, new THREE.BoxGeometry(0.14, 0.022, 0.02), accent, [0, 0.192, 0.094 * sg], [sg, 1, 1], [-0.15, 0, 0]);
-  // Hood, a knot of hair, or cropped.
-  if (L.hair === 'long' || L.hair === 'bandana') {
-    // The hood is open in front so the mask shows.
-    const hood = toon(L.topColor).clone();
-    hood.side = THREE.DoubleSide;
-    mesh(h, new THREE.SphereGeometry(0.122, 7, 5, Math.PI / 2 + 0.95, Math.PI * 2 - 1.9), hood, [0, 0.16, -0.025], [1.0 * sg, 1.1, 1.0 * sg]);
-    mesh(h, new THREE.ConeGeometry(0.07, 0.14, 5), hood, [0, 0.13, -0.12], [1, 1, 1], [-2.3, 0, 0]);
-  } else if (L.hair === 'topknot' || L.hair === 'ponytail') {
-    mesh(h, new THREE.IcosahedronGeometry(0.1, 1), hairM, [0, 0.17, -0.02], [0.95 * sg, 1.0, 1.0 * sg]);
-    mesh(h, new THREE.IcosahedronGeometry(0.035, 0), hairM, [0, 0.255, -0.06]);
-    if (L.hair === 'ponytail') mesh(h, new THREE.CylinderGeometry(0.025, 0.008, 0.2, 5), hairM, [0, 0.14, -0.13], [1, 1, 1], [0.4, 0, 0]);
-  } else if (L.hair !== 'bald') {
-    mesh(h, new THREE.IcosahedronGeometry(0.1, 1), hairM, [0, 0.175, -0.025], [0.96 * sg, 0.92, 1.0 * sg]);
+  else if (k === 3) mesh(h, new THREE.BoxGeometry(0.09, 0.016, 0.014), accent, [0, 0.19, 0.1 * sg], [sg, 1, 1], [-0.15, 0, 0]);
+  // Hair, hood or headgear, all in facets.
+  const cap = (c: THREE.Material, top = 0.92) => mesh(h, new THREE.IcosahedronGeometry(0.1, 1), c, [0, 0.175, -0.025], [0.96 * sg, top, 1.0 * sg]);
+  switch (L.hair) {
+    case 'hood': {
+      // Open in front so the mask shows.
+      const hood = toon(L.capColor ?? L.topColor).clone();
+      hood.side = THREE.DoubleSide;
+      mesh(h, new THREE.SphereGeometry(0.122, 7, 5, Math.PI / 2 + 0.95, Math.PI * 2 - 1.9), hood, [0, 0.16, -0.025], [1.0 * sg, 1.1, 1.0 * sg]);
+      mesh(h, new THREE.ConeGeometry(0.07, 0.14, 5), hood, [0, 0.13, -0.12], [1, 1, 1], [-2.3, 0, 0]);
+      break;
+    }
+    case 'topknot':
+    case 'ponytail':
+      cap(hairM, 1.0);
+      mesh(h, new THREE.IcosahedronGeometry(0.035, 0), hairM, [0, 0.255, -0.06]);
+      if (L.hair === 'ponytail') mesh(h, new THREE.CylinderGeometry(0.025, 0.008, 0.2, 5), hairM, [0, 0.14, -0.13], [1, 1, 1], [0.4, 0, 0]);
+      break;
+    case 'long':
+      cap(hairM, 1.0);
+      mesh(h, new THREE.BoxGeometry(0.19, 0.2, 0.05, 1, 2, 1), hairM, [0, 0.1, -0.075], [sg, 1, 1]);
+      break;
+    case 'mohawk':
+      for (let i = 0; i < 6; i++) mesh(h, new THREE.ConeGeometry(0.022, 0.08, 3), hairM, [0, 0.25 - Math.abs(i - 2) * 0.012, 0.06 - i * 0.03], [1, 1, 1], [-0.3 - i * 0.2, 0, 0]);
+      break;
+    case 'spiky':
+      cap(hairM);
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        mesh(h, new THREE.ConeGeometry(0.03, 0.1, 3), hairM, [Math.sin(a) * 0.055, 0.24, Math.cos(a) * 0.045 - 0.02], [1, 1, 1], [-0.6 * Math.cos(a) - 0.3, 0, 0.6 * Math.sin(a)]);
+      }
+      break;
+    case 'bandana':
+      cap(toon(L.capColor ?? 0xb3202a), 1.0);
+      mesh(h, new THREE.BoxGeometry(0.03, 0.09, 0.02), toon(L.capColor ?? 0xb3202a), [0, 0.15, -0.12], [1, 1, 1], [0.4, 0, 0]);
+      break;
+    case 'headband':
+      cap(hairM);
+      mesh(h, new THREE.TorusGeometry(0.1, 0.014, 4, 9), toon(L.capColor ?? 0xd02020), [0, 0.2, 0.005], [sg, sg, 1], [Math.PI / 2 - 0.2, 0, 0]);
+      break;
+    case 'bald':
+      break;
+    default:
+      cap(hairM);
   }
   return h;
 }
 
-/** Low look: fists bound in cloth. */
+/** Low look: gloves or fists in facets (boxing gloves, MMA gloves, wraps, bare). */
 function lowHand(G: number, L: ComicLook): THREE.Group {
   const g = new THREE.Group();
   g.position.y = -0.29;
-  const wrap = toon(L.handColor);
-  mesh(g, new THREE.DodecahedronGeometry(0.052, 0), wrap, [0, -0.005, 0.008], [0.95 * G, 1.1, 1.15 * G]);
-  mesh(g, new THREE.CylinderGeometry(0.038, 0.044, 0.07, 6), wrap, [0, 0.05, 0], [G, 1, G]);
+  const handM = toon(L.handColor);
+  const skin = toon(L.skin);
+  const cuff = toon(0xf0ece4);
+  if (L.hands === 'boxing') {
+    mesh(g, new THREE.DodecahedronGeometry(0.075, 0), handM, [0, -0.01, 0.008], [1.0 * G, 1.1, 1.2 * G]);
+    mesh(g, new THREE.CylinderGeometry(0.048, 0.05, 0.07, 6), cuff, [0, 0.06, 0], [G, 1, G]);
+    return g;
+  }
+  const fist = L.hands === 'mma' || L.hands === 'fingerless' ? handM : L.hands === 'wraps' ? cuff : skin;
+  mesh(g, new THREE.DodecahedronGeometry(0.054, 0), fist, [0, -0.005, 0.008], [0.95 * G, 1.1, 1.15 * G]);
+  if (L.hands !== 'bare') mesh(g, new THREE.CylinderGeometry(0.038, 0.044, 0.06, 6), L.hands === 'fingerless' ? handM : cuff, [0, 0.045, 0], [G, 1, G]);
   return g;
 }
 
-/** Low look: wrapped feet, a soft sole. */
+/** Low look: shoes or boots, or bare feet. */
 function lowFoot(G: number, L: ComicLook): THREE.Group {
   const g = new THREE.Group();
   g.position.y = -0.46;
-  const wrap = toon(L.handColor);
-  mesh(g, new THREE.BoxGeometry(0.085, 0.06, 0.21), wrap, [0, -0.005, 0.045], [G, 1, 1]);
-  mesh(g, new THREE.DodecahedronGeometry(0.045, 0), wrap, [0, -0.005, 0.13], [G, 0.65, 0.8]);
-  mesh(g, new THREE.BoxGeometry(0.09, 0.015, 0.22), toon(0x2a2420), [0, -0.035, 0.045], [G, 1, 1]);
+  const m = toon(L.shoes > 0 ? L.shoeColor : L.skin);
+  mesh(g, new THREE.BoxGeometry(0.085, 0.06, 0.21), m, [0, -0.005, 0.045], [G * (L.shoes ? 1.12 : 1), L.shoes ? 1.15 : 1, 1]);
+  mesh(g, new THREE.DodecahedronGeometry(0.045, 0), m, [0, -0.005, 0.13], [G, 0.65, 0.8]);
+  if (L.shoes > 0) mesh(g, new THREE.BoxGeometry(0.095, 0.016, 0.23), toon(0x2a2420), [0, -0.035, 0.045], [G, 1, 1]);
   return g;
 }
 

@@ -105,8 +105,10 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   flames, belt). Old capsule meshes are hidden (dress() still runs). New skins 'rider'
   (Призрачный байкер), 'artist' (Художник), 'brute' (Громила), 'feral' (Зверь); presets
   "Призрак и Художник" and "Громила и Зверь" at the end of PRESETS. Afterimages hide the
-  skinned mesh (it would follow the live skeleton). Bruise marks hang on hidden meshes (not
-  shown now).
+  skinned mesh (it would follow the live skeleton). Damage is painted into the body's vertex
+  colours (`ComicSkin` from `comicBody`): a landed blow bruises bare skin around the nearest
+  vertex of that part (red, going purple with more), a broken limb darkens; head blows still
+  add small marks/cuts, now put on the face's surface. `window.__view` is exposed for tests.
 - `main.ts`: HUD, time scale ("eyes"), setup sheet, presets.
 - `career.ts` + `careerUi.ts`: manager mode ("Карьера" button; the sandbox stays as is).
   Fighters with a story, stats (`bodySpeed, strength, mindSpeed, skill, evasion, cardio`)

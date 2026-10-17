@@ -106,6 +106,7 @@ let koTimer = 0;
 let koReal = 0;
 
 const view = new View($('scene'), $('labels'));
+(window as unknown as { __view: View }).__view = view;
 const sound = new Sound();
 view.sound = sound;
 (window as unknown as { __sound: Sound }).__sound = sound;

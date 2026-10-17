@@ -11,7 +11,7 @@ import { ARENA_R, FLOOR_R, LIMB_NAME, type Fighter, type Limb, type Sim } from '
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildArena, type Arena } from './arena';
 import { dress, defaultSkin, comicLook } from './skins';
-import { comicBody } from './body';
+import { comicBody, type ComicSkin } from './body';
 
 // Rendering: the arena, fighters and effects. Effects run partly on real time
 // (afterimages, labels) and partly on world time (sparks), so a slowed-down
@@ -82,6 +82,7 @@ class FighterView {
   bubbleAge = 9;
   private shownBroken: Record<Limb, boolean> = { lArm: false, rArm: false, lLeg: false, rLeg: false };
   private hurtMat: THREE.MeshStandardMaterial;
+  private comic: ComicSkin;
   lastThought = -1;
 
   constructor(
@@ -98,7 +99,7 @@ class FighterView {
       roughness: 0.8,
     });
     // The comic look: one skinned body, outfit and head by the skin.
-    comicBody(this.rig, f.girth, comicLook(f.p.skin ?? defaultSkin(f.p.discipline), f.p.color, seed, f.p.strength, f.girth));
+    this.comic = comicBody(this.rig, f.girth, comicLook(f.p.skin ?? defaultSkin(f.p.discipline), f.p.color, seed, f.p.strength, f.girth));
     this.nodes = rigNodes(this.rig);
     scene.add(this.rig.root);
 
@@ -211,7 +212,18 @@ class FighterView {
     } as Record<string, THREE.Object3D>)[part];
     if (!group || dmg < 2.5) return false;
     group.updateWorldMatrix(true, false);
+    if (part !== 'head') {
+      // The body is one skinned mesh: the bruise is painted into its skin.
+      this.comic.bruise(this.comic.boneOf(group), group.worldToLocal(at.clone()), dmg / 6);
+      return false;
+    }
     const local = group.worldToLocal(at.clone()).divideScalar(this.f.scale);
+    // Put the mark on the face's surface, not inside the head.
+    const centre = new THREE.Vector3(0, 0.14, 0.01);
+    const out = local.clone().sub(centre);
+    if (out.lengthSq() < 1e-6) out.set(0, 0, 1);
+    out.normalize();
+    local.copy(centre).addScaledVector(out, 0.1 * Math.sqrt(this.f.girth));
     // A blow on the same spot deepens the old mark instead of adding a new one.
     const near = this.marks.find((m) => m.group === group && m.mesh.position.distanceTo(local) < 0.05);
     const cut = part === 'head' && dmg > 9 && Math.random() < 0.35;
@@ -219,7 +231,7 @@ class FighterView {
       near.n += dmg / 6;
       const k = Math.min(1, near.n / 6);
       (near.mesh.material as THREE.MeshStandardMaterial).color.setHex(0xb34848).lerp(new THREE.Color(0x4a2046), k);
-      near.mesh.scale.setScalar(1 + 0.6 * k);
+      near.mesh.scale.set(1 + 0.6 * k, 1 + 0.6 * k, 0.4);
       return false;
     }
     if (this.marks.length > 40) return false;
@@ -228,7 +240,9 @@ class FighterView {
       ? new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.008, 0.01), mat)
       : new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), mat);
     mesh.position.copy(local);
-    if (cut) mesh.rotation.z = (Math.random() - 0.5) * 1.2;
+    mesh.lookAt(local.clone().add(out));
+    if (cut) mesh.rotateZ((Math.random() - 0.5) * 1.2);
+    else mesh.scale.set(1, 1, 0.4);
     group.add(mesh);
     this.marks.push({ mesh, group, n: dmg / 6 });
     return cut;
@@ -261,6 +275,9 @@ class FighterView {
     for (const l of Object.keys(groups) as Limb[]) {
       if (this.f.broken[l] === this.shownBroken[l]) continue;
       this.shownBroken[l] = this.f.broken[l];
+      const r = this.rig;
+      const bones = ({ lArm: [r.lSh, r.lEl], rArm: [r.rSh, r.rEl], lLeg: [r.lHip, r.lKn], rLeg: [r.rHip, r.rKn] } as Record<Limb, THREE.Object3D[]>)[l];
+      this.comic.setBroken(bones.map((g) => this.comic.boneOf(g)), !!this.f.broken[l]);
       groups[l].traverse((o) => {
         if (!(o instanceof THREE.Mesh)) return;
         if (this.f.broken[l]) {

@@ -144,6 +144,93 @@ class Builder {
 }
 
 const C = (c: number) => new THREE.Color(c);
+
+const BRUISE_NEW = C(0xb34848);
+const BRUISE_OLD = C(0x4a2046);
+const BROKEN = C(0x4a1f3a);
+
+/**
+ * Damage painted into the body's vertex colours: bruises where blows land (red, going
+ * purple as more land on the same spot), a broken limb darkened. Only bare skin bruises.
+ */
+export class ComicSkin {
+  private base: Float32Array;
+  private skin: Uint8Array;
+  private hurt: Float32Array;
+  private broken = new Set<number>();
+  private rest: THREE.Matrix4[];
+  private tmp = new THREE.Vector3();
+
+  constructor(readonly mesh: THREE.SkinnedMesh, skinColor: THREE.Color) {
+    const col = mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
+    this.base = Float32Array.from(col.array as Float32Array);
+    const n = col.count;
+    this.skin = new Uint8Array(n);
+    this.hurt = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const d = Math.abs(this.base[i * 3] - skinColor.r) + Math.abs(this.base[i * 3 + 1] - skinColor.g) + Math.abs(this.base[i * 3 + 2] - skinColor.b);
+      this.skin[i] = d < 0.01 ? 1 : 0;
+    }
+    // Bone space -> the body's rest pose, where the vertices are stored.
+    this.rest = mesh.skeleton.boneInverses.map((m) => mesh.bindMatrixInverse.clone().multiply(m.clone().invert()));
+  }
+
+  boneOf(group: THREE.Object3D): number {
+    return this.mesh.skeleton.bones.findIndex((b) => b.parent === group);
+  }
+
+  /** A blow at `local` (in the bone's group frame) bruises the skin around it. */
+  bruise(bone: number, local: THREE.Vector3, amount: number): void {
+    if (bone < 0) return;
+    const p = this.tmp.copy(local).applyMatrix4(this.rest[bone]);
+    const pos = this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const si = this.mesh.geometry.getAttribute('skinIndex') as THREE.BufferAttribute;
+    // The blow's point may sit off the surface: start from the nearest vertex of that part.
+    let best = Infinity;
+    let bi = -1;
+    for (let i = 0; i < pos.count; i++) {
+      if (si.getX(i) !== bone) continue;
+      const dx = pos.getX(i) - p.x, dy = pos.getY(i) - p.y, dz = pos.getZ(i) - p.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 < best) { best = d2; bi = i; }
+    }
+    if (bi < 0) return;
+    p.set(pos.getX(bi), pos.getY(bi), pos.getZ(bi));
+    const R = 0.08;
+    for (let i = 0; i < pos.count; i++) {
+      if (!this.skin[i]) continue;
+      const dx = pos.getX(i) - p.x, dy = pos.getY(i) - p.y, dz = pos.getZ(i) - p.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 > R * R) continue;
+      const w = 1 - Math.sqrt(d2) / R;
+      this.hurt[i] = Math.min(6, this.hurt[i] + amount * w * (0.6 + 0.4 * Math.random()));
+    }
+    this.paint();
+  }
+
+  setBroken(bones: number[], on: boolean): void {
+    for (const b of bones) if (on) this.broken.add(b); else this.broken.delete(b);
+    this.paint();
+  }
+
+  private paint(): void {
+    const col = this.mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
+    const si = this.mesh.geometry.getAttribute('skinIndex') as THREE.BufferAttribute;
+    const c = new THREE.Color();
+    const b = new THREE.Color();
+    for (let i = 0; i < col.count; i++) {
+      c.setRGB(this.base[i * 3], this.base[i * 3 + 1], this.base[i * 3 + 2]);
+      const h = this.hurt[i];
+      if (h > 0.05) {
+        b.copy(BRUISE_NEW).lerp(BRUISE_OLD, Math.min(1, h / 4));
+        c.lerp(b, Math.min(0.85, 0.35 + 0.25 * h));
+      }
+      if (this.broken.size && this.broken.has(si.getX(i))) c.lerp(BROKEN, 0.55);
+      col.setXYZ(i, c.r, c.g, c.b);
+    }
+    col.needsUpdate = true;
+  }
+}
 const toonMats = new Map<string, THREE.MeshToonMaterial>();
 function toon(c: number, glow = 0): THREE.MeshToonMaterial {
   const k = `${c}|${glow}`;
@@ -169,7 +256,7 @@ function flicker(mesh: THREE.Mesh, base: number): void {
 }
 
 /** Hides the capsule body and dresses the rig in one comic body. */
-export function comicBody(r: Rig, girth: number, L: ComicLook): THREE.MeshToonMaterial {
+export function comicBody(r: Rig, girth: number, L: ComicLook): ComicSkin {
   for (const m of Object.values(r.mesh)) m.visible = false;
   for (const g of [r.head, r.lEl, r.rEl, r.lKn, r.rKn, r.spine, r.pelvis, r.lSh, r.rSh, r.lHip, r.rHip]) {
     for (const c of g.children) if ((c as THREE.Mesh).isMesh) c.visible = false;
@@ -324,11 +411,12 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): THREE.MeshToonMa
   r.root.updateMatrixWorld(true);
   body.bind(new THREE.Skeleton(bones));
 
+  const skinOut = new ComicSkin(body, skin);
   r.head.add(comicHead(G, L));
   for (const [g, side] of [[r.lEl, 1], [r.rEl, -1]] as const) g.add(hand(G, L, side));
   for (const g of [r.lKn, r.rKn]) g.add(foot(G, L));
   extras(r, G, L);
-  return mat;
+  return skinOut;
 }
 
 function mesh(parent: THREE.Object3D, geo: THREE.BufferGeometry, m: THREE.Material, p: [number, number, number], s: [number, number, number] = [1, 1, 1], rot: [number, number, number] = [0, 0, 0]): THREE.Mesh {

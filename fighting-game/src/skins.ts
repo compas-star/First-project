@@ -443,8 +443,8 @@ export function comicLook(id: SkinId, team: number, seed: number, strength: numb
 
 /**
  * The low-poly look (after Absolver): the same characters as the comic look (bikers, boxers,
- * wrestlers... with their clothes, gloves and boots), built in facets, faces behind masks.
- * The mask's pattern is in the team colour.
+ * wrestlers... with their clothes, gloves and boots), built in facets with carved faces.
+ * Only the luchador and the ninja wear masks (pattern in the team colour).
  */
 export function absolverLook(id: SkinId, team: number, seed: number, strength: number, girth: number): ComicLook {
   const base = comicLook(id, team, seed, strength, girth);
@@ -460,15 +460,16 @@ export function absolverLook(id: SkinId, team: number, seed: number, strength: n
     luchador: base.maskColor ?? team, ninja: 0x18181e, gladiator: 0xb08a3e, robot: 0x8a9098,
     rider: 0xe8e0cc, brute: 0x6a7a5a, zombie: 0xb8b0a0, sumo: 0xf0e8d8,
   };
-  const HAIR: Partial<Record<SkinId, ComicLook['hair']>> = { ninja: 'hood', luchador: 'bald', gladiator: 'mohawk', zombie: 'long' };
-  const extras: ComicLook['extras'] = base.extras.filter((e) => e === 'spikes' || e === 'chain' || e === 'belt' || e === 'kneepads');
+  const HAIR: Partial<Record<SkinId, ComicLook['hair']>> = { ninja: 'hood', luchador: 'bald', gladiator: 'mohawk', zombie: 'long', brute: 'crop' };
+  const extras: ComicLook['extras'] = base.extras.filter((e) => e === 'spikes' || e === 'chain' || e === 'belt' || e === 'kneepads' || e === 'shades' || e === 'scar');
   if (id === 'ninja' || id === 'karateka' || id === 'rider') extras.push('scarf');
   return {
     ...base,
     low: true,
     bulk: Math.min(1.25, base.bulk),
     arms: Math.min(1.15, base.arms),
-    head: 'mask',
+    // Faces in facets; only the luchador and the ninja keep their masks.
+    head: id === 'luchador' || id === 'ninja' ? 'mask' : 'face',
     hair: HAIR[id] ?? base.hair,
     capColor: id === 'ninja' ? 0x15151b : base.maskColor ?? team,
     maskKind: id === 'luchador' ? 3 : id === 'ninja' ? 0 : Math.floor(r(5) * 4),

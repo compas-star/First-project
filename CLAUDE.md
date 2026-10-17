@@ -132,6 +132,9 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   hair) built low-poly with a mask; mask colour per character (luchador team red, ninja black,
   gladiator bronze, robot steel, else porcelain), pattern in the team colour (`maskAccent`),
   bandana/headband in `capColor`; ninja hood, karate/ninja/rider scarf.
+  Then (user: faces instead of masks, same style): carved low-poly faces (skull, dodecahedron
+  jaw, cone nose, slit eyes, thin brows, cheek facets, ears, beard, shades, scar) in
+  `maskHead`'s face branch; only the luchador and the ninja keep masks.
   Switching to or from it rebuilds the fighters (`view.setFigure` -> `setSim`). Dock button
   cycles маски / комикс / тени (`arena-figure-v2`). `view.debugCam` lets tests place the camera.
 - `main.ts`: HUD, time scale ("eyes"), setup sheet, presets.

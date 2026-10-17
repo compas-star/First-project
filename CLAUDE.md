@@ -68,9 +68,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
 - `sound.ts`: all sound synthesized in WebAudio (no files), started on the first tap: blows
   (head = crack + thud, body = deep thud, block = dull pat, scaled by damage), swings
   (sim event 'swing' on every real attack), bodies landing, crunch (break/liver), bell
-  (round start, three strokes at the end), crowd murmur whose level and brightness follow
+  (round start, three strokes at the end), crowd murmur (brown noise through two voice bands,
+  ~320 Hz; was white noise = hiss, user: "super loud, sounds like hissing") whose level follows
   `view.excite` (per map `CROWD` in view.ts), "ooh" on moments, roar on the KO. Slow motion
-  lowers the pitch. 🔊/🔇 button in the dock (`arena-sound-v1`). Max 5 new sounds a frame.
+  lowers the pitch. Levels measured offline (`window.__sound.start(OfflineAudioContext)`): crowd
+  RMS ~0.008 at rest, ~0.03 at full excitement, a head hit ~0.03 RMS. 🔊/🔇 button in the dock (`arena-sound-v1`). Max 5 new sounds a frame.
   Also: sweat spray on clean head shots.
 - `main.ts`: HUD, time scale ("eyes"), setup sheet, presets.
 - `career.ts` + `careerUi.ts`: manager mode ("Карьера" button; the sandbox stays as is).

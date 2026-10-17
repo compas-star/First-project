@@ -107,6 +107,7 @@ let koReal = 0;
 const view = new View($('scene'), $('labels'));
 const sound = new Sound();
 view.sound = sound;
+(window as unknown as { __sound: Sound }).__sound = sound;
 $('btnSound').textContent = sound.enabled ? '🔊' : '🔇';
 $('btnSound').addEventListener('click', () => {
   $('btnSound').textContent = sound.toggle() ? '🔊' : '🔇';

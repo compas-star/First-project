@@ -10,6 +10,8 @@ export class Sound {
   private noise: AudioBuffer | null = null;
   private crowdGain: GainNode | null = null;
   private crowdFilter: BiquadFilterNode | null = null;
+  /** Deep rumble: brown noise, the raw stuff of a crowd. */
+  private brown: AudioBuffer | null = null;
   /** Sounds started this frame: a flurry must not turn into noise. */
   private budget = 0;
   enabled = true;
@@ -40,11 +42,12 @@ export class Sound {
     return this.enabled;
   }
 
-  private start(): void {
-    if (this.ctx) return;
+  /** Builds the sound graph; a test can hand in an offline context to measure it. */
+  start(given?: BaseAudioContext): void {
+    if (this.ctx && !given) return;
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return;
-    const ctx = new AC();
+    if (!AC && !given) return;
+    const ctx = (given ?? new AC()) as AudioContext;
     this.ctx = ctx;
     this.master = ctx.createGain();
     this.master.gain.value = this.enabled ? 0.8 : 0;
@@ -64,18 +67,41 @@ export class Sound {
       b = 0.97 * b + 0.03 * w;
       d[i] = 0.6 * w + 4 * b;
     }
-    // The crowd: a band of murmur, looped; its level follows the fight.
-    const src = ctx.createBufferSource();
-    src.buffer = this.noise;
-    src.loop = true;
+    // Brown noise: each sample a small step from the last, nearly all of it low.
+    this.brown = ctx.createBuffer(1, len, ctx.sampleRate);
+    const bd = this.brown.getChannelData(0);
+    let x = 0;
+    for (let i = 0; i < len; i++) {
+      x = 0.985 * x + 0.06 * (Math.random() * 2 - 1);
+      bd[i] = x;
+    }
+    // The crowd: a low murmur with two soft "voice" bands, no hiss on top. Two copies of the
+    // loop at different speeds so it never repeats audibly. Its level follows the fight.
     this.crowdFilter = ctx.createBiquadFilter();
-    this.crowdFilter.type = 'bandpass';
-    this.crowdFilter.frequency.value = 700;
-    this.crowdFilter.Q.value = 0.6;
+    this.crowdFilter.type = 'lowpass';
+    this.crowdFilter.frequency.value = 650;
+    this.crowdFilter.Q.value = 0.5;
     this.crowdGain = ctx.createGain();
     this.crowdGain.gain.value = 0;
-    src.connect(this.crowdFilter).connect(this.crowdGain).connect(this.master);
-    src.start();
+    const mix = ctx.createGain();
+    for (const [rate, off] of [[1, 0], [0.83, 0.7]] as const) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.brown;
+      src.loop = true;
+      src.playbackRate.value = rate;
+      src.connect(mix);
+      src.start(0, off);
+    }
+    for (const [f, q, k] of [[320, 2.2, 0.9], [780, 2.8, 0.45]] as const) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = f;
+      bp.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.value = k;
+      mix.connect(bp).connect(g).connect(this.crowdFilter);
+    }
+    this.crowdFilter.connect(this.crowdGain).connect(this.master);
   }
 
   /** Called once a frame: lets new sounds through, moves the crowd. */
@@ -83,13 +109,15 @@ export class Sound {
     this.budget = 5;
     const ctx = this.ctx;
     if (!ctx || !this.crowdGain || !this.crowdFilter) return;
-    const level = running ? crowd * (0.035 + 0.16 * excite * excite) : 0;
-    this.crowdGain.gain.setTargetAtTime(level, ctx.currentTime, 0.25);
-    this.crowdFilter.frequency.setTargetAtTime(600 + 900 * excite, ctx.currentTime, 0.3);
+    // Quiet in the background, louder (never over the blows) when the fight boils.
+    const level = running ? crowd * (0.09 + 0.25 * excite * excite) : 0;
+    this.crowdGain.gain.setTargetAtTime(level, ctx.currentTime, 0.4);
+    this.crowdFilter.frequency.setTargetAtTime(550 + 450 * excite, ctx.currentTime, 0.4);
   }
 
   private ok(): AudioContext | null {
-    if (!this.enabled || !this.ctx || this.ctx.state !== 'running' || this.budget <= 0) return null;
+    const offline = typeof OfflineAudioContext !== 'undefined' && this.ctx instanceof OfflineAudioContext;
+    if (!this.enabled || !this.ctx || (this.ctx.state !== 'running' && !offline) || this.budget <= 0) return null;
     this.budget--;
     return this.ctx;
   }
@@ -200,8 +228,26 @@ export class Sound {
   /** The crowd goes up: an "ooh" on a big moment, a roar on a knockout. */
   roar(k: number): void {
     const ctx = this.ok();
-    if (!ctx) return;
-    this.burst(ctx, 'bandpass', 500, 0.5, 0.15 + 0.35 * k, 0.8 + 1.6 * k, 0, 900);
-    this.burst(ctx, 'bandpass', 1100, 0.7, 0.08 + 0.2 * k, 0.6 + 1.4 * k, 0.05, 1500);
+    if (!ctx || !this.brown) return;
+    // Swells in, holds, dies away: a crowd, not a gust.
+    const t = ctx.currentTime;
+    const len = 1 + 2 * k;
+    for (const [f, q, a] of [[300, 1.6, 1], [700, 2.2, 0.55]] as const) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.brown;
+      src.playbackRate.value = 0.9 + Math.random() * 0.2;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(f * 0.85, t);
+      bp.frequency.linearRampToValueAtTime(f * (1 + 0.3 * k), t + len * 0.4);
+      bp.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(a * 0.22 * (1 + 1.2 * k), t + 0.35);
+      g.gain.setTargetAtTime(0.0001, t + len * 0.5, len * 0.25);
+      src.connect(bp).connect(g).connect(this.master!);
+      src.start(t, Math.random());
+      src.stop(t + len + 1);
+    }
   }
 }

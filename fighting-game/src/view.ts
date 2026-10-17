@@ -4,6 +4,7 @@ import type { Sound } from './sound';
 /** How loud the crowd is on each map. */
 const CROWD: Record<string, number> = { ring: 1, cage: 1, dojo: 0.35, roof: 0.5, alley: 0.45, void: 0 };
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js';
 import { buildRig, rigNodes, type Rig } from './rig';
 import { syncRig, v, q } from './physics';
 import { ARENA_R, FLOOR_R, LIMB_NAME, type Fighter, type Limb, type Sim } from './sim';
@@ -290,6 +291,16 @@ interface Spark {
 
 export class View {
   readonly renderer: THREE.WebGLRenderer;
+  /** Pixel look: scene drawn this many times smaller and blown up sharp; 0 = smooth. */
+  pixel = 0;
+  private outline: OutlineEffect | null = null;
+  /** Three tones of light, hard edges between them (cel shading). */
+  private toonRamp: THREE.DataTexture | null = null;
+  private toonCache = new Map<THREE.Material, THREE.Material>();
+  private toonBig = new Map<THREE.Material, THREE.Material>();
+  /** Pixel look: the scene goes to a small target, then through a palette pass to the screen. */
+  private rt: THREE.WebGLRenderTarget | null = null;
+  private post: { scene: THREE.Scene; cam: THREE.OrthographicCamera; mat: THREE.ShaderMaterial } | null = null;
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
   readonly controls: OrbitControls;
@@ -413,6 +424,122 @@ export class View {
     }
   }
 
+  /** Switches the pixel look (0 = off, else the size of one pixel in screen pixels). */
+  setPixel(n: number): void {
+    this.pixel = n;
+    this.renderer.setPixelRatio(n ? 1 / n : Math.min(window.devicePixelRatio, 2));
+    this.canvas.style.imageRendering = n ? 'pixelated' : '';
+    // A touch darker: a night fight, and bright floors do not burn out in the palette.
+    this.renderer.toneMappingExposure = n ? 0.82 : 1;
+    this.renderer.shadowMap.type = n ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
+    if (n && !this.outline) this.outline = new OutlineEffect(this.renderer, { defaultThickness: 0.004, defaultColor: [0.02, 0.01, 0.03], defaultAlpha: 1 });
+    this.toonAll();
+    this.resize();
+  }
+
+  /**
+   * The pixel look: outlined, cel-shaded scene into a small target, then a palette pass:
+   * a night grade (shadows lean purple), colours cut to a few steps with an ordered 4x4
+   * dither, as old games had it. The canvas itself is small; CSS blows it up sharp.
+   */
+  private renderPixel(): void {
+    const r = this.renderer;
+    const size = r.getDrawingBufferSize(new THREE.Vector2());
+    if (!this.rt || this.rt.width !== size.x || this.rt.height !== size.y) {
+      this.rt?.dispose();
+      this.rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+    }
+    if (!this.post) {
+      const mat = new THREE.ShaderMaterial({
+        uniforms: { tDiffuse: { value: null }, levels: { value: 9 } },
+        vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+        fragmentShader: `
+          uniform sampler2D tDiffuse; uniform float levels; varying vec2 vUv;
+          #define B2(a) fract(dot(floor(a), vec2(0.5, floor(a).y * 0.75)))
+          #define B4(a) (B2(0.5 * (a)) * 0.25 + B2(a))
+          void main() {
+            gl_FragColor = texture2D(tDiffuse, vUv);
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment>
+            vec3 col = gl_FragColor.rgb;
+            float l = dot(col, vec3(0.299, 0.587, 0.114));
+            // Night grade: dark parts lean purple-blue, bright parts stay warm.
+            col = mix(col * vec3(0.82, 0.78, 1.12) + vec3(0.025, 0.0, 0.05), col, smoothstep(0.08, 0.7, l));
+            col = mix(vec3(l), col, 1.15);
+            float d = B4(gl_FragCoord.xy) - 0.5;
+            col = floor(clamp(col, 0.0, 1.0) * levels + 0.5 + d * 0.6) / levels;
+            gl_FragColor = vec4(col, 1.0);
+          }`,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const scene = new THREE.Scene();
+      scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
+      this.post = { scene, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mat };
+    }
+    r.setRenderTarget(this.rt);
+    this.outline!.render(this.scene, this.camera);
+    r.setRenderTarget(null);
+    this.post.mat.uniforms.tDiffuse.value = this.rt.texture;
+    r.render(this.post.scene, this.post.cam);
+  }
+
+  /** Lit surfaces get the cel-shaded twin of their material in the pixel look, and back. */
+  private toonAll(): void {
+    this.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || Array.isArray(m.material)) return;
+      const ud = m.userData as { orig?: THREE.Material };
+      if (this.pixel) {
+        const orig = ud.orig ?? m.material;
+        // Floors, walls, the sky: no outline on surfaces that big.
+        if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+        const big = (m.geometry.boundingSphere?.radius ?? 0) * Math.max(m.scale.x, m.scale.y, m.scale.z) > 2.5;
+        const toon = this.toonOf(orig, big);
+        if (toon !== orig) {
+          ud.orig = orig;
+          m.material = toon;
+        }
+      } else if (ud.orig) {
+        m.material = ud.orig;
+        delete ud.orig;
+      }
+    });
+  }
+
+  private toonOf(mat: THREE.Material, big: boolean): THREE.Material {
+    const std = mat as THREE.MeshStandardMaterial;
+    if (!std.isMeshStandardMaterial && !(mat as THREE.MeshPhongMaterial).isMeshPhongMaterial && !(mat as THREE.MeshLambertMaterial).isMeshLambertMaterial) return mat;
+    const cache = big ? this.toonBig : this.toonCache;
+    let t = cache.get(mat);
+    if (!t) {
+      if (!this.toonRamp) {
+        // Dark, mid, lit, highlight: four hard bands.
+        const d = new Uint8Array([70, 70, 70, 255, 140, 140, 140, 255, 215, 215, 215, 255, 255, 255, 255, 255]);
+        this.toonRamp = new THREE.DataTexture(d, 4, 1, THREE.RGBAFormat);
+        this.toonRamp.minFilter = this.toonRamp.magFilter = THREE.NearestFilter;
+        this.toonRamp.needsUpdate = true;
+      }
+      const toon = new THREE.MeshToonMaterial({
+        color: std.color,
+        map: std.map ?? null,
+        emissive: std.emissive ?? new THREE.Color(0),
+        emissiveIntensity: std.emissiveIntensity ?? 1,
+        emissiveMap: std.emissiveMap ?? null,
+        transparent: mat.transparent,
+        opacity: mat.opacity,
+        side: mat.side,
+        depthWrite: mat.depthWrite,
+        gradientMap: this.toonRamp,
+      });
+      // Big flat surfaces (floor, walls, sky) get no outline, only bodies and props.
+      toon.userData.outlineParameters = { visible: !mat.transparent && !big };
+      t = toon;
+      cache.set(mat, t);
+    }
+    return t;
+  }
+
   setSim(sim: Sim): void {
     for (const fv of this.fighters) fv.dispose(this.scene);
     for (const m of this.crateMeshes) this.scene.remove(m);
@@ -432,6 +559,7 @@ export class View {
       this.hemi.intensity = this.arena.hemi;
     }
     this.fighters = sim.fighters.map((f) => new FighterView(f, this.scene, this.labels));
+    if (this.pixel) queueMicrotask(() => this.toonAll());
 
     const wood = this.arena!.crate;
     const edge = new THREE.LineBasicMaterial({ color: 0x3b2a18 });
@@ -493,7 +621,11 @@ export class View {
         }
         // No numbers: where it landed, and how hard (one to three marks).
         const marks = ev.dmg < 5 ? '' : ev.dmg < 10 ? '!' : ev.dmg < 16 ? '!!' : '!!!';
-        this.pop(ev.pos, ev.blocked ? 'в блок' : `${ev.fromBehind ? 'в спину' : ev.zone}${marks}`, ev.target.team);
+        // The pixel look speaks comics: a big clean blow gets its sound word.
+        if (this.pixel && !ev.blocked && ev.dmg >= 8) {
+          const words = /голов/.test(ev.zone) ? ['БАМ!', 'ХРЯСЬ!', 'ТРЕСК!', 'БАЦ!'] : /корп/.test(ev.zone) ? ['БУМ!', 'ШМЯК!', 'ХЛОП!'] : ['ХЛЁСТ!', 'ТЫЩ!', 'ШЛЕП!'];
+          this.pop(ev.pos, words[Math.floor(Math.random() * words.length)], ev.target.team, ev.dmg >= 15 ? 'comic big' : 'comic');
+        } else this.pop(ev.pos, ev.blocked ? 'в блок' : `${ev.fromBehind ? 'в спину' : ev.zone}${marks}`, ev.target.team);
       } else if (ev.type === 'land') {
         snd?.land(ev.power, slow);
         this.burst(ev.pos.clone().setY(0.1), Math.min(60, 10 + ev.power * 3), 1 + ev.power * 0.25, new THREE.Color(0x8b93a6), 0.6);
@@ -556,10 +688,10 @@ export class View {
     w.mesh.visible = true;
   }
 
-  private pop(at: THREE.Vector3, text: string, team: 0 | 1): void {
+  private pop(at: THREE.Vector3, text: string, team: 0 | 1, extra = ''): void {
     if (!this.words) return;
     const el = document.createElement('div');
-    el.className = `pop team${team}`;
+    el.className = `pop team${team} ${extra}`;
     el.textContent = text;
     this.labels.appendChild(el);
     this.pops.push({ el, pos: at.clone(), age: 0 });
@@ -677,7 +809,8 @@ export class View {
       (Math.random() - 0.5) * this.shake,
     );
     this.camera.position.add(shakeOffset);
-    this.renderer.render(this.scene, this.camera);
+    if (this.pixel && this.outline) this.renderPixel();
+    else this.renderer.render(this.scene, this.camera);
     this.camera.position.sub(shakeOffset);
 
     this.placeLabels(realDt);

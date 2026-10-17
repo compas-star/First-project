@@ -222,6 +222,15 @@ export function updateFeet(f: Fighter, dl: number): void {
   if (sideGap < minGap) ft.to.addScaledVector(left, (minGap - sideGap) * (best === 0 ? 1 : -1));
   // Quick, light steps: the foot is in the air only briefly.
   ft.dur = THREE.MathUtils.clamp(0.2 - speed * 0.025, 0.1, 0.2);
+  // Limping: quick off the bad leg (a short hop onto the good one), the bad one dragged slow.
+  const lame = f.lame(best === 0 ? 'lLeg' : 'rLeg');
+  const otherLame = f.lame(best === 0 ? 'rLeg' : 'lLeg');
+  ft.dur *= 1 + 0.6 * lame - 0.35 * otherLame;
+  if (lame > 0) {
+    // The bad leg makes a shorter step.
+    tmp.subVectors(ft.to, ft.from);
+    ft.to.copy(ft.from).addScaledVector(tmp, 1 - 0.35 * lame);
+  }
   stepStats.plan++;
   ft.t = 0;
 }

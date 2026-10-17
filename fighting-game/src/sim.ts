@@ -208,6 +208,8 @@ export interface Lab {
   side: number;
   /** Dummy turned from facing the striker, radians. */
   turn: number;
+  /** Tools only: blows really hurt the dummy (the lab itself never does). */
+  hurts?: boolean;
 }
 
 export type Gesture = 'paw' | 'flinch' | 'shake' | 'hold' | 'nod' | 'beckon' | 'wipe';
@@ -436,6 +438,10 @@ export class Fighter {
   stamina = 1;
   /** A blow snaps the head or trunk loose for a moment (world time until). */
   snapHeadW = 0;
+  /** A kicked leg giving way: until when (his own clock), which side, how badly 0..1. */
+  buckleW = 0;
+  buckleSide: 'l' | 'r' = 'l';
+  buckleK = 0;
   snapChestW = 0;
   /** His kicking leg is held by the enemy until this world time. */
   caughtUntilW = 0;
@@ -510,6 +516,11 @@ export class Fighter {
     return this.p.powers.includes(id);
   }
 
+  /** Legs are far sturdier than arms: it takes many kicks to break one. */
+  get legLimit(): number {
+    return this.limbLimit * 1.8;
+  }
+
   /** Damage a limb takes before the bone breaks. */
   get limbLimit(): number {
     // In a bout limbs are far sturdier: a forearm does not break from blocking kicks for a few rounds.
@@ -526,7 +537,12 @@ export class Fighter {
 
   /** How much this fighter's style likes a strike; 0 = never used. */
   weightOf(m: Move): number {
-    return this.disc.weights[m.id] ?? 0;
+    const w = this.disc.weights[m.id] ?? 0;
+    // A lame leg: he hardly kicks with it, and kicking with the other means standing on it.
+    const foot = m.limb === 'lFoot' || m.limb === 'lKnee' ? 'lLeg' : m.limb === 'rFoot' || m.limb === 'rKnee' ? 'rLeg' : null;
+    if (!foot || !w) return w;
+    const other = foot === 'lLeg' ? 'rLeg' : 'lLeg';
+    return w * (1 - 0.8 * this.lame(foot)) * (1 - 0.5 * this.lame(other));
   }
 
   canUse(m: Move): boolean {
@@ -535,7 +551,9 @@ export class Fighter {
 
   /** Length of a move for this fighter in local seconds: poor technique telegraphs. */
   durOf(m: Move): number {
-    return (m.duration * STRIKE_TEMPO * (1 + 0.35 * (1 - this.tech)) * (1 + 0.45 * this.fatigue)) / (m.path ? this.style.handSpeed : 1);
+    const foot = m.limb === 'lFoot' || m.limb === 'lKnee' ? 'lLeg' : m.limb === 'rFoot' || m.limb === 'rKnee' ? 'rLeg' : null;
+    const lame = foot ? 1 + 0.4 * this.lame(foot) : 1;
+    return (lame * m.duration * STRIKE_TEMPO * (1 + 0.35 * (1 - this.tech)) * (1 + 0.45 * this.fatigue)) / (m.path ? this.style.handSpeed : 1);
   }
 
   /** World seconds from starting a move until it can hit. */
@@ -552,10 +570,19 @@ export class Fighter {
     return out.set(Math.sin(this.facing), 0, Math.cos(this.facing));
   }
 
+  /**
+   * How lame a leg is, 0..1: nothing for the first kicks, then more and more as the
+   * damage piles up; a broken leg is fully lame.
+   */
+  lame(l: 'lLeg' | 'rLeg'): number {
+    if (this.broken[l]) return 1;
+    return THREE.MathUtils.smoothstep(this.limbDmg[l] / this.legLimit, 0.25, 0.9);
+  }
+
   /** Walking speed in local m/s, longer legs take longer steps. */
   get stride(): number {
-    // A leg kicked dead slows him long before it breaks.
-    const dead = (l: 'lLeg' | 'rLeg') => (this.broken[l] ? 0.6 : 1 - 0.35 * Math.min(1, this.limbDmg[l] / this.limbLimit));
+    // A leg kicked dead slows him long before it breaks: up to half his speed.
+    const dead = (l: 'lLeg' | 'rLeg') => 1 - 0.5 * this.lame(l);
     const legs = dead('lLeg') * dead('rLeg');
     return 2.6 * Math.sqrt(this.scale) * legs;
   }
@@ -1773,7 +1800,7 @@ export class Sim {
    */
   hurt(def: Fighter, m: Move, zone: string, dmg: number, blocked: boolean, seen: boolean): void {
     // In the lab nobody gets hurt: the blow is only written down.
-    if (this.lab) {
+    if (this.lab && !this.lab.hurts) {
       this.labHits.push({ move: m.id, zone, dmg, blocked, t: this.t });
       return;
     }
@@ -2373,8 +2400,32 @@ export class Sim {
     // Limbs take damage of their own and can break; the head can be concussed.
     const limb = LIMB_OF_PART[part.name];
     if (limb) {
-      def.limbDmg[limb] += (dmg / part.def.dmg) * 0.5;
-      if (!def.broken[limb] && def.limbDmg[limb] > def.limbLimit) {
+      // Kicks made for the legs (low kick, calf kick) chop at them harder than a stray blow.
+      def.limbDmg[limb] += (dmg / part.def.dmg) * 0.5 * (m.path === 'low' ? 1.2 : 1);
+      // A leg kick that lands takes the leg out from under him: the foot is knocked off its
+      // spot and the knee gives, more the more the leg has already taken.
+      if (!blocked && (limb === 'lLeg' || limb === 'rLeg') && def.state === 'ok' && !def.out) {
+        const i = limb === 'lLeg' ? 0 : 1;
+        const ft = def.feet[i];
+        const lame = def.lame(limb);
+        if (!ft.free) {
+          ft.from.copy(ft.pos).setY(0);
+          tmpA.copy(push).setY(0);
+          if (tmpA.lengthSq() < 1e-8) tmpA.subVectors(def.pos, att.pos).setY(0);
+          ft.to.copy(ft.from).addScaledVector(tmpA.normalize(), (0.12 + 0.02 * dmg + 0.2 * lame) * def.scale);
+          ft.dur = 0.12;
+          ft.t = 0;
+        }
+        def.buckleSide = limb === 'lLeg' ? 'l' : 'r';
+        def.buckleK = Math.min(1, 0.35 + dmg / 25 + 0.6 * lame);
+        def.buckleW = def.clock + 0.25 + 0.35 * def.buckleK;
+        if (lame > 0.5) def.wobbleUntilW = Math.max(def.wobbleUntilW, this.t + 0.2 / def.body);
+        // A heavy kick on a leg that is already gone drops him.
+        if (lame > 0.45 && this.rng() < 0.12 + 0.5 * (lame - 0.45) + dmg / 80) def.poise = Math.min(def.poise, 0);
+        if (lame > 0.35 && lame - THREE.MathUtils.smoothstep((def.limbDmg[limb] - (dmg / part.def.dmg) * 0.5 * (m.path === 'low' ? 1.2 : 1)) / def.legLimit, 0.25, 0.9) > 0.05)
+          def.say(lame > 0.7 ? `${LIMB_NAME[limb]} почти не держит` : `хромаю на ${LIMB_NAME[limb] === 'левая нога' ? 'левую' : 'правую'}`);
+      }
+      if (!def.broken[limb] && def.limbDmg[limb] > (limb === 'lLeg' || limb === 'rLeg' ? def.legLimit : def.limbLimit)) {
         def.broken[limb] = true;
         this.events.push({ type: 'break', pos: at.clone(), target: def, limb });
         if (def.action?.kind === 'attack' && !def.canUse(def.action.move!)) def.action = null;

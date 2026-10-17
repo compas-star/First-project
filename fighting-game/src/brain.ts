@@ -120,7 +120,7 @@ export function updatePlan(f: Fighter, e: Fighter, sim: Sim): void {
   const myReach = f.scale;
   const hisReach = e.scale;
   const hasLowKicks = LOW_KICKS.some((id) => f.weightOf({ id } as Move) > 0);
-  const legDamage = (e.limbDmg.lLeg + e.limbDmg.rLeg) / (2 * e.limbLimit);
+  const legDamage = (e.limbDmg.lLeg + e.limbDmg.rLeg) / (2 * e.legLimit);
   const lowKickRate = LOW_KICKS.reduce((s, id) => s + (mem.hits[id] ?? 0), 0) / Math.max(1, LOW_KICKS.reduce((s, id) => s + (mem.tries[id] ?? 0), 0));
 
   // Nobody landing anything for a while: someone has to take the initiative.
@@ -130,7 +130,7 @@ export function updatePlan(f: Fighter, e: Fighter, sim: Sim): void {
     pressure:
       0.2 + 0.55 * aggr + (e.hp < f.hp - 15 ? 0.25 : 0) + (f.mass > e.mass * 1.2 ? 0.15 : 0) + rate(mem, 'back') * 0.4 + lull * 0.45,
     counter: 0.1 + 0.35 * tech + (f.mind > e.mind * 1.3 ? 0.3 : 0) + Math.min(0.4, pace * 0.5) - aggr * 0.2 - lull * 0.4,
-    legs: hasLowKicks ? 0.25 + legDamage * 0.9 + lowKickRate * 0.5 + rate(mem, 'block') * 0.3 + (e.body > f.body ? 0.1 : 0) : 0,
+    legs: hasLowKicks ? 0.25 + legDamage * 0.9 + 1.5 * Math.max(e.lame('lLeg'), e.lame('rLeg')) + lowKickRate * 0.5 + rate(mem, 'block') * 0.3 + (e.body > f.body ? 0.1 : 0) : 0,
     body: 0.2 + f.style.bodyLove * 0.6 + rate(mem, 'block') * 0.6 + rate(mem, 'slip') * 0.3,
     survive: f.hp < 35 && e.hp > f.hp + 15 ? 0.6 + (1 - aggr) * 0.4 : 0,
     finish: e.hp < 25 || e.dazed ? 0.75 + aggr * 0.3 : 0,
@@ -211,6 +211,9 @@ export function moveWeight(f: Fighter, m: Move): number {
       if (POWER_MOVES.includes(m.id)) k *= 1.8;
       break;
   }
+  // He is limping: go after the bad leg.
+  const lame = Math.max(f.enemy.lame('lLeg'), f.enemy.lame('rLeg'));
+  if (lame > 0 && LOW_KICKS.includes(m.id)) k *= 1 + 3 * lame;
   // He slips to the side: hooks and kicks catch a slipping head.
   if (rate(mem, 'slip') > 0.35 && SIDE_CATCHERS.includes(m.id)) k *= 1.6;
   // He blocks: kicks go round the guard.

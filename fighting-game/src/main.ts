@@ -348,7 +348,7 @@ function injuries(f: Sim['fighters'][number]): string {
   const list = (Object.keys(f.broken) as Limb[]).filter((l) => f.broken[l]).map((l) => `перелом: ${LIMB_NAME[l]}`);
   // Limbs: bruised before they break, and an arm or leg can be hurt without the man being hurt.
   for (const l of Object.keys(f.limbDmg) as Limb[]) {
-    if (!f.broken[l] && f.limbDmg[l] > f.limbLimit * 0.5) list.push(`отбита: ${LIMB_NAME[l]}`);
+    if (!f.broken[l] && (l === 'lLeg' || l === 'rLeg' ? f.lame(l) > 0.2 : f.limbDmg[l] > f.limbLimit * 0.5)) list.push(l === 'lLeg' || l === 'rLeg' ? `хромает: ${LIMB_NAME[l]}` : `отбита: ${LIMB_NAME[l]}`);
   }
   if (f.knockdowns) list.unshift(`нокдаунов: ${f.knockdowns}`);
   const sub = f.grapple?.sub;

@@ -449,6 +449,34 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
         break;
     }
   }
+  // A hurt leg: weight kept off it, the hip drops on that side whenever it has to carry him.
+  const lameL = f.lame('lLeg');
+  const lameR = f.lame('rLeg');
+  const lame = Math.max(lameL, lameR);
+  if (lame > 0.02 && a?.kind !== 'getup') {
+    const bad = lameL >= lameR ? 0 : 1;
+    // Lean over the good leg (spineSide < 0 leans to his left).
+    const toGood = bad === 0 ? 1 : -1;
+    out.spineSide += toGood * 5 * lame;
+    const loaded = f.feet[1 - bad].t >= 0 || f.feet[1 - bad].free;
+    if (loaded) {
+      out.crouch += 0.07 * lame;
+      out.pelvisRoll += (bad === 0 ? -1 : 1) * 10 * lame;
+      out.spineSide -= toGood * 7 * lame;
+    }
+    out.crouch += 0.02 * lame;
+  }
+  // A leg kicked out: the knee gives, the hip drops that side, he sags toward it.
+  if (f.clock < f.buckleW) {
+    const left = f.buckleW - f.clock;
+    const len = 0.25 + 0.35 * f.buckleK;
+    const env = Math.sin(Math.PI * Math.min(1, (len - left) / len)) * f.buckleK;
+    const sign = f.buckleSide === 'l' ? -1 : 1;
+    out.crouch += 0.13 * env;
+    out.pelvisRoll += sign * 16 * env;
+    out.spineSide += -sign * 9 * env;
+    out.spineLean += 6 * env;
+  }
   // Losing balance: the arms go out to catch the fall.
   if (f.stability < 0.75 && a?.kind !== 'getup') {
     lerpPose(out, out, withStance(POSES.brace, base), smooth((0.75 - f.stability) / 0.5));

@@ -251,6 +251,17 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   steps kept on their own side (self-falls x2-4: crossing is better than falling), stronger
   foot anchors (no effect on slip), stance lead from f.self instead of real velocity (more
   falls). Planted feet still ~5 cm off their spot even standing still (PD lag), ~25% >8 cm.
+- Leg damage (user: leg kicks did nothing; should limp and slow after many, not at once).
+  `Fighter.lame(leg)` = smoothstep(limbDmg / legLimit, 0.25, 0.9), `legLimit` = 1.8 x
+  limbLimit; low-path kicks do x1.2 to the leg. A landed leg kick knocks the foot off its spot
+  (a forced quick step along the blow) and buckles the knee (`buckleW/Side/K` on his own
+  clock: crouch, hip drops that side, `pose.ts`). Lame: stride down to 50%, limp in the pose
+  (lean over the good leg; hip drop and dip while the bad leg carries him), quick short steps
+  off the bad leg (`updateFeet`), kicks with it rarer and slower, kicks with the other rarer
+  (`weightOf`, `durOf`); a heavy kick on a leg past 0.45 lame may drop him (poise 0 ->
+  'подсекли ногу'). Attackers hunt a limping leg (`moveWeight`, legs plan). HUD "хромает".
+  Tools: `legseries` (lab dummy with `Lab.hurts`, same leg kicked: limp from kick ~4, lame
+  ~7, drops after), `legs` (fights: leg kicks still land only 0-6 times, so limps are rare).
 - Base damage 7.6 now that head shots land (fights ~50-90 s in tests).
 
 - Finishing: an AI that sees the enemy hurt (`e.dazed`) presses; hurt fighters cover up.

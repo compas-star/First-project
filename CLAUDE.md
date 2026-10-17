@@ -240,6 +240,17 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   (arms 0.5, head 0.3, chest 0.15). Self-falls 1.5 -> ~0.3-0.5/min in presets 0-3; the
   remaining ones in 'Тело против ума' are body collisions with the ×4 man.
   Snappier punches: arrive at 15% of the window (was 35%), snap back with ease-out.
+- Footwork (user: "работа ног"). Tool `feetstat` (steps/s, stance crossed/narrow/wide by
+  action, planted feet off their spot, catching vs planned steps via `stepStats`). Was: stance
+  crossed or square 25% of the time, a rear leg left stretched far behind after lunges, ~40%
+  of steps were catching steps (threshold 4 cm). Now: step and drag (`updateFeet`: the foot on
+  the side of travel steps first, a foot left far behind is dragged up before the leading one
+  steps again), standing errors under ~16 cm left alone, quicker steps (0.1-0.2 s), catching
+  steps only past 8 cm of balance error; the leg IK aims the ankle so the sole (FOOT_LOCAL.z
+  in front) lands on the anchor. Crossed 25% -> ~13%, wide ~7%. Tried and reverted: catching
+  steps kept on their own side (self-falls x2-4: crossing is better than falling), stronger
+  foot anchors (no effect on slip), stance lead from f.self instead of real velocity (more
+  falls). Planted feet still ~5 cm off their spot even standing still (PD lag), ~25% >8 cm.
 - Base damage 7.6 now that head shots land (fights ~50-90 s in tests).
 
 - Finishing: an AI that sees the enemy hurt (`e.dazed`) presses; hurt fighters cover up.

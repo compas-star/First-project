@@ -27,6 +27,9 @@ export interface Foot {
   free: boolean;
 }
 
+/** Debug counters for tools: catching steps vs planned ones. */
+export const stepStats = { catch: 0, plan: 0 };
+
 export function makeFeet(): [Foot, Foot] {
   const mk = (): Foot => ({
     pos: new THREE.Vector3(),
@@ -75,7 +78,7 @@ export function idealFoot(f: Fighter, i: 0 | 1, out: THREE.Vector3): THREE.Vecto
   // Lead (left) foot forward, rear foot back; width keeps them apart.
   if (i === 0) out.addScaledVector(fwd, st.footFwd * s).addScaledVector(left, st.footWidth * s);
   else out.addScaledVector(fwd, -st.footBack * s).addScaledVector(left, -st.footWidth * s);
-  // Lead the step in the direction of travel.
+  // Lead the step in the direction he means to go (not every jolt of the body).
   const lv = f.rag.pelvis.body.linvel();
   vel.set(lv.x, 0, lv.z);
   out.addScaledVector(vel, Math.min(0.3, 0.22 / f.body));
@@ -156,7 +159,7 @@ export function updateFeet(f: Fighter, dl: number): void {
 
   // Catching step: the body is being carried off its feet, put a foot under it.
   // Carried far (a collision, a big push): run under it with quick steps, as far as each reaches.
-  if (f.balanceErr > 0.04 * s) {
+  if (f.balanceErr > 0.08 * s) {
     let best = -1;
     let bestD = Infinity;
     for (const i of [0, 1] as const) {
@@ -176,24 +179,36 @@ export function updateFeet(f: Fighter, dl: number): void {
       tmp.subVectors(ft.to, ft.from);
       const reach = 0.75 * s;
       if (tmp.length() > reach) ft.to.copy(ft.from).addScaledVector(tmp.normalize(), reach);
+      // A catching step goes wherever the body needs it, even across: crossing is better than falling.
       ft.dur = f.balanceErr > 0.4 * s ? 0.1 : 0.13;
+      stepStats.catch++;
       ft.t = 0;
       return;
     }
   }
 
+  // Step and drag, as a boxer moves: going forward the lead foot steps first, going back
+  // the rear foot, sideways the foot on that side; the other foot follows to restore the
+  // stance. Standing, small errors are left alone: no shuffling on the spot.
+  fwd.set(Math.sin(f.facing), 0, Math.cos(f.facing));
+  vel.set(f.self.x, 0, f.self.z);
+  const ahead = vel.dot(fwd);
+  const aside = vel.dot(left);
+  const first: 0 | 1 = Math.abs(ahead) >= Math.abs(aside) ? (ahead >= 0 ? 0 : 1) : aside >= 0 ? 0 : 1;
+  const err = [0, 1].map((i) => (feet[i].free ? 0 : idealFoot(f, i as 0 | 1, ideal).distanceTo(feet[i].pos)));
+  const threshold = (speed > 0.3 ? 0.1 : 0.16) * s;
   let best = -1;
   let bestErr = 0;
-  for (const i of [0, 1] as const) {
-    if (feet[i].free) continue;
-    const e = idealFoot(f, i, ideal).distanceTo(feet[i].pos);
-    if (e > bestErr) {
-      bestErr = e;
-      best = i;
-    }
+  // The leading foot goes first, but a foot left far behind is dragged up before the
+  // leading one steps again: never a lunge with one leg stretched out behind.
+  if (err[first] > threshold * 0.7 && err[first] >= 0.6 * err[1 - first]) {
+    best = first;
+    bestErr = err[first];
+  } else if (err[1 - first] > threshold * 0.7) {
+    best = 1 - first;
+    bestErr = err[1 - first];
   }
-  const threshold = (speed > 0.3 ? 0.08 : 0.15) * s;
-  if (best < 0 || bestErr < threshold) return;
+  if (best < 0 || bestErr < threshold * 0.7) return;
   const ft = feet[best];
   ft.from.copy(ft.pos).setY(0);
   idealFoot(f, best as 0 | 1, ft.to);
@@ -205,7 +220,9 @@ export function updateFeet(f: Fighter, dl: number): void {
   const sideGap = tmp.subVectors(ft.to, other).dot(left) * (best === 0 ? 1 : -1);
   const minGap = 0.12 * s;
   if (sideGap < minGap) ft.to.addScaledVector(left, (minGap - sideGap) * (best === 0 ? 1 : -1));
-  ft.dur = THREE.MathUtils.clamp(0.24 - speed * 0.025, 0.12, 0.24);
+  // Quick, light steps: the foot is in the air only briefly.
+  ft.dur = THREE.MathUtils.clamp(0.2 - speed * 0.025, 0.1, 0.2);
+  stepStats.plan++;
   ft.t = 0;
 }
 
@@ -236,7 +253,9 @@ export function legOverride(f: Fighter, pelvisY: number, res: Partial<Record<Par
   for (const i of [0, 1] as const) {
     const ft = f.feet[i];
     if (ft.free) continue;
-    target.copy(ft.pos);
+    // The leg ends at the ankle; the sole the anchor holds sits a little in front of it.
+    // Aim the ankle so the sole lands on the spot, or IK and anchor pull against each other.
+    target.copy(ft.pos).addScaledVector(fwd, -FOOT_LOCAL.z * f.scale);
     target.y += 0.035 * f.scale;
     v(f.rag.byName[i === 0 ? 'lThigh' : 'rThigh'].body.translation(), hip);
     hip.y += THREE.MathUtils.clamp(lift, -0.2 * f.scale, 0.3 * f.scale);

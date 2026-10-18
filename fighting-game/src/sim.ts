@@ -634,7 +634,7 @@ export class Fighter {
    */
   lame(l: 'lLeg' | 'rLeg'): number {
     if (this.broken[l]) return 1;
-    return THREE.MathUtils.smoothstep(this.limbDmg[l] / this.legLimit, 0.15, 0.8);
+    return THREE.MathUtils.smoothstep(this.limbDmg[l] / this.legLimit, 0.15, 1.0);
   }
 
   /** Walking speed in local m/s, longer legs take longer steps. */
@@ -1875,7 +1875,7 @@ export class Sim {
       f.daze *= 0.35;
       f.bodyHurt *= 0.85;
       // A chopped leg does not come back in a minute's rest.
-      for (const l of Object.keys(f.limbDmg) as Limb[]) f.limbDmg[l] *= l === 'lLeg' || l === 'rLeg' ? 0.95 : 0.85;
+      for (const l of Object.keys(f.limbDmg) as Limb[]) f.limbDmg[l] *= l === 'lLeg' || l === 'rLeg' ? 0.9 : 0.85;
       f.stamina = 1 - 0.5 * f.bodyHurt - 0.35 * f.wear;
       f.action = null;
       f.combo = null;
@@ -2584,7 +2584,7 @@ export class Sim {
         if (lame > 0.5) def.wobbleUntilW = Math.max(def.wobbleUntilW, this.t + 0.2 / def.body);
         // A heavy kick on a leg that is already gone drops him.
         if (lame > 0.45 && this.rng() < 0.12 + 0.5 * (lame - 0.45) + dmg / 80) def.poise = Math.min(def.poise, 0);
-        if (lame > 0.35 && lame - THREE.MathUtils.smoothstep((def.limbDmg[limb] - (dmg / part.def.dmg) * 0.5 * (m.path === 'low' ? LOW_K : 1)) / def.legLimit, 0.15, 0.8) > 0.05)
+        if (lame > 0.35 && lame - THREE.MathUtils.smoothstep((def.limbDmg[limb] - (dmg / part.def.dmg) * 0.5 * (m.path === 'low' ? LOW_K : 1)) / def.legLimit, 0.15, 1.0) > 0.05)
           def.say(lame > 0.7 ? `${LIMB_NAME[limb]} почти не держит` : `хромаю на ${LIMB_NAME[limb] === 'левая нога' ? 'левую' : 'правую'}`);
       }
       if (!def.broken[limb] && def.limbDmg[limb] > (limb === 'lLeg' || limb === 'rLeg' ? def.legBreak : def.limbLimit)) {

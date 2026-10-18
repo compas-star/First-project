@@ -49,6 +49,12 @@ export interface Memory {
   /** What the opponent throws, and when (world times of his attacks). */
   oppMoves: Record<string, number>;
   oppAttackTimes: number[];
+  /** His habits for looking ahead: what he throws next after each of his blows... */
+  follow: Record<string, Record<string, number>>;
+  /** ...and what he answers each of mine with. */
+  answer: Record<string, Record<string, number>>;
+  /** Kinds of blow he throws at all (see blowKind). */
+  kinds: Record<string, number>;
 }
 
 export function makeMemory(): Memory {
@@ -58,6 +64,9 @@ export function makeMemory(): Memory {
     oppReact: { slip: 0, back: 0, block: 0, parry: 0, counter: 0, none: 0 },
     oppMoves: {},
     oppAttackTimes: [],
+    follow: {},
+    answer: {},
+    kinds: {},
   };
 }
 
@@ -74,7 +83,67 @@ export function fadeMemory(m: Memory, k = 0.6): Memory {
     oppReact: scale(m.oppReact) as Record<Reaction, number>,
     oppMoves: scale(m.oppMoves),
     oppAttackTimes: [],
+    follow: Object.fromEntries(Object.entries(m.follow ?? {}).map(([key, v]) => [key, scale(v)])),
+    answer: Object.fromEntries(Object.entries(m.answer ?? {}).map(([key, v]) => [key, scale(v)])),
+    kinds: scale(m.kinds ?? {}),
   };
+}
+
+/**
+ * The kind of a blow as a man reading habits sees it: which side and what line (a straight
+ * right, a left hook, a kick...). Single moves are too many to see a habit in.
+ */
+export function blowKind(m: Move): string {
+  const kind = /Foot/.test(m.limb)
+    ? m.path === 'low' ? 'lowkick' : m.path === 'teep' ? 'teep' : 'kick'
+    : /Knee/.test(m.limb) ? 'knee'
+    : /Elbow/.test(m.limb) ? 'elbow'
+    : m.path === 'upper' ? 'upper' : m.path === 'straight' ? 'straight' : 'hook';
+  return m.limb[0] + kind;
+}
+
+const KIND_NAME: Record<string, string> = {
+  straight: 'прямой', hook: 'боковой', upper: 'апперкот', kick: 'удар ногой', lowkick: 'лоу-кик', teep: 'тип', knee: 'колено', elbow: 'локоть',
+};
+export function kindName(k: string): string {
+  return `${KIND_NAME[k.slice(1)] ?? k} ${k[0] === 'l' ? 'левой' : 'правой'}`;
+}
+
+/** Counts one more time that `next` came after `key`. */
+export function note(t: Record<string, Record<string, number>>, key: string, next: string): void {
+  const row = (t[key] ??= {});
+  row[next] = (row[next] ?? 0) + 1;
+}
+
+/**
+ * What most likely comes after `key`, if it has happened often enough to bet on:
+ * p is the share it has had, shrunk while the evidence is thin.
+ */
+export function predict(t: Record<string, Record<string, number>> | undefined, key: string): { id: string; p: number } | null {
+  const row = t?.[key];
+  if (!row) return null;
+  let total = 0;
+  let best = '';
+  let bestN = 0;
+  for (const [id, n] of Object.entries(row)) {
+    total += n;
+    if (n > bestN) [best, bestN] = [id, n];
+  }
+  if (bestN < 1.5) return null;
+  return { id: best, p: bestN / (total + 1.5) };
+}
+
+/** His favourite kind of blow overall, if he has a clear one. */
+export function favourite(m: Memory): { id: string; p: number } | null {
+  let total = 0;
+  let best = '';
+  let bestN = 0;
+  for (const [id, n] of Object.entries(m.kinds ?? {})) {
+    total += n;
+    if (n > bestN) [best, bestN] = [id, n];
+  }
+  if (bestN < 3) return null;
+  return { id: best, p: bestN / (total + 2) };
 }
 
 /** Strike that has landed best on this opponent so far, if any. */

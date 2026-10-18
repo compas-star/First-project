@@ -3,7 +3,7 @@ import { combos, comboName, CLASSICS, classicOn } from './combos';
 import { MOVE_BY_ID, type Move } from './moves';
 import type { Fighter, Sim } from './sim';
 import {
-  updatePlan, planDistance, planEagerness, planComboBonus, moveWeight, bodyBias, feintChance, counterBonus,
+  updatePlan, planDistance, planEagerness, planComboBonus, moveWeight, bodyBias, feintChance, counterBonus, predict, blowKind, kindName, favourite,
   type Reaction,
 } from './brain';
 import { readOpponent, fitOf, zoneBias, type Read } from './tactics';
@@ -75,7 +75,15 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
   if (f.handledThreat === ea.id) return;
   // Reaction time varies from blow to blow, so a slightly slower fighter still catches some.
   const jitter = 0.65 + 0.7 * (((Math.sin(ea.id * 12.9898 + f.team * 78.233) * 43758.5453) % 1 + 1) % 1);
-  if (sim.t < ea.startW + f.reactDelay * jitter) return;
+  // A blow he was waiting for (read from the other man's habits) is seen sooner.
+  const ex = f.expect;
+  // With no particular expectation, his favourite blow is half expected anyway.
+  const fav = ea.kind === 'attack' && f.insight > 0.05 ? favourite(f.mem) : null;
+  const kind = ea.move ? blowKind(ea.move) : '';
+  const read = ea.kind !== 'attack' ? 0
+    : ex && ex.id === kind && sim.t < ex.untilW ? Math.min(1, f.insight * (0.5 + ex.p))
+    : fav && fav.id === kind ? Math.min(1, f.insight * fav.p * 0.8) : 0;
+  if (sim.t < ea.startW + f.reactDelay * jitter * (1 - 0.7 * read)) return;
   // Busy reeling or recovering: the blow stays on his mind until he can do something about it.
   const busy = f.action && f.action.kind !== 'block' && f.action.kind !== 'attack';
   if (busy && ea.kind === 'attack') return;
@@ -121,7 +129,29 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
   const m = ea.move!;
   const activeEnd = ea.startW + (ea.dur * m.active[1]) / e.body;
   if (sim.t >= activeEnd || ea.hitDone) return;
+  // Looking ahead: what does he throw after this one? Get ready for that too.
+  const next = f.insight > 0.05 ? predict(f.mem.follow, kind) : null;
+  if (next) f.expect = { id: next.id, untilW: ea.startW + (ea.dur + 0.9) / e.body, p: next.p };
   if (dist > sim.attackRange(e, m) + ea.lunge + 0.5) return;
+  // He saw this one coming. If there is time, beat it to the punch; else out of the way,
+  // with the answer already loaded.
+  if (read > 0.15 && (!f.action || f.action.kind === 'block') && !sim.lab) {
+    const first = sim
+      .usableMoves(f)
+      .filter((c) => f.windupOf(c) * 1.1 < tti && dist <= sim.attackRange(f, c) + c.lunge * f.scale * 0.6);
+    if (first.length && sim.rng() < 0.25 + 0.5 * read * f.tech) {
+      const best = first.reduce((a, b) => (b.power > a.power ? b : a));
+      noted(f, 'counter');
+      sim.startAction(f, 'attack', { move: best, reply: true });
+      f.say(`ждал ${kindName(kind)} → ${best.name} на опережение`);
+      return;
+    }
+    if (tryDodge(f, e, m, ea, sim, tti, 0.3 + read, read)) {
+      if (!e.comboLeft && !e.script) f.readW = sim.t + 1.2 / f.mind;
+      f.say(`ждал ${kindName(kind)}`);
+      return;
+    }
+  }
 
   const own = f.action;
   if (own && own.kind !== 'block') {
@@ -214,7 +244,7 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
  * technique and elusiveness make it rarer. Needs time: a blow seen too late
  * cannot be dodged, which is where perception speed comes in.
  */
-function tryDodge(f: Fighter, e: Fighter, m: Move, ea: NonNullable<Fighter['action']>, sim: Sim, tti: number, bonus: number): boolean {
+function tryDodge(f: Fighter, e: Fighter, m: Move, ea: NonNullable<Fighter['action']>, sim: Sim, tti: number, bonus: number, read = 0): boolean {
   const E = f.p.evasion;
   const T = f.tech;
   if (tti < (0.1 - 0.04 * E) / f.body) return false;
@@ -258,7 +288,8 @@ function tryDodge(f: Fighter, e: Fighter, m: Move, ea: NonNullable<Fighter['acti
   truth.normalize();
 
   // Reading the line is a skill: technique, elusiveness and a quick mind read it truer.
-  const err = 0.9 * (1 - 0.45 * T - 0.45 * E) / Math.sqrt(Math.max(1, f.mind / e.body));
+  // A blow he was waiting for: he knows its line already.
+  const err = (0.9 * (1 - 0.45 * T - 0.45 * E) * (1 - 0.8 * read)) / Math.sqrt(Math.max(1, f.mind / e.body));
   const seenDir = truth
     .clone()
     .add(new THREE.Vector3(sim.rng() - 0.5, sim.rng() - 0.5, sim.rng() - 0.5).multiplyScalar(2 * err))
@@ -316,7 +347,8 @@ function tryDodge(f: Fighter, e: Fighter, m: Move, ea: NonNullable<Fighter['acti
   if (best.say === 'отклон') {
     act.lean = true;
     best.say = 'отклон корпусом';
-    const fire = (0.15 + 0.35 * T + 0.35 * E + 0.15 * f.p.aggression + f.gene('counter')) * (f.dazed ? 0.3 : 1);
+    const readIt = sim.t < f.readW + 0.05 || (f.expect?.id === blowKind(m) && sim.t < f.expect.untilW) ? 0.4 * f.insight : 0;
+    const fire = (0.15 + 0.35 * T + 0.35 * E + 0.15 * f.p.aggression + f.gene('counter') + readIt) * (f.dazed ? 0.3 : 1);
     if (!into && !f.winded && !sim.lab && sim.rng() < fire) {
       act.counterAt = Math.max((act.delayT ?? 0) + (act.reachT ?? 0.1), passes - 0.06);
       act.dur = Math.max(act.dur, act.counterAt + 0.05);
@@ -537,7 +569,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   let go: 'bait' | 'punish' | 'answer' | 'entry' | 'meet' | null = null;
   if (bit) go = 'bait';
   else if (opening && sim.rng() < (f.winded ? 0.3 : 1) * (0.25 + 0.3 * tech) * Math.min(1.3, planEagerness(f, true) * 0.6)) go = 'punish';
-  else if (answering && !f.winded && sim.rng() < 0.12 + 0.2 * tech + (sim.t - f.lastDodgeW < 0.6 ? 0.6 * f.p.evasion : 0)) go = 'answer';
+  else if (answering && !f.winded && sim.rng() < 0.12 + 0.2 * tech + (sim.t - f.lastDodgeW < 0.6 ? 0.6 * f.p.evasion : 0) + (sim.t < f.readW ? 0.7 : 0)) go = 'answer';
   else if (behind && sim.rng() < 0.5) go = 'punish';
   else if (sim.t >= f.initiativeW) go = f.stamina < 0.12 ? null : 'entry';
   else if (steppedIn && !f.winded && sim.rng() < 0.08 + 0.3 * tech) go = 'meet';
@@ -589,6 +621,19 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
       f.answerUntilW = 0;
       f.say(`${'name' in script ? `связка «${script.name}»` : 'своя связка'}: ${comboName(script.steps)}`);
       return;
+    }
+    // A trap: he always answers this blow with the same one. Show it, and wait for his answer.
+    if ((go === 'entry' || go === 'bait') && !script && f.insight > 0.2 && !finishing) {
+      const traps = options
+        .filter((o) => o.path)
+        .map((o) => ({ o, a: predict(f.mem.answer, blowKind(o)) }))
+        .filter((x) => x.a && x.a.p > 0.35);
+      const trap = traps.sort((a, b) => b.a!.p - a.a!.p)[0];
+      if (trap && sim.rng() < f.insight * trap.a!.p * 1.5) {
+        sim.startAction(f, 'attack', { move: trap.o, lunge: lunge * 0.3, zone, feint: true });
+        f.say(`ловушка: финт ${trap.o.name}, жду ${kindName(trap.a!.id)}`);
+        return;
+      }
     }
     if (go === 'entry' && m.path && sim.rng() < feintChance(f)) {
       sim.startAction(f, 'attack', { move: m, lunge: lunge * 0.4, zone, feint: true });

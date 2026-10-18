@@ -5,7 +5,7 @@ import { MOVES, MOVE_BY_ID, FOLLOW, type Move, type Striker, type Zone } from '.
 import { makeFeet, resetFeet, updateFeet, legOverride, anchorFeet, measureBalance, type Foot } from './feet';
 import { DISCIPLINE_BY_ID, styleStriking, styleGrappling, type Discipline, type Stance } from './disciplines';
 import { punchOverride, aimPointOf } from './strikes';
-import { makeMemory, type Memory, type PlanId } from './brain';
+import { makeMemory, note, predict, blowKind, type Memory, type PlanId } from './brain';
 import { schoolGenome, type Genome } from './genome';
 import { MAP_BY_ID, ALLEY_HALF, room, type MapDef } from './maps';
 import { readOpponent, fitOf } from './tactics';
@@ -347,6 +347,13 @@ export class Fighter {
   fallT = 0;
   /** What this fighter has learned about the opponent, and the current game plan. */
   mem: Memory = makeMemory();
+  /** His last attack (move id, world time), for the other man's reading of his habits. */
+  lastAtkId = '';
+  lastAtkW = -9;
+  /** A blow he expects from the other man (read from his habits) until a world time. */
+  expect: { id: string; untilW: number; p: number } | null = null;
+  /** He read the blow coming and got out of it: the answer is ready until this world time. */
+  readW = 0;
   plan: PlanId = 'outbox';
   nextPlanW = 0;
   /** After a feint: the opponent may be caught reacting until this world time. */
@@ -501,6 +508,16 @@ export class Fighter {
 
   get tech(): number {
     return this.p.skill;
+  }
+
+  /**
+   * How far ahead he reads the other man, 0..1: a mind quick against the other man's body
+   * sees his habits coming (the depth of the look ahead), technique knows what to make of it.
+   */
+  get insight(): number {
+    if ((globalThis as { __noLook?: boolean }).__noLook) return 0;
+    const r = this.mind / Math.max(0.05, this.enemy.body);
+    return THREE.MathUtils.clamp((r - 0.6) / 1.6, 0, 1) * (0.4 + 0.6 * this.tech);
   }
 
   /** Engine: how long the wind lasts and how fast it comes back. 1 = ordinary. */
@@ -900,6 +917,22 @@ export class Sim {
     if (m && kind === 'attack' && opts.feint && f.enemy.state === 'ok' && !f.enemy.action && this.rng() < 0.65 - 0.45 * f.enemy.tech) {
       // He bites on the feint: a flinch, a moment late.
       this.gesture(f.enemy, 'flinch', 0.3, 0.1 / f.enemy.mind);
+    }
+    if (m && kind === 'attack') {
+      // The other man learns his habits: what he throws after his own blows, and what he
+      // answers mine with (a feint drawing an answer counts too).
+      const e = f.enemy;
+      const k = blowKind(m);
+      if (!opts.feint) {
+        e.mem.kinds[k] = (e.mem.kinds[k] ?? 0) + 1;
+        if (this.t - f.lastAtkW < 1.2 / f.body && f.lastAtkId) note(e.mem.follow, f.lastAtkId, k);
+        if (this.t - e.lastAtkW < 1.0 / f.body && e.lastAtkW > f.lastAtkW && e.lastAtkId) note(e.mem.answer, e.lastAtkId, k);
+      }
+      f.lastAtkId = k;
+      f.lastAtkW = this.t;
+      // Looking ahead: what will he answer this with? A quick mind gets ready for it.
+      const ans = f.insight > 0.05 ? predict(f.mem.answer, k) : null;
+      if (ans) f.expect = { id: ans.id, untilW: this.t + (f.durOf(m) + 0.9) / f.body, p: ans.p };
     }
     if (m && kind === 'attack' && !opts.feint) {
       this.events.push({ type: 'swing', power: m.power });

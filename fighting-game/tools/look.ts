@@ -16,6 +16,7 @@ RAPIER.init().then(() => {
     // Memory carries from fight to fight against the same man, as in the game.
     let past: [Memory | null, Memory | null] = [null, null];
     const ends: Record<string, number> = {};
+    const koWhy: Record<string, number> = {};
     let dmgTo = 0, dmgFrom = 0, windT = 0, dodges = 0, intoN = 0, frames = 0;
     let wins = 0, losses = 0, reads = 0, traps = 0, cleanTo = 0, cleanFrom = 0, readHit = 0, secs = 0;
     for (let s = 1; s <= N; s++) {
@@ -32,10 +33,12 @@ RAPIER.init().then(() => {
       if (past[0]) me.mem = fadeMemory(past[0]);
       if (past[1]) other.mem = fadeMemory(past[1]);
       let lastThought = '';
+      let koSeen = false;
       let readId = -1;
       while (!sim.winner && sim.t < 90) {
         sim.step(sim.stepSize());
         for (const ev of sim.events) if (ev.type === 'hit' && !ev.blocked && ev.zone !== 'в руку') {
+          if (ev.target === me && me.out && !koSeen) { koSeen = true; const k = `${me.action?.kind ?? '-'}${me.action?.kind === 'attack' ? ':' + me.action.move!.id : ''} <- ${sim.fighters[1 - smart].action?.move?.id ?? '?'} ${ev.zone} dmg${ev.dmg.toFixed(0)}`; koWhy[k] = (koWhy[k] ?? 0) + 1; }
           if (ev.target === me) { cleanFrom++; dmgFrom += ev.dmg; if (me.action?.id === readId) readHit++; } else { cleanTo++; dmgTo += ev.dmg; }
         }
         sim.events.length = 0;
@@ -58,5 +61,6 @@ RAPIER.init().then(() => {
     console.log(`${mode.padEnd(8)} mind x${MIND}: wins ${wins} losses ${losses} | clean hits landed ${cleanTo} taken ${cleanFrom} | reads ${reads} (hit anyway ${readHit}) traps ${traps} | avg ${(secs / N).toFixed(0)}s`);
     console.log(`   dmg dealt ${dmgTo.toFixed(0)} taken ${dmgFrom.toFixed(0)} | winded ${(100 * windT / frames).toFixed(0)}% | dodges ${dodges} into ${intoN}`);
     console.log('   ', JSON.stringify(ends));
+    console.log('    KO him:', Object.entries(koWhy).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n}× ${k}`).join(' | '));
   }
 });

@@ -270,7 +270,7 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   Thai 0.55, kickboxing 0.45, MMA 0.32, karate 0.25 ... boxing 0.04) x (0.5+0.8 tech) + 0.35
   x his own limp. Pose: knee up 75°, knee 115°, out 28°, guard up (`pose.ts`); the foot is
   freed like a kick's and stability floored like a kick. `resolveHit`: the kick is stopped,
-  the kicker's leg takes raw x `CHECK_BACK` 0.75 x (0.8+0.4 tech), the checker's 0.12, kicker's
+  the kicker's leg takes raw x `CHECK_BACK` 0.2 x (0.8+0.4 tech) (user: was far too much, 0.75 then 0.45), the checker's 0.2; check chance x0.4 on a kick right after another blow (`Action.chained`), capped 0.5; `Fighter.checkedN` makes him kick less (`moveWeight`); lame curve top 1.0, legs keep 90% between rounds, kicker's
   knee buckles, may break at `legBreak`; moment "ЧЕК ГОЛЕНЬЮ!". Tool `checks "2,3"`.
 - "Записать бой" (`recorder.ts`): the last 12 s at 15 fps (via `Sim.onStep`), body segments
   in cm as deltas + actions + hits, gzip+base64 code `БОЙ1:` (~16k chars). Button shows when

@@ -49,7 +49,7 @@ export interface Rules {
 }
 
 /** A checked kick: share of the blow that comes back into the kicker's own leg. */
-const CHECK_BACK = 0.45;
+const CHECK_BACK = 0.2;
 
 /** Low kicks do this much more to the leg than a stray blow. */
 const LOW_K = 2.4;

@@ -80,12 +80,12 @@ export interface Tier {
 }
 
 export const TIERS: Tier[] = [
-  { id: 'basement', name: 'Подвал', desc: 'Подпольные бои в подворотне. Три коротких раунда, судит толпа, деньги наличкой.', map: 'alley', rules: { roundLen: 90, rounds: 3, tough: 1, standing: true }, level: [0, 0.12], fame: 0, purse: [70, 15], fee: 40, prize: 400, tokens: 3, size: 8 },
-  { id: 'roof', name: 'Крыши', desc: 'Бои на крышах для богатых зевак. Три раунда по две минуты, соперники злее.', map: 'roof', rules: { roundLen: 120, rounds: 3, tough: 1.2, standing: true }, level: [0.12, 0.28], fame: 6, purse: [150, 35], fee: 90, prize: 900, tokens: 4, size: 8 },
-  { id: 'club', name: 'Клубная лига', desc: 'Додзё и залы. Три раунда по две минуты, судьи.', map: 'dojo', rules: { roundLen: 120, rounds: 3, tough: 1.6, standing: true }, level: [0.28, 0.45], fame: 18, purse: [320, 80], fee: 200, prize: 2200, tokens: 5, size: 16 },
-  { id: 'city', name: 'Городской ринг', desc: 'Настоящий ринг и зрители. Три раунда по три минуты.', map: 'ring', rules: { roundLen: 180, rounds: 3, tough: 2, standing: true }, level: [0.45, 0.63], fame: 40, purse: [700, 170], fee: 450, prize: 5200, tokens: 7, size: 16 },
-  { id: 'nation', name: 'Чемпионат страны', desc: 'Лучшие бойцы страны в клетке. Пять раундов по три минуты.', map: 'cage', rules: { roundLen: 180, rounds: 5, tough: 2.4, standing: true }, level: [0.63, 0.82], fame: 80, purse: [1600, 400], fee: 1000, prize: 12000, tokens: 10, size: 16 },
-  { id: 'world', name: 'Мировой титул', desc: 'Лучшие из лучших. Пять раундов по три минуты, пояс.', map: 'ring', rules: { roundLen: 180, rounds: 5, tough: 2.6, standing: true }, level: [0.82, 1], fame: 140, purse: [4000, 900], fee: 2500, prize: 32000, tokens: 16, size: 16 },
+  { id: 'basement', name: 'Подвал', desc: 'Подпольные бои в подворотне. Три раунда по три минуты, судит толпа, деньги наличкой.', map: 'alley', rules: { roundLen: 180, clock: 3, rounds: 3, tough: 1, standing: true }, level: [0, 0.12], fame: 0, purse: [70, 15], fee: 40, prize: 400, tokens: 3, size: 8 },
+  { id: 'roof', name: 'Крыши', desc: 'Бои на крышах для богатых зевак. Три раунда по три минуты, соперники злее.', map: 'roof', rules: { roundLen: 180, clock: 3, rounds: 3, tough: 1.2, standing: true }, level: [0.12, 0.28], fame: 6, purse: [150, 35], fee: 90, prize: 900, tokens: 4, size: 8 },
+  { id: 'club', name: 'Клубная лига', desc: 'Додзё и залы. Три раунда по три минуты, судьи.', map: 'dojo', rules: { roundLen: 180, clock: 3, rounds: 3, tough: 1.6, standing: true }, level: [0.28, 0.45], fame: 18, purse: [320, 80], fee: 200, prize: 2200, tokens: 5, size: 16 },
+  { id: 'city', name: 'Городской ринг', desc: 'Настоящий ринг и зрители. Три раунда по три минуты.', map: 'ring', rules: { roundLen: 180, clock: 3, rounds: 3, tough: 2, standing: true }, level: [0.45, 0.63], fame: 40, purse: [700, 170], fee: 450, prize: 5200, tokens: 7, size: 16 },
+  { id: 'nation', name: 'Чемпионат страны', desc: 'Лучшие бойцы страны в клетке. Пять раундов по три минуты.', map: 'cage', rules: { roundLen: 180, clock: 3, rounds: 5, tough: 2.4, standing: true }, level: [0.63, 0.82], fame: 80, purse: [1600, 400], fee: 1000, prize: 12000, tokens: 10, size: 16 },
+  { id: 'world', name: 'Мировой титул', desc: 'Лучшие из лучших. Пять раундов по три минуты, пояс.', map: 'ring', rules: { roundLen: 180, clock: 3, rounds: 5, tough: 2.6, standing: true }, level: [0.82, 1], fame: 140, purse: [4000, 900], fee: 2500, prize: 32000, tokens: 16, size: 16 },
 ];
 export const TIER_BY_ID = Object.fromEntries(TIERS.map((t) => [t.id, t])) as Record<string, Tier>;
 

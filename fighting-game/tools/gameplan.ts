@@ -4,16 +4,19 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Sim } from '../src/sim';
 import { MAP_BY_ID } from '../src/maps';
-import { makeFighter, toParams, WCLASSES, type CareerFighter } from '../src/career';
+import { makeFighter, toParams, WCLASSES, TIERS, type CareerFighter } from '../src/career';
 const N = Number(process.argv[2] ?? 3);
 const LOW = new Set(['lowkick', 'calfkick']);
 const BODY = new Set(['bodykick', 'rknee', 'teep', 'shovel', 'lknee']);
 function run(a: CareerFighter, b: CareerFighter, seed: number) {
   const pa = toParams(a, 0), pb = toParams(b, 1);
-  const sim = new Sim(pa, pb, seed, MAP_BY_ID.void, { roundLen: 60, rounds: 3, tough: 1, standing: true });
+  const sim = new Sim(pa, pb, seed, MAP_BY_ID.void, TIERS[Number(process.env.TIER ?? 3)].rules);
   const per: Record<string, number>[] = [{}, {}, {}];
   const plans: Record<string, number>[] = [{}, {}, {}];
   const prev = [null, null] as unknown[];
+  const lames: string[] = [];
+  let cards = 0;
+  let lowLanded = 0;
   while (!sim.winner && !sim.draw && sim.t < 200) {
     if (sim.betweenRounds) sim.nextRound();
     const h = sim.stepSize();
@@ -30,8 +33,15 @@ function run(a: CareerFighter, b: CareerFighter, seed: number) {
       }
       prev[i] = x.action;
     });
+    for (const ev of sim.events) if (ev.type === 'hit' && !ev.blocked && ev.target.team === 1 && ev.zone && /Thigh|Shin/.test(String(ev.part))) lowLanded++;
+    if (sim.cards.length !== cards || sim.winner || sim.draw) {
+      cards = sim.cards.length;
+      const e = sim.fighters[1];
+      lames.push(`R${cards}:${Math.max(e.lame('lLeg'), e.lame('rLeg')).toFixed(2)}/${lowLanded}`);
+    }
     sim.events.length = 0;
   }
+  console.log('   lame/legHits', lames.join(' '), sim.winner ? `winner ${sim.winner.team} r${sim.round} ${sim.winner.enemy.koReason}` : 'draw', 'simT', sim.t.toFixed(0));
   sim.dispose();
   return { per, plans };
 }

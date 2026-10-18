@@ -40,11 +40,16 @@ export interface Rules {
   /** Round length in world seconds; 0 = no rounds. */
   roundLen: number;
   rounds: number;
+  /** Fight-clock seconds per second of fight time (career: 3 min rounds in 1 min). */
+  clock?: number;
   /** How much more punishment a fighter takes than in a quick fight. */
   tough: number;
   /** Stand-up only: no shots for the legs, no following a man to the floor. */
   standing?: boolean;
 }
+
+/** Low kicks do this much more to the leg than a stray blow. */
+const LOW_K = 1.5;
 
 export const QUICK: Rules = { roundLen: 0, rounds: 0, tough: 1 };
 export const bout = (rounds: number): Rules => ({ roundLen: 300, rounds, tough: 3 });
@@ -546,9 +551,15 @@ export class Fighter {
     return this.p.powers.includes(id);
   }
 
-  /** Legs are far sturdier than arms: it takes many kicks to break one. */
+  /** Legs are far sturdier than arms, but a bout barely toughens them: a round of low
+   *  kicks should leave him limping (the user: a whole round on the legs did nothing). */
   get legLimit(): number {
-    return this.limbLimit * 1.8;
+    return 45 * Math.sqrt(this.mass / 78) * 1.8 * (this.has('stone') ? 2.5 : 1) * (this.tough > 1 ? 1 + 0.2 * (this.tough - 1) : 1);
+  }
+
+  /** A leg breaks only well past the point where it stops carrying him. */
+  get legBreak(): number {
+    return this.legLimit * (this.tough > 1 ? 2 : 1);
   }
 
   /** Damage a limb takes before the bone breaks. */
@@ -890,7 +901,7 @@ export class Sim {
     if (this.betweenRounds) return;
     this.t += h;
     if (this.rules.roundLen && !this.winner) {
-      this.roundT += h;
+      this.roundT += h * (this.rules.clock ?? 1);
       if (this.roundT >= this.rules.roundLen) this.endRound();
     }
     for (const f of this.fighters) this.preStep(f, h);
@@ -1849,7 +1860,8 @@ export class Sim {
       if (f.state === 'down' && !f.out) f.downLeft = Math.min(f.downLeft, 0.3);
       f.daze *= 0.35;
       f.bodyHurt *= 0.85;
-      for (const l of Object.keys(f.limbDmg) as Limb[]) f.limbDmg[l] *= 0.85;
+      // A chopped leg does not come back in a minute's rest.
+      for (const l of Object.keys(f.limbDmg) as Limb[]) f.limbDmg[l] *= l === 'lLeg' || l === 'rLeg' ? 0.95 : 0.85;
       f.stamina = 1 - 0.5 * f.bodyHurt - 0.35 * f.wear;
       f.action = null;
       f.combo = null;
@@ -1929,9 +1941,10 @@ export class Sim {
     const regen = f.has('regen') ? 3 : 1;
     if (!f.out) f.daze = Math.max(0, f.daze - dl * (0.035 + 0.1 * Math.max(0, f.stamina)) * (1 - 0.5 * f.trauma) * resting * regen);
     f.bodyHurt = Math.max(0, f.bodyHurt - dl * 0.004 * regen);
-    if (f.tough > 1) for (const l of Object.keys(f.limbDmg) as Limb[]) f.limbDmg[l] = Math.max(0, f.limbDmg[l] - 0.35 * dl);
+    // Arms shake off blocked kicks; a chopped leg stays chopped.
+    if (f.tough > 1) for (const l of Object.keys(f.limbDmg) as Limb[]) f.limbDmg[l] = Math.max(0, f.limbDmg[l] - (l === 'lLeg' || l === 'rLeg' ? 0.03 : 0.35) * dl);
     // In a long fight the tiredness builds: work and damage wear him down round by round.
-    if (this.rules.roundLen && f.state === 'ok') f.wear = Math.min(1, f.wear + dl * (0.0003 + 0.0005 * (1 - Math.max(0, f.stamina)) + 0.0005 * f.daze));
+    if (this.rules.roundLen && f.state === 'ok') f.wear = Math.min(1, f.wear + dl * (this.rules.clock ?? 1) * (0.0003 + 0.0005 * (1 - Math.max(0, f.stamina)) + 0.0005 * f.daze));
     f.stamina = Math.min(f.stamina, 1 - 0.5 * f.bodyHurt - 0.35 * f.wear);
     f.dazed = f.daze > 0.42;
     // A summary number for the plans and the training score: 100 fresh, 0 out.
@@ -2504,7 +2517,7 @@ export class Sim {
     const limb = LIMB_OF_PART[part.name];
     if (limb) {
       // Kicks made for the legs (low kick, calf kick) chop at them harder than a stray blow.
-      def.limbDmg[limb] += (dmg / part.def.dmg) * 0.5 * (m.path === 'low' ? 1.2 : 1);
+      def.limbDmg[limb] += (dmg / part.def.dmg) * 0.5 * (m.path === 'low' ? LOW_K : 1);
       // A leg kick that lands takes the leg out from under him: the foot is knocked off its
       // spot and the knee gives, more the more the leg has already taken.
       if (!blocked && (limb === 'lLeg' || limb === 'rLeg') && def.state === 'ok' && !def.out) {
@@ -2525,10 +2538,10 @@ export class Sim {
         if (lame > 0.5) def.wobbleUntilW = Math.max(def.wobbleUntilW, this.t + 0.2 / def.body);
         // A heavy kick on a leg that is already gone drops him.
         if (lame > 0.45 && this.rng() < 0.12 + 0.5 * (lame - 0.45) + dmg / 80) def.poise = Math.min(def.poise, 0);
-        if (lame > 0.35 && lame - THREE.MathUtils.smoothstep((def.limbDmg[limb] - (dmg / part.def.dmg) * 0.5 * (m.path === 'low' ? 1.2 : 1)) / def.legLimit, 0.25, 0.9) > 0.05)
+        if (lame > 0.35 && lame - THREE.MathUtils.smoothstep((def.limbDmg[limb] - (dmg / part.def.dmg) * 0.5 * (m.path === 'low' ? LOW_K : 1)) / def.legLimit, 0.25, 0.9) > 0.05)
           def.say(lame > 0.7 ? `${LIMB_NAME[limb]} почти не держит` : `хромаю на ${LIMB_NAME[limb] === 'левая нога' ? 'левую' : 'правую'}`);
       }
-      if (!def.broken[limb] && def.limbDmg[limb] > (limb === 'lLeg' || limb === 'rLeg' ? def.legLimit : def.limbLimit)) {
+      if (!def.broken[limb] && def.limbDmg[limb] > (limb === 'lLeg' || limb === 'rLeg' ? def.legBreak : def.limbLimit)) {
         def.broken[limb] = true;
         this.events.push({ type: 'break', pos: at.clone(), target: def, limb });
         if (def.action?.kind === 'attack' && !def.canUse(def.action.move!)) def.action = null;

@@ -296,6 +296,8 @@ export function moveWeight(f: Fighter, m: Move): number {
       if (POWER_MOVES.includes(m.id)) k *= 1.8;
       break;
   }
+  // Kicks he got checked: kick less, and set them up with punches (a lone kick gets checked).
+  if (f.checkedN && (m.path === 'low' || m.path === 'round') && m.limb.endsWith('Foot')) k /= 1 + 0.3 * f.checkedN;
   // He is limping: go after the bad leg.
   const lame = Math.max(f.enemy.lame('lLeg'), f.enemy.lame('rLeg'));
   if (lame > 0 && LOW_KICKS.includes(m.id)) k *= 1 + 3 * lame;

@@ -54,12 +54,14 @@ function sideStep(sim: Sim, f: Fighter): { dir: THREE.Vector3; left: boolean } {
 
 /** The opponent remembers how I answer his strikes. */
 /** How readily he checks kicks with the shin: a Thai fighter lives by it, a boxer hardly knows it. */
-const CHECK_STYLE: Record<string, number> = { muaythai: 0.55, kickboxing: 0.45, mma: 0.32, karate: 0.25, wrestling: 0.1, bjj: 0.1, street: 0.06, boxing: 0.04 };
-function checkChance(f: Fighter): number {
-  const own = (CHECK_STYLE[f.p.discipline] ?? 0.2) * (0.5 + 0.8 * f.tech);
+// Even the best check only some kicks: lifting the knee to every feint leaves him on one
+// leg for the punches, and a kick at the end of a combination comes too fast to see.
+const CHECK_STYLE: Record<string, number> = { muaythai: 0.45, kickboxing: 0.35, mma: 0.25, karate: 0.2, wrestling: 0.08, bjj: 0.08, street: 0.05, boxing: 0.03 };
+function checkChance(f: Fighter, chained: boolean): number {
+  const own = (CHECK_STYLE[f.p.discipline] ?? 0.15) * (0.3 + 0.5 * f.tech);
   // Once his legs are getting chopped, every fighter starts lifting the knee.
   const hurt = Math.max(f.lame('lLeg'), f.lame('rLeg'));
-  return Math.min(0.85, own + 0.35 * hurt - (f.winded ? 0.1 : 0));
+  return Math.min(0.5, (own + 0.25 * hurt) * (chained ? 0.4 : 1) - (f.winded ? 0.1 : 0));
 }
 
 function noted(f: Fighter, r: Reaction): void {
@@ -198,7 +200,7 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
   // Check a round or low kick: lift the knee on that side and let his shin hit mine.
   const checkable = (m.limb === 'lFoot' || m.limb === 'rFoot') && (m.path === 'low' || m.path === 'round') && ea.zone !== 'head' && !m.spin;
   const leg: 0 | 1 = m.limb === 'rFoot' ? 0 : 1;
-  if (checkable && !f.broken[leg ? 'rLeg' : 'lLeg'] && tti > 0.07 / f.body && sim.rng() < checkChance(f)) {
+  if (checkable && !f.broken[leg ? 'rLeg' : 'lLeg'] && tti > 0.07 / f.body && sim.rng() < checkChance(f, !!ea.chained)) {
     noted(f, 'block');
     sim.startAction(f, 'check', { dur: tti * f.body + 0.25 });
     f.action!.leg = leg;

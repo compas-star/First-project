@@ -49,7 +49,7 @@ export interface Rules {
 }
 
 /** A checked kick: share of the blow that comes back into the kicker's own leg. */
-const CHECK_BACK = 0.75;
+const CHECK_BACK = 0.45;
 
 /** Low kicks do this much more to the leg than a stray blow. */
 const LOW_K = 2.4;
@@ -119,6 +119,8 @@ export interface Action {
   /** A lean back with the whole body, and the local time to fire back from it (while he is still missing). */
   lean?: boolean;
   counterAt?: number;
+  /** An attack thrown straight after another one (in a combination). */
+  chained?: boolean;
   /** A check: which leg is lifted to meet the kick (0 left, 1 right). */
   leg?: 0 | 1;
   /** Facing when the action started; spinning techniques turn from here. */
@@ -420,6 +422,8 @@ export class Fighter {
   dazed = false;
   /** After a clean attack a technical fighter steps back out until this world time. */
   exitUntilW = 0;
+  /** His kicks checked so far this fight: he grows wary of kicking. */
+  checkedN = 0;
   /** Still backing out of reach after his blows (ai.ts). */
   exiting = false;
   /** World time he takes the initiative next (0 = not decided yet). */
@@ -947,6 +951,8 @@ export class Sim {
     opts: { move?: Move; dur?: number; dir?: THREE.Vector3; pose?: Action['pose']; lunge?: number; zone?: 'head' | 'body' | 'leg'; feint?: boolean; reply?: boolean } = {},
   ): Action {
     const m = opts.move;
+    // Thrown hard on the heels of another blow: much harder to read and check.
+    const chained = !!m && kind === 'attack' && this.t - f.lastAttackW < 0.9 / f.body;
     if (m && kind === 'attack') f.lastAttackW = this.t;
     const cost = 1 / f.cardio;
     if (m && kind === 'attack') f.stamina -= cost * (opts.feint ? 0.4 : 1) * (0.01 + 0.013 * m.power);
@@ -1001,6 +1007,7 @@ export class Sim {
     }
     const a: Action = {
       kind,
+      chained,
       id: actionSeq++,
       t: 0,
       dur,
@@ -2417,11 +2424,12 @@ export class Sim {
       const kl: Limb = m.limb === 'lFoot' ? 'lLeg' : 'rLeg';
       const dl: Limb = def.action.leg === 1 ? 'rLeg' : 'lLeg';
       att.limbDmg[kl] += raw * CHECK_BACK * (0.8 + 0.4 * def.tech);
-      def.limbDmg[dl] += raw * 0.12;
+      def.limbDmg[dl] += raw * 0.2;
       att.stamina -= 0.03 / Math.sqrt(att.cardio);
       att.combo = null;
       att.comboLeft = 0;
       att.mem.oppReact.block++;
+      att.checkedN++;
       att.buckleSide = kl === 'lLeg' ? 'l' : 'r';
       att.buckleK = Math.min(1, 0.4 + raw / 30 + 0.5 * att.lame(kl));
       att.buckleW = att.clock + 0.3 + 0.3 * att.buckleK;

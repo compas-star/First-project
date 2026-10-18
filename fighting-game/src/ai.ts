@@ -491,6 +491,11 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     return;
   }
 
+  // Chances below are per decision; a quicker mind decides more often, so each one is
+  // scaled to the same chance per second: a quick mind sees the moment sooner, it does
+  // not twitch more.
+  const per = (p: number) => 1 - Math.pow(1 - THREE.MathUtils.clamp(p, 0, 0.999), 1 / Math.max(0.2, f.mind));
+
   if (sim.t >= f.nextPlanW) {
     updatePlan(f, e, sim);
     f.nextPlanW = sim.t + (1.5 + sim.rng()) / f.mind;
@@ -516,7 +521,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   f.wantDist = pref - (f.moveMode === 'stalk' ? 0.12 * f.scale : 0);
   if (f.initiativeW === 0) f.initiativeW = sim.t + waitTime(f, sim) * 0.6;
 
-  if (sim.ready(f, 'shockwave') && dist < sim.waveRadius(f) * 0.75 && sim.rng() < 0.45) {
+  if (sim.ready(f, 'shockwave') && dist < sim.waveRadius(f) * 0.75 && sim.rng() < per(0.45)) {
     sim.use(f, 'shockwave');
     sim.startAction(f, 'slam', { dur: 0.75 });
     f.say('ударная волна');
@@ -572,11 +577,11 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
 
   let go: 'bait' | 'punish' | 'answer' | 'entry' | 'meet' | null = null;
   if (bit) go = 'bait';
-  else if (opening && sim.rng() < (f.winded ? 0.3 : 1) * (0.25 + 0.3 * tech) * Math.min(1.3, planEagerness(f, true) * 0.6)) go = 'punish';
-  else if (answering && !f.winded && sim.rng() < 0.12 + 0.2 * tech + (sim.t - f.lastDodgeW < 0.6 ? 0.6 * f.p.evasion : 0) + (sim.t < f.readW && !LOOK().noanswer ? 0.7 : 0)) go = 'answer';
-  else if (behind && sim.rng() < 0.5) go = 'punish';
+  else if (opening && sim.rng() < per((f.winded ? 0.3 : 1) * (0.25 + 0.3 * tech) * Math.min(1.3, planEagerness(f, true) * 0.6))) go = 'punish';
+  else if (answering && !f.winded && sim.rng() < per(0.12 + 0.2 * tech + (sim.t - f.lastDodgeW < 0.6 ? 0.6 * f.p.evasion : 0) + (sim.t < f.readW && !LOOK().noanswer ? 0.7 : 0))) go = 'answer';
+  else if (behind && sim.rng() < per(0.5)) go = 'punish';
   else if (sim.t >= f.initiativeW) go = f.stamina < 0.12 ? null : 'entry';
-  else if (steppedIn && !f.winded && sim.rng() < 0.08 + 0.3 * tech) go = 'meet';
+  else if (steppedIn && !f.winded && sim.rng() < per(0.08 + 0.3 * tech)) go = 'meet';
   if (go === null && sim.t >= f.initiativeW) f.initiativeW = sim.t + waitTime(f, sim);
 
   if (go === 'punish' && ea) f.punishedId = ea.id;
@@ -585,7 +590,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   // Only when the floor is his place: a striker facing a wrestler keeps it standing.
   const floorWish = THREE.MathUtils.clamp(0.2 + 1.6 * sim.groundWish(f), 0, 1.2);
   if (go && shoot >= 0.3 && !sim.grapple && !sim.rules.standing && dist < gap + 1.5 * f.scale && f.stamina > 0.2 &&
-      sim.rng() < shoot * floorWish * (0.22 + (heAttacks || punish ? 0.3 : 0))) {
+      sim.rng() < per(shoot * floorWish * (0.22 + (heAttacks || punish ? 0.3 : 0)))) {
     sim.startAction(f, 'shoot', { dur: 0.8 });
     f.initiativeW = sim.t + waitTime(f, sim);
     f.say('проход в ноги');
@@ -626,19 +631,6 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
       f.say(`${'name' in script ? `связка «${script.name}»` : 'своя связка'}: ${comboName(script.steps)}`);
       return;
     }
-    // A trap: he always answers this blow with the same one. Show it, and wait for his answer.
-    if ((go === 'entry' || go === 'bait') && !script && f.insight > 0.2 && !finishing && !LOOK().notrap) {
-      const traps = options
-        .filter((o) => o.path)
-        .map((o) => ({ o, a: predict(f.mem.answer, blowKind(o)) }))
-        .filter((x) => x.a && x.a.p > 0.35);
-      const trap = traps.sort((a, b) => b.a!.p - a.a!.p)[0];
-      if (trap && sim.rng() < f.insight * trap.a!.p * 1.5) {
-        sim.startAction(f, 'attack', { move: trap.o, lunge: lunge * 0.3, zone, feint: true });
-        f.say(`ловушка: финт ${trap.o.name}, жду ${kindName(trap.a!.id)}`);
-        return;
-      }
-    }
     if (go === 'entry' && m.path && sim.rng() < feintChance(f)) {
       sim.startAction(f, 'attack', { move: m, lunge: lunge * 0.4, zone, feint: true });
       f.say(`финт: ${m.name}`);
@@ -672,7 +664,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     return;
   }
   // Reading him: now and then a feint to draw a reaction, or a probing jab.
-  if (patience > 0.3 && Math.abs(dist - pref) < 0.3 * f.scale && sim.rng() < 0.07 + 0.05 * tech) {
+  if (patience > 0.3 && Math.abs(dist - pref) < 0.3 * f.scale && sim.rng() < per(0.07 + 0.05 * tech)) {
     const jabLike = options.find((m) => m.id === 'jab' || m.id === 'teep' || m.id === 'leadkick');
     if (jabLike && sim.rng() < 0.5) {
       sim.startAction(f, 'attack', { move: jabLike, lunge: 0.05, zone: 'head', feint: true });
@@ -691,7 +683,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     return;
   }
 
-  if (sim.ready(f, 'dash') && dist > pref + 1.2 * f.scale && sim.rng() < 0.6) {
+  if (sim.ready(f, 'dash') && dist > pref + 1.2 * f.scale && sim.rng() < per(0.6)) {
     sim.use(f, 'dash');
     const go = Math.max(0.1, Math.min(0.35, (dist - pref) / (f.stride * 5 * 0.8)));
     sim.startAction(f, 'dash', { dur: go, dir: d.clone() });
@@ -700,7 +692,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   }
 
   // Inside the enemy's reach a careful fighter sometimes keeps the guard up in advance.
-  if (dist < enemyRange && (e.body > f.body * 1.2 || f.plan === 'survive') && sim.rng() < 0.25 + 0.4 * tech) {
+  if (dist < enemyRange && (e.body > f.body * 1.2 || f.plan === 'survive') && sim.rng() < per(0.25 + 0.4 * tech)) {
     sim.startAction(f, 'block', { dur: 0.45 });
     f.wantDist = pref + 0.3 * f.scale;
     f.say('держу защиту');

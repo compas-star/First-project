@@ -878,12 +878,14 @@ try {
 saveHook.after = cloudDirty;
 
 const career = new CareerUi({
-  fight(me, opp, tier, title, done) {
+  fight(me, opp, tier, title, done, tweak) {
     careerFight = { done };
     setCareerDock(true);
     // Sworn enemies come at each other harder.
     const grudge = relOf(career.c, me, opp) <= -50;
-    runFight(toParams(me, 0, grudge), toParams(opp, 1, grudge), MAP_BY_ID[tier.map], tier.rules);
+    const mine = toParams(me, 0, grudge);
+    tweak?.(mine);
+    runFight(mine, toParams(opp, 1, grudge), MAP_BY_ID[tier.map], tier.rules);
     // The bill of the fight, as a caption, whatever the words setting.
     const el = $('moment');
     el.textContent = title;
@@ -897,6 +899,8 @@ const career = new CareerUi({
     if (careerFight) startFight();
   },
 });
+
+(window as unknown as { __career: CareerUi }).__career = career;
 
 function finishCareerFight(): void {
   const cf = careerFight!;

@@ -782,6 +782,8 @@ export class Sim {
           this.fixedBox(0, 1.25, sgn * (S + 0.1), S + 0.2, 1.25, 0.1);
           this.fixedBox(sgn * (S + 0.1), 1.25, 0, 0.1, 1.25, S + 0.2);
         }
+        // The bar counter along the back wall: solid, a man can be slammed into it.
+        if (m.id === 'bar') this.fixedBox(0.4, 0.55, -(S - 0.35), S * 0.7, 0.55, 0.32);
         break;
       case 'alley':
         for (const sgn of [-1, 1]) this.fixedBox(sgn * (ALLEY_HALF + 0.15), 2, 0, 0.15, 2, S + 5);
@@ -826,6 +828,12 @@ export class Sim {
       const spots: [number, number, number][] = [
         [2.2, 3.5, 0.35], [2.25, 4.3, 0.3], [-2.2, -3.8, 0.4], [-2.25, 2.0, 0.3], [2.2, -5.0, 0.45], [-2.1, 5.5, 0.35],
       ];
+      for (const [x, z, half] of spots) this.addCrate(x, half, z, half, this.rng() * 0.6);
+      return;
+    }
+    if (this.map.id === 'bar') {
+      // Beer crates and stools by the walls.
+      const spots: [number, number, number][] = [[3.2, 2.9, 0.28], [3.25, 2.3, 0.22], [-3.2, 2.8, 0.3], [-3.1, -1.2, 0.24], [3.1, -1.8, 0.26]];
       for (const [x, z, half] of spots) this.addCrate(x, half, z, half, this.rng() * 0.6);
       return;
     }

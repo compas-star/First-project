@@ -1113,6 +1113,143 @@ function roof(map: MapDef): Arena {
   };
 }
 
+
+function bar(map: MapDef): Arena {
+  const group = new THREE.Group();
+  const S = map.size;
+  // Dark floorboards, sticky from spilled beer.
+  const boards = canvas(512, 512, (g) => {
+    for (let y = 0; y < 512; y += 48) {
+      g.fillStyle = `hsl(22, ${35 + Math.random() * 10}%, ${14 + Math.random() * 6}%)`;
+      g.fillRect(0, y, 512, 46);
+      g.fillStyle = 'rgba(0,0,0,0.45)';
+      g.fillRect(0, y + 46, 512, 2);
+    }
+    noise(g, 512, 512, 4000, 'rgba(0,0,0,0.18)', 3);
+    for (let i = 0; i < 6; i++) {
+      g.fillStyle = 'rgba(120,80,20,0.18)';
+      g.beginPath();
+      g.ellipse(Math.random() * 512, Math.random() * 512, 30 + Math.random() * 40, 15 + Math.random() * 20, Math.random() * 3, 0, Math.PI * 2);
+      g.fill();
+    }
+  }, [3, 3]);
+  const floor = mesh(new THREE.PlaneGeometry(S * 2 + 0.4, S * 2 + 0.4), std(0xffffff, 0.45, 0.05, { map: boards }), false);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  group.add(floor);
+  // Walls: wood panels below, old red wallpaper and posters above.
+  const wall = canvas(512, 256, (g) => {
+    g.fillStyle = '#4a1a1c';
+    g.fillRect(0, 0, 512, 256);
+    for (let x = 0; x < 512; x += 32) {
+      g.fillStyle = 'rgba(255,200,120,0.06)';
+      g.fillRect(x, 0, 3, 150);
+    }
+    g.fillStyle = '#3a2214';
+    g.fillRect(0, 150, 512, 106);
+    for (let x = 0; x < 512; x += 64) {
+      g.fillStyle = 'rgba(0,0,0,0.35)';
+      g.fillRect(x, 150, 3, 106);
+    }
+    g.fillStyle = '#20120a';
+    g.fillRect(0, 146, 512, 8);
+    const posters = [['БОИ', '#f2c14e'], ['ПИВО', '#d8e6f0'], ['ROCK', '#ff5a8a']];
+    posters.forEach(([t, c], i) => {
+      const x = 40 + i * 160;
+      g.fillStyle = '#e8dcc0';
+      g.fillRect(x, 30, 80, 100);
+      g.fillStyle = c;
+      g.fillRect(x + 6, 36, 68, 88);
+      g.fillStyle = '#1a1010';
+      g.font = '900 26px Arial Black, sans-serif';
+      g.textAlign = 'center';
+      g.fillText(t, x + 40, 90);
+    });
+    noise(g, 512, 256, 2500, 'rgba(0,0,0,0.2)', 3);
+  }, [S / 2, 1]);
+  const wallMat = std(0xffffff, 0.9, 0, { map: wall });
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const w = new THREE.Mesh(new THREE.PlaneGeometry(S * 2 + 0.4, 3), wallMat);
+    w.position.set(Math.sin(a) * (S + 0.2), 1.5, Math.cos(a) * (S + 0.2));
+    w.rotation.y = a + Math.PI;
+    w.receiveShadow = true;
+    group.add(w);
+  }
+  // The counter (where the physics has it) with a brass rail and a worn top.
+  const wood = std(0x4a2a16, 0.6);
+  const cx = 0.4, cz = -(S - 0.35), cw = S * 0.7;
+  const counter = mesh(new THREE.BoxGeometry(cw * 2, 1.04, 0.62), wood);
+  counter.position.set(cx, 0.52, cz);
+  const top = mesh(new THREE.BoxGeometry(cw * 2 + 0.1, 0.06, 0.72), std(0x2a160a, 0.3, 0.1));
+  top.position.set(cx, 1.07, cz);
+  const rail = mesh(new THREE.CylinderGeometry(0.025, 0.025, cw * 2, 8), std(0xd8a84a, 0.25, 0.9));
+  rail.rotation.z = Math.PI / 2;
+  rail.position.set(cx, 0.22, cz + 0.36);
+  group.add(counter, top, rail);
+  // Glasses and a bottle on the counter, bottles on the shelves behind it.
+  const glassM = new THREE.MeshStandardMaterial({ color: 0xd8f0ff, roughness: 0.1, transparent: true, opacity: 0.5 });
+  for (let i = 0; i < 5; i++) {
+    const gl = mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.12, 8), glassM, false);
+    gl.position.set(cx - cw + 0.3 + i * 0.55, 1.16, cz + 0.05);
+    group.add(gl);
+  }
+  const shelf = std(0x2a160a, 0.7);
+  const bottleCols = [0x2a7a3a, 0x8a3a1a, 0xd8b85a, 0x3a5a9a, 0xc8d8e0, 0x6a1a3a];
+  const bottleGeo = new THREE.CylinderGeometry(0.035, 0.04, 0.26, 8);
+  for (const y of [1.55, 1.95]) {
+    const sh = mesh(new THREE.BoxGeometry(cw * 2, 0.04, 0.2), shelf, false);
+    sh.position.set(cx, y, -S - 0.08);
+    group.add(sh);
+    for (let i = 0; i < 16; i++) {
+      const b = mesh(bottleGeo, std(bottleCols[(i * 7 + Math.round(y * 10)) % bottleCols.length], 0.15, 0.1, { emissive: bottleCols[i % bottleCols.length], emissiveIntensity: 0.15 }), false);
+      b.position.set(cx - cw + 0.15 + i * ((cw * 2 - 0.3) / 15), y + 0.15, -S - 0.08);
+      group.add(b);
+    }
+  }
+  // Stools at the counter.
+  const stoolM = std(0x1a1a1e, 0.4, 0.6);
+  const seatM = std(0x8a1a1a, 0.6);
+  for (let i = 0; i < 4; i++) {
+    const x = cx - cw + 0.6 + i * ((cw * 2 - 1.2) / 3);
+    const leg = mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.7, 8), stoolM);
+    leg.position.set(x, 0.35, cz + 0.65);
+    const seat = mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.06, 12), seatM);
+    seat.position.set(x, 0.72, cz + 0.65);
+    group.add(leg, seat);
+  }
+  // A neon sign over the counter, warm lamps hanging from the ceiling.
+  const sign = neonSign('БАР', '#ff5a3a', 1.6, 0.55);
+  sign.position.set(cx, 2.55, -S + 0.02);
+  const signLight = new THREE.PointLight(0xff5a3a, 10, 7, 1.6);
+  signLight.position.set(cx, 2.3, -S + 0.6);
+  group.add(sign, signLight);
+  const lampM = std(0xffe0a0, 0.3, 0, { emissive: 0xffc070, emissiveIntensity: 2.2 });
+  const lamps: THREE.PointLight[] = [];
+  for (const [x, z] of [[-1.4, 0.6], [1.4, -0.4], [0, 2.2]]) {
+    const cord = mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.8, 4), std(0x111111), false);
+    cord.position.set(x, 2.8, z);
+    const shade = mesh(new THREE.ConeGeometry(0.22, 0.18, 12, 1, true), std(0x2a3a2a, 0.5, 0.4, { side: THREE.DoubleSide }), false);
+    shade.position.set(x, 2.35, z);
+    const bulb = mesh(new THREE.SphereGeometry(0.06, 8, 6), lampM, false);
+    bulb.position.set(x, 2.28, z);
+    const l = new THREE.PointLight(0xffc27a, 9, 6, 1.6);
+    l.position.set(x, 2.2, z);
+    group.add(cord, shade, bulb, l);
+    lamps.push(l);
+  }
+  // Smoke in the air, the dark beyond the walls.
+  group.add(skyDome([[0, '#0a0606'], [1, '#140a08']], undefined, 30));
+  return {
+    group, background: 0x0a0606, fog: [0x1a0c08, 9, 22], sun: 0.35, hemi: 0.45,
+    crate: std(0x5a3a1c, 0.8),
+    update: (t) => {
+      // One lamp sways and flickers.
+      lamps[1].intensity = 9 * (Math.sin(t * 31) > 0.985 ? 0.3 : 1);
+    },
+  };
+}
+
 function voidArena(map: MapDef, floorTex: THREE.Texture): Arena {
   const group = new THREE.Group();
   const floor = mesh(new THREE.CircleGeometry(map.size, 96), std(0xffffff, 0.9, 0, { map: floorTex }), false);
@@ -1154,6 +1291,8 @@ export function buildArena(map: MapDef, voidFloor: () => THREE.Texture): Arena {
       return dojo(map);
     case 'roof':
       return roof(map);
+    case 'bar':
+      return bar(map);
     default:
       return voidArena(map, voidFloor());
   }

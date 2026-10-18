@@ -13,12 +13,14 @@ import {
   type Career, type CareerFighter, type Tier, type FightResult, type StatKey, type Ev,
 } from './career';
 import { DISCIPLINE_BY_ID } from './disciplines';
+import { TRAITS, moodWord, resolve, afterBrawl, drunk } from './life';
+import type { FighterParams } from './config';
 import { exportSave, importSave } from './saveCode';
 import { cloudFlush, cloudRestore, cloudAt, cloudState } from './cloud';
 
 export interface CareerHooks {
   /** Show this fight in the arena; `done` gets the result when it is over. */
-  fight(me: CareerFighter, opp: CareerFighter, tier: Tier, title: string, done: (r: FightResult) => void): void;
+  fight(me: CareerFighter, opp: CareerFighter, tier: Tier, title: string, done: (r: FightResult) => void, tweak?: (p: FighterParams) => void): void;
   /** Back to the sandbox. */
   close(): void;
 }
@@ -152,7 +154,7 @@ export class CareerUi {
           <button type="button" data-act="help">Понятно</button>
         </div>`;
     const tour = this.tourBanner();
-    return `${help}${this.dayBar()}${tour}${this.today()}
+    return `${help}${this.dayBar()}${this.incidents()}${tour}${this.today()}
       ${this.hero(f)}
       <div class="big2">
         <button type="button" class="bigbtn" data-act="to" data-s="gym"><b>Тренировать</b><span>${busy(c, f) ? 'сегодня занят' : 'занимает день'}</span></button>
@@ -166,6 +168,19 @@ export class CareerUi {
       </div>
       <button type="button" data-act="to" data-s="save">💾 Сохранение и перенос</button>
       <div class="newsbox"><div class="h2">Новости мира боёв</div>${(c.news ?? []).slice(0, 4).map((x) => `<div>${esc(x)}</div>`).join('')}<div class="fnote">Бойцы мира дерутся каждый день, даже когда игра закрыта.</div></div>`;
+  }
+
+  /** What happened to ours and waits for the manager's word. */
+  private incidents(): string {
+    const list = this.c.incidents ?? [];
+    return list
+      .map((i) => `<div class="incident">
+        <div class="h2">${{ bar: '🍺 Драка в баре', binge: '🍾 Загул', street: '🚓 Уличная драка', skip: '💤 Прогул', sponsor: '💰 Спонсор', interview: '🎤 Интервью', love: '💘 Любовь', leave: '🚪 Хочет уйти' }[i.kind]}</div>
+        <div>${esc(i.text)}</div>
+        <div class="incopts">${i.opts.map((o) => `<button type="button" data-act="inc" data-i="${i.id}" data-o="${o.id}">${esc(o.label)}</button>`).join('')}</div>
+        <div class="fnote">Не решишь до конца дня — будет «${esc(i.opts[i.opts.length - 1].label.toLowerCase())}».</div>
+      </div>`)
+      .join('');
   }
 
   private dayBtn(): string {
@@ -205,6 +220,8 @@ export class CareerUi {
         <div class="rate"><b>${rating(f)}</b><span>рейтинг</span></div>
       </div>
       ${compact ? '' : `<div class="fstory">${esc(f.story)}</div>`}
+      <div class="traits">${(f.traits ?? []).map((t) => `<span class="trait" title="${esc(TRAITS[t].desc)}">${TRAITS[t].icon} ${TRAITS[t].name}</span>`).join('')}${this.c.roster.includes(f) ? `<span class="trait mood">${moodWord(f).icon} ${moodWord(f).text}</span>` : ''}</div>
+      ${compact || !this.c.roster.includes(f) ? '' : `<div class="fnote">${(f.traits ?? []).map((t) => TRAITS[t].desc).join(' ')}</div>`}
       ${this.status(f)}
       ${statsTable(f)}
       <div class="fnote">Полоса — уровень сейчас, белая чёрточка — его потолок (примерно). Тренер: <b>${talentWord(f)}</b>. Известность <b>${f.fame}</b>.</div>
@@ -673,6 +690,24 @@ export class CareerUi {
         return this.go(this.screen === 'preview' ? (this.bill?.tour ? 'bracket' : 'cal') : this.screen === 'profile' ? 'rank' : 'home');
       case 'to':
         return this.go(b.dataset.s as Screen);
+      case 'inc': {
+        const inc = (c.incidents ?? []).find((x) => x.id === Number(b.dataset.i));
+        if (!inc) return say(null);
+        const out = resolve(c, inc, b.dataset.o!);
+        if (!out.brawl) return say(out.lines.join(' · '));
+        const { f, opp, tier } = out.brawl;
+        c.pick = f.id;
+        const title = `Бар: ${short(f)} (пьяный) против ${short(opp)}`;
+        $('career').hidden = true;
+        clearInterval(this.timer);
+        this.hooks.fight(f, opp, tier, title, (r) => {
+          const lines = afterBrawl(c, f, r.won);
+          this.outcome = { won: r.won, title: r.won ? 'Вытащил из бара' : 'Вышибала оказался сильнее', lines };
+          this.screen = 'result';
+          this.show();
+        }, drunk);
+        return;
+      }
       case 'help':
         c.seenHelp = true;
         save(c);

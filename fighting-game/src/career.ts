@@ -5,6 +5,8 @@ import { RED, BLUE, type FighterParams } from './config';
 import type { DisciplineId } from './disciplines';
 import type { MapId } from './maps';
 import type { Rules } from './sim';
+import type { SkinId } from './skins';
+import { rollTraits, ensureLife, dailyLife, trainK, lifeParams, moodAfterFight, type TraitId, type Incident } from './life';
 
 export type StatKey = 'bodySpeed' | 'strength' | 'mindSpeed' | 'skill' | 'evasion' | 'cardio';
 export type Stats = Record<StatKey, number>;
@@ -44,6 +46,13 @@ export interface CareerFighter {
   elo?: number;
   /** Planned sessions, one a day, started as days go by. */
   queue?: { stat: StatKey; it: Intensity['id'] }[];
+  /** Character (life.ts): drinker, hothead, lazy... and mood -100..100. */
+  traits?: TraitId[];
+  mood?: number;
+  /** Hungover on this day: training gives half. */
+  hangover?: number;
+  /** A look of his own instead of his style's (a bouncer in a leather jacket). */
+  skin?: SkinId;
 }
 
 export interface Tier {
@@ -126,6 +135,9 @@ export interface Career {
   /** Days already filled with events. */
   planned: number;
   nextEv: number;
+  /** Things that happened to ours and wait for the manager's word (life.ts). */
+  incidents?: Incident[];
+  nextInc?: number;
 }
 
 export type EvKind = 'night' | 'tour' | 'title';
@@ -246,6 +258,8 @@ export function makeFighter(level: number, talent: number, cls?: WClass): Career
     busyUntil: 0,
     busyFrom: 0,
     busyWhat: '',
+    traits: rollTraits(),
+    mood: Math.round(rnd(10, 50)),
   };
 }
 
@@ -282,7 +296,7 @@ export function value(f: CareerFighter): number {
 }
 
 export function toParams(f: CareerFighter, team: 0 | 1, angry = false): FighterParams {
-  return {
+  const p: FighterParams = {
     name: f.name.replace(/^(\S+) «(.+)» (\S+)$/, '$2'),
     color: team === 0 ? RED : BLUE,
     height: f.height,
@@ -300,6 +314,9 @@ export function toParams(f: CareerFighter, team: 0 | 1, angry = false): FighterP
     grappling: 0,
     powers: [],
   };
+  if (f.skin) p.skin = f.skin;
+  lifeParams(f, p);
+  return p;
 }
 
 // ---------- Training ----------
@@ -324,7 +341,7 @@ export const INTENSITY: Intensity[] = [
 export function gainOf(f: CareerFighter, k: StatKey, it: Intensity): number {
   const info = STAT_INFO[k];
   const room = (f.caps[k] - f.stats[k]) / Math.max(0.05, f.caps[k] - info.lo);
-  return Math.max(0, info.base * it.k * Math.min(1, 0.15 + 1.6 * room) * (room > 0 ? 1 : 0));
+  return Math.max(0, info.base * it.k * trainK(f) * Math.min(1, 0.15 + 1.6 * room) * (room > 0 ? 1 : 0));
 }
 
 /** Busy today (training, getting over a fight); `busyUntil` is the first day he is free. */
@@ -526,6 +543,7 @@ function endDay(c: Career): string[] {
     const why = startQueued(c, f);
     if (why) out.push(`${short(f)}: план тренировок встал (${why.toLowerCase()})`);
   }
+  out.push(...dailyLife(c));
   out.unshift(`— ${dayName(c.day)}, ${weekday(c.day)} —`);
   return out;
 }
@@ -697,6 +715,7 @@ export function afterFight(c: Career, f: CareerFighter, t: Tier, opp: CareerFigh
     const room = Math.max(0, f.caps[k] - f.stats[k]);
     f.stats[k] = Math.min(f.caps[k], f.stats[k] + Math.min(room, x * (0.3 + room)));
   };
+  moodAfterFight(f, r.won, r.ko);
   learn('skill', 0.012);
   learn('mindSpeed', 0.004);
   out.push(...recordBout(c, r.won ? f : opp, r.won ? opp : f, r.ko, title));
@@ -914,7 +933,7 @@ export function rankOf(c: Career, f: CareerFighter): number {
 const relKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 export const relOf = (c: Career, a: CareerFighter, b: CareerFighter) => c.rel?.[relKey(a.id, b.id)] ?? 0;
 
-function addRel(c: Career, a: CareerFighter, b: CareerFighter, d: number): number {
+export function addRel(c: Career, a: CareerFighter, b: CareerFighter, d: number): number {
   const k = relKey(a.id, b.id);
   const before = c.rel![k] ?? 0;
   c.rel![k] = Math.round(clamp(before + d, -100, 100));
@@ -1101,6 +1120,7 @@ export function newCareer(): Career {
   };
   c.gifts = ['tokens100'];
   ensureWorld(c);
+  ensureLife(c);
   plan(c);
   refreshMarket(c);
   return c;
@@ -1114,6 +1134,7 @@ export function load(): Career | null {
     // A gift for saves made before the start went up to 100 tokens.
     c.gifts ??= [];
     ensureWorld(c);
+    ensureLife(c);
     // A tournament from before the brackets: give the fee back.
     if (c.tour && !(c.tour as Partial<Tour>).rounds) {
       c.money += TIER_BY_ID[c.tour.tier]?.fee ?? 0;

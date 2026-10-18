@@ -208,6 +208,21 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   Screens: 'rank' (top 20 + ours, ⚔ enemies), 'profile' (any fighter, feelings, "Вызвать"
   in his league), title card on the fights screen, news on home and in the journal.
   Tool: `worldtest`.
+  Life between fights (`life.ts`, user: make the career more fun, fighters who get drunk and
+  brawl in bars and have to be fetched): traits (`CareerFighter.traits`, 1-2 of drinker /
+  hothead / lazy / grinder / star / ladies / loyal) and mood (-100..100: wins/losses, rest,
+  choices; training gain x0.85..1.15 via `trainK`, lazy x0.85, grinder x1.15, hangover x0.5;
+  fight skill x(1 +- 0.04), hothead +0.12 aggression via `lifeParams` in `toParams`).
+  `dailyLife` (end of `endDay`): unanswered incidents settle as 'ignore', then one may happen
+  per fighter: bar brawl (drinker), binge, street fight + bail (hothead, rel -30 with a world
+  man of his class), skipped training (lazy), sponsor (star/fame), interview before a booked
+  fight (trash talk = rel -35, fame), love (ladies), wants to leave (mood < -60). Cards on
+  the career home (`incidents()`, data-act 'inc'); `resolve` applies a choice. "Ехать
+  вытаскивать" = a fight in the new map 'bar' (cramped room with walls, a solid counter,
+  beer crates; `bar()` in arena.ts) against `bouncer()` (heavy street fighter, skin 'robot')
+  while drunk (`drunk`: skill x0.6, mind x0.7, body x0.93, aggression +0.3) via the career
+  fight hook's `tweak`; `afterBrawl`. `CareerFighter.skin` overrides the look. Tool:
+  `lifetest [days]`. `window.__career` exposed for tests.
 - "Записать бой" (`recorder.ts`): the last 12 s at 15 fps (via `Sim.onStep`), body segments
   in cm as deltas + actions + hits, gzip+base64 code `БОЙ1:` (~16k chars). Button shows when
   paused (#btnRec) and on the KO card. Decode: `tools/run.sh replay code.txt out.json`, then

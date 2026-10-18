@@ -2048,3 +2048,67 @@ body.pixel .dock button {
 #career .trait.mood {
   border-color: #3fe0ff;
 }
+
+/* Cutscenes: black bars, a comic box for lines and captions, the HUD out of the way. */
+#cut {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  cursor: pointer;
+}
+#cut .cutbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 11%;
+  background: #000;
+}
+#cut .cutbar.top { top: 0; }
+#cut .cutbar.bot { bottom: 0; }
+#cut .cutline {
+  position: absolute;
+  left: 50%;
+  bottom: calc(11% + 14px);
+  transform: translateX(-50%);
+  width: min(92%, 560px);
+  background: #fff8e8;
+  color: #111;
+  border: 3px solid #111;
+  box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.6);
+  padding: 8px 12px 10px;
+  font: 600 16px/1.35 'Pixelify Sans', system-ui, sans-serif;
+  animation: cutpop 0.18s ease-out;
+}
+#cut .cutline b {
+  display: block;
+  font: 400 11px/1.6 'Press Start 2P', monospace;
+  margin-bottom: 4px;
+}
+#cut .cutline.team0 b { color: #d8343a; }
+#cut .cutline.team1 b { color: #2a6ad8; }
+#cut .cutline.cap {
+  background: #111;
+  color: #ffd23a;
+  text-align: center;
+  font: 400 13px/1.6 'Press Start 2P', monospace;
+  top: calc(11% + 14px);
+  bottom: auto;
+}
+#cut .cutskip {
+  position: absolute;
+  right: 12px;
+  bottom: 3%;
+  color: #888;
+  font: 12px system-ui, sans-serif;
+}
+@keyframes cutpop {
+  from { transform: translateX(-50%) scale(0.85); opacity: 0; }
+  to { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+body.cutting .hud,
+body.cutting .dock,
+body.cutting #labels,
+body.cutting #moment,
+body.cutting #btnRec {
+  display: none !important;
+}

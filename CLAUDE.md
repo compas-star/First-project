@@ -223,6 +223,18 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   while drunk (`drunk`: skill x0.6, mind x0.7, body x0.93, aggression +0.3) via the career
   fight hook's `tweak`; `afterBrawl`. `CareerFighter.skin` overrides the look. Tool:
   `lifetest [days]`. `window.__career` exposed for tests.
+  Cutscenes (`cutscenes.ts`, user: cutscenes on the game's own graphics): a scene is a `Cut`
+  (map, two FighterParams, start distance, beats, lines, camera function). `playCut` in
+  main.ts builds a Sim with `sim.scene` (no AI: stance, stamina 1, keep `scene.dist`, drunk
+  ones get daze 0.55 = sway), camera via `view.debugCam`, letterbox bars + comic line box
+  (`#cut`, CSS at the end of style.css, HUD hidden by `body.cutting`), tap skips, real time.
+  `barCut` before "Ехать вытаскивать" (wide push-in, drunk line, bouncer over the shoulder,
+  close-up), `faceoffCut` before title fights and fights with a sworn enemy (walk up nose to
+  nose, names + records, lines by title/hate, a shove and pulled apart when hate),
+  `beltCut` after a won title fight (loser down, victory pose, `view.belt` = gold belt on
+  the pelvis, `view.confetti`, low circling camera). Career fight hook `opts` {intro, barName,
+  title, cls}; `careerFight.belt`. Fixed on the way: the victory pose never showed (smooth(u)
+  with dur 1e9) -> by local time. `window.__cut` for tests.
 - "Записать бой" (`recorder.ts`): the last 12 s at 15 fps (via `Sim.onStep`), body segments
   in cm as deltas + actions + hits, gzip+base64 code `БОЙ1:` (~16k chars). Button shows when
   paused (#btnRec) and on the KO card. Decode: `tools/run.sh replay code.txt out.json`, then

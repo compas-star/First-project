@@ -21,6 +21,7 @@ import { Recorder } from './recorder';
 import { toParams, relOf, load as loadCareer, saveHook, type FightResult } from './career';
 import { cloudStart, cloudDirty } from './cloud';
 import type { Rules } from './sim';
+import { barCut, faceoffCut, beltCut, type Cut } from './cutscenes';
 
 type Eyes = 'fastest' | 'red' | 'blue' | 'real';
 const EYES: Eyes[] = ['fastest', 'red', 'blue', 'real'];
@@ -299,8 +300,75 @@ function recall(): void {
   }
 }
 
-// A fight of the manager mode in progress: who to tell when it is over.
-let careerFight: { done: (r: FightResult) => void } | null = null;
+// A fight of the manager mode in progress: who to tell when it is over, and whether a
+// won title fight ends with the belt scene (its weight class).
+let careerFight: { done: (r: FightResult) => void; belt?: string } | null = null;
+
+// ---------- Cutscenes ----------
+
+let cutState: { c: Cut; t0: number; next: number; line: number; done: () => void } | null = null;
+const cutEl = document.createElement('div');
+cutEl.id = 'cut';
+cutEl.hidden = true;
+cutEl.innerHTML = '<div class="cutbar top"></div><div class="cutbar bot"></div><div class="cutline" hidden><b></b><span></span></div><div class="cutskip">тап — пропустить</div>';
+$('app').appendChild(cutEl);
+cutEl.addEventListener('click', () => endCut());
+
+/** Plays a scripted scene on the game's engine, then `done`. */
+function playCut(c: Cut, done: () => void): void {
+  sim?.dispose();
+  sim = new Sim(c.a, c.b, (Math.random() * 1e9) | 0, c.map, QUICK);
+  sim.scene = { dist: c.dist, drunk: c.drunk };
+  (window as unknown as { __sim: Sim }).__sim = sim;
+  view.setSim(sim);
+  c.start?.(sim);
+  // No knockout card for a scene (the belt scene has a man down).
+  koShownAt = 1;
+  $('ko').hidden = true;
+  paused = false;
+  cutState = { c, t0: performance.now(), next: 0, line: -1, done };
+  view.debugCam = (cam) => {
+    if (cutState) cutState.c.cam((performance.now() - cutState.t0) / 1000, cam, sim);
+  };
+  (cutEl.querySelector('.cutline') as HTMLElement).hidden = true;
+  cutEl.hidden = false;
+  document.body.classList.add('cutting');
+}
+
+(window as unknown as { __cut: unknown }).__cut = { play: (c: Cut) => playCut(c, () => startFight()), barCut, faceoffCut, beltCut, MAP_BY_ID, params };
+
+function stepCut(): void {
+  const cs = cutState!;
+  const t = (performance.now() - cs.t0) / 1000;
+  const beats = cs.c.beats;
+  while (cs.next < beats.length && beats[cs.next].at <= t) beats[cs.next++].run(sim, view);
+  let li = -1;
+  cs.c.lines.forEach((l, i) => {
+    if (l.at <= t) li = i;
+  });
+  if (li !== cs.line) {
+    cs.line = li;
+    const box = cutEl.querySelector('.cutline') as HTMLElement;
+    const l = cs.c.lines[li];
+    box.hidden = !l;
+    if (l) {
+      box.className = `cutline ${l.who === null ? 'cap' : `team${l.who}`}`;
+      (box.querySelector('b') as HTMLElement).textContent = l.who === null ? '' : sim.fighters[l.who].p.name;
+      (box.querySelector('span') as HTMLElement).textContent = l.text;
+    }
+  }
+  if (t >= cs.c.dur) endCut();
+}
+
+function endCut(): void {
+  if (!cutState) return;
+  const done = cutState.done;
+  cutState = null;
+  view.debugCam = undefined;
+  cutEl.hidden = true;
+  document.body.classList.remove('cutting');
+  done();
+}
 
 function setCareerDock(on: boolean): void {
   for (const id of ['btnRestart', 'btnSetup', 'btnCareer']) $(id).hidden = on;
@@ -488,6 +556,7 @@ function frame(now: number): void {
   if (sim.winner) koReal += realDt;
   let target = sim.winner ? (koReal < 1.8 ? Math.min(targetScale(), 0.22) : Math.max(targetScale(), 0.5)) : targetScale();
   if (now < dramaUntil && !sim.winner) target = Math.min(target, 0.3);
+  if (cutState) target = 1;
   view.koFocus = sim.winner ? sim.winner.enemy : null;
   const k = 1 - Math.exp(-realDt * 5);
   viewScale = Math.exp(Math.log(viewScale) + (Math.log(target) - Math.log(viewScale)) * k);
@@ -503,7 +572,8 @@ function frame(now: number): void {
 
   // The setup sheet (or the career) is open over the fight: the cards wait until it is closed,
   // or they would cover it and take its taps (it looked frozen).
-  const covered = !$('sheet').hidden || !$('career').hidden;
+  if (cutState) stepCut();
+  const covered = !$('sheet').hidden || !$('career').hidden || !!cutState;
   // Between rounds: the card, then the next round (by tap or after a few seconds).
   if (sim.betweenRounds && !covered) {
     if (roundShownAt < 0) {
@@ -878,20 +948,24 @@ try {
 saveHook.after = cloudDirty;
 
 const career = new CareerUi({
-  fight(me, opp, tier, title, done, tweak) {
-    careerFight = { done };
+  fight(me, opp, tier, title, done, tweak, opts) {
+    careerFight = { done, belt: opts?.title && opts.cls ? opts.cls : undefined };
     setCareerDock(true);
     // Sworn enemies come at each other harder.
     const grudge = relOf(career.c, me, opp) <= -50;
     const mine = toParams(me, 0, grudge);
     tweak?.(mine);
-    runFight(mine, toParams(opp, 1, grudge), MAP_BY_ID[tier.map], tier.rules);
-    // The bill of the fight, as a caption, whatever the words setting.
-    const el = $('moment');
-    el.textContent = title;
-    el.classList.remove('show');
-    void el.offsetWidth;
-    el.classList.add('show');
+    const theirs = toParams(opp, 1, grudge);
+    const map = MAP_BY_ID[tier.map];
+    const rec = (f: typeof me) => `${f.record.w}-${f.record.l}`;
+    const go = () => {
+      runFight(mine, theirs, map, tier.rules);
+      showBill(title);
+    };
+    // A scene first: the bar, or face to face before a title fight or one with a sworn enemy.
+    if (opts?.intro === 'bar') return playCut(barCut(mine, theirs, map, opts.barName ?? '«Подкова»'), go);
+    if (opts?.title || grudge) return playCut(faceoffCut(mine, theirs, map, { title: !!opts?.title, hate: grudge, recA: rec(me), recB: rec(opp) }), go);
+    go();
   },
   close() {
     paused = false;
@@ -899,6 +973,15 @@ const career = new CareerUi({
     if (careerFight) startFight();
   },
 });
+
+/** The bill of the fight, as a caption, whatever the words setting. */
+function showBill(title: string): void {
+  const el = $('moment');
+  el.textContent = title;
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
+}
 
 (window as unknown as { __career: CareerUi }).__career = career;
 
@@ -918,6 +1001,13 @@ function finishCareerFight(): void {
     seconds: sim.t,
   };
   $('ko').hidden = true;
+  if (cf.belt && won) {
+    playCut(beltCut(me.p, opp.p, sim.map, cf.belt), () => {
+      paused = true;
+      cf.done(r);
+    });
+    return;
+  }
   paused = true;
   cf.done(r);
 }

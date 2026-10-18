@@ -445,7 +445,8 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
         lerpPose(out, DOWN, STANCE, smooth(u * 1.4));
         break;
       case 'victory':
-        lerpPose(out, out, withStance(POSES.victory), smooth(u * 3));
+        // Arms up within a third of a second of his own time (it lasts as long as it lasts).
+        lerpPose(out, out, withStance(POSES.victory), smooth(Math.min(1, a.t * 3)));
         break;
     }
   }

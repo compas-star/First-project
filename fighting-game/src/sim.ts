@@ -689,6 +689,11 @@ export class Sim {
   readonly rules: Rules;
   /** Strike lab: the red fighter strikes on command at a dummy; nothing hurts. */
   lab: Lab | null = null;
+  /**
+   * A cutscene: no AI, they stand in their stance facing each other at this distance (in
+   * metres for a man of 1.8), the script moves them (cutscenes.ts). Drunk ones sway.
+   */
+  scene: { dist: number; drunk?: [boolean, boolean] } | null = null;
   labHits: { move: string; zone: string; dmg: number; blocked: boolean; t: number }[] = [];
   /** Rounds: current round (1-based), time into it, and a break between rounds. */
   round = 1;
@@ -1095,7 +1100,13 @@ export class Sim {
       // Tense muscles burn the wind too: he gets it back only when he can let go.
       f.stamina = Math.min(1, Math.max(0, f.stamina) + busy * (0.088 - 0.04 * moving) * (1 - 0.45 * f.tension) * f.cardio * dl);
       const lab = this.lab;
-      if (lab) {
+      const scene = this.scene;
+      if (scene) {
+        f.stamina = 1;
+        f.circleSpeed = 0;
+        f.wantDist = scene.dist * Math.max(f.scale, f.enemy.scale);
+        if (scene.drunk?.[f.team]) f.daze = Math.max(f.daze, 0.55);
+      } else if (lab) {
         // The lab: the striker does only what he is told, the dummy at most defends.
         f.stamina = 1;
         f.circleSpeed = 0;

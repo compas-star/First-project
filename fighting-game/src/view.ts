@@ -307,6 +307,25 @@ class FighterView {
     });
   }
 
+  /** The champion's belt round his waist: gold, with a big plate in front. */
+  addBelt(): void {
+    const g = this.f.girth;
+    const gold = new THREE.MeshStandardMaterial({ color: 0xe8b830, roughness: 0.25, metalness: 0.85, emissive: 0x6a4a08, emissiveIntensity: 0.4 });
+    const leather = new THREE.MeshStandardMaterial({ color: 0x1a1210, roughness: 0.6 });
+    const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.165 * g, 0.165 * g, 0.09, 16, 1, true), leather);
+    strap.scale.set(1, 1, 0.75);
+    strap.position.y = 0.05;
+    const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.025, 12), gold);
+    plate.rotation.x = Math.PI / 2;
+    plate.position.set(0, 0.05, 0.13 * g);
+    const gem = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), new THREE.MeshStandardMaterial({ color: 0xd02020, emissive: 0x801010, roughness: 0.2 }));
+    gem.position.set(0, 0.05, 0.145 * g);
+    for (const o of [strap, plate, gem]) {
+      o.castShadow = true;
+      this.rig.pelvis.add(o);
+    }
+  }
+
   /** A broken limb turns dark, so it is clear why it hangs. */
   private showInjuries(): void {
     const groups: Record<Limb, THREE.Object3D> = {
@@ -498,6 +517,15 @@ export class View {
     if (rebuild && this.sim) this.setSim(this.sim);
     for (const fv of this.fighters) fv.setFigure(mode);
     this.toonAll();
+  }
+
+  /** Cutscenes: the belt on a fighter, confetti in the air. */
+  belt(team: number): void {
+    this.fighters[team]?.addBelt();
+  }
+  confetti(at: THREE.Vector3): void {
+    const cols = [0xffd23a, 0xff4f8a, 0x3fd0ff, 0x7dff5a, 0xffffff];
+    this.burst(at, 18, 2.2, new THREE.Color(cols[Math.floor(Math.random() * cols.length)]), 1.6);
   }
 
   setPixel(n: number): void {

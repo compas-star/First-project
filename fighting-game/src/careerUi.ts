@@ -20,7 +20,12 @@ import { cloudFlush, cloudRestore, cloudAt, cloudState } from './cloud';
 
 export interface CareerHooks {
   /** Show this fight in the arena; `done` gets the result when it is over. */
-  fight(me: CareerFighter, opp: CareerFighter, tier: Tier, title: string, done: (r: FightResult) => void, tweak?: (p: FighterParams) => void): void;
+  fight(
+    me: CareerFighter, opp: CareerFighter, tier: Tier, title: string, done: (r: FightResult) => void,
+    tweak?: (p: FighterParams) => void,
+    /** Scenes: the bar before a bar brawl; a title fight gets face to face and the belt. */
+    opts?: { intro?: 'bar'; barName?: string; title?: boolean; cls?: string },
+  ): void;
   /** Back to the sandbox. */
   close(): void;
 }
@@ -705,7 +710,7 @@ export class CareerUi {
           this.outcome = { won: r.won, title: r.won ? 'Вытащил из бара' : 'Вышибала оказался сильнее', lines };
           this.screen = 'result';
           this.show();
-        }, drunk);
+        }, drunk, { intro: 'bar', barName: inc.text.match(/«[^»]+»/)?.[0] });
         return;
       }
       case 'help':
@@ -877,7 +882,7 @@ export class CareerUi {
       this.bill = null;
       this.screen = 'result';
       this.show();
-    });
+    }, undefined, { title: !!b.title, cls: classOf(me).name });
   }
 }
 

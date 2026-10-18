@@ -19,6 +19,8 @@ import { readOpponent, fitOf, zoneBias, type Read } from './tactics';
 // untrained one walks into close range and throws wide swings.
 
 const d = new THREE.Vector3();
+/** Tests switch parts of the look-ahead off (tools/look.ts). */
+const LOOK = () => (globalThis as { __look?: Record<string, boolean> }).__look ?? {};
 const fwd = new THREE.Vector3();
 
 /** Weight of a move for this fighter: clean moves need technique, wild ones do not. */
@@ -135,11 +137,11 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
   if (dist > sim.attackRange(e, m) + ea.lunge + 0.5) return;
   // He saw this one coming. If there is time, beat it to the punch; else out of the way,
   // with the answer already loaded.
-  if (read > 0.15 && (!f.action || f.action.kind === 'block') && !sim.lab) {
+  if (read > 0.15 && (!f.action || f.action.kind === 'block') && !sim.lab && !f.winded && !LOOK().noread) {
     const first = sim
       .usableMoves(f)
       .filter((c) => f.windupOf(c) * 1.1 < tti && dist <= sim.attackRange(f, c) + c.lunge * f.scale * 0.6);
-    if (first.length && sim.rng() < 0.25 + 0.5 * read * f.tech) {
+    if (first.length && f.stamina > 0.35 && !LOOK().nofirst && sim.rng() < 0.25 + 0.5 * read * f.tech) {
       const best = first.reduce((a, b) => (b.power > a.power ? b : a));
       noted(f, 'counter');
       sim.startAction(f, 'attack', { move: best, reply: true });
@@ -147,6 +149,8 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
       return;
     }
     if (tryDodge(f, e, m, ea, sim, tti, 0.3 + read, read)) {
+      // A dodge he was ready for is small and costs little.
+      f.stamina += (0.035 * (1 - 0.4 * f.p.evasion) * 0.6 * read) / f.cardio;
       if (!e.comboLeft && !e.script) f.readW = sim.t + 1.2 / f.mind;
       f.say(`ждал ${kindName(kind)}`);
       return;
@@ -569,7 +573,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   let go: 'bait' | 'punish' | 'answer' | 'entry' | 'meet' | null = null;
   if (bit) go = 'bait';
   else if (opening && sim.rng() < (f.winded ? 0.3 : 1) * (0.25 + 0.3 * tech) * Math.min(1.3, planEagerness(f, true) * 0.6)) go = 'punish';
-  else if (answering && !f.winded && sim.rng() < 0.12 + 0.2 * tech + (sim.t - f.lastDodgeW < 0.6 ? 0.6 * f.p.evasion : 0) + (sim.t < f.readW ? 0.7 : 0)) go = 'answer';
+  else if (answering && !f.winded && sim.rng() < 0.12 + 0.2 * tech + (sim.t - f.lastDodgeW < 0.6 ? 0.6 * f.p.evasion : 0) + (sim.t < f.readW && !LOOK().noanswer ? 0.7 : 0)) go = 'answer';
   else if (behind && sim.rng() < 0.5) go = 'punish';
   else if (sim.t >= f.initiativeW) go = f.stamina < 0.12 ? null : 'entry';
   else if (steppedIn && !f.winded && sim.rng() < 0.08 + 0.3 * tech) go = 'meet';
@@ -623,7 +627,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
       return;
     }
     // A trap: he always answers this blow with the same one. Show it, and wait for his answer.
-    if ((go === 'entry' || go === 'bait') && !script && f.insight > 0.2 && !finishing) {
+    if ((go === 'entry' || go === 'bait') && !script && f.insight > 0.2 && !finishing && !LOOK().notrap) {
       const traps = options
         .filter((o) => o.path)
         .map((o) => ({ o, a: predict(f.mem.answer, blowKind(o)) }))

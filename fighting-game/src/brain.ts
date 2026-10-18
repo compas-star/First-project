@@ -207,6 +207,11 @@ export function updatePlan(f: Fighter, e: Fighter, sim: Sim): void {
   if (f.broken.lArm && f.broken.rArm) score.legs += 0.5;
   // Learned taste for each plan; a plan that does not apply stays off.
   for (const id of Object.keys(score) as PlanId[]) if (score[id] > 0) score[id] += f.gene(`p.${id}`);
+  // The corner's plan for this round: a disciplined fighter sticks to it; a hurt
+  // enemy or a bad spot still comes first, only less so.
+  const order = cornerOrder(f, sim);
+  f.ordered = order;
+  if (order && score[order] > 0) score[order] += (score.finish > 0 || score.survive > 0 ? 0.25 : 0.6) + 0.35 * tech;
   // Loyalty to the current plan, and a bit of personality noise.
   score[f.plan] += 0.15;
   let best: PlanId = f.plan;
@@ -222,6 +227,17 @@ export function updatePlan(f: Fighter, e: Fighter, sim: Sim): void {
     f.plan = best;
     f.say(`план: ${PLAN_NAME[best]}`);
   }
+}
+
+/** Strikes that carry out a plan, for plans that are about a target. */
+export function planMoves(p: PlanId): string[] | null {
+  return p === 'legs' ? LOW_KICKS : p === 'body' ? BODY_MOVES : null;
+}
+
+/** What the corner told him for this round, if anything. */
+export function cornerOrder(f: Fighter, sim: Sim): PlanId | null {
+  const o = f.p.roundPlan?.[Math.max(0, sim.round - 1)];
+  return o && o in PLAN_NAME ? (o as PlanId) : null;
 }
 
 /** Preferred distance multiplier for the plan. */
@@ -271,10 +287,10 @@ export function moveWeight(f: Fighter, m: Move): number {
       if (PRESSURE_MOVES.includes(m.id)) k *= 1.6;
       break;
     case 'legs':
-      if (LOW_KICKS.includes(m.id)) k *= 4;
+      if (LOW_KICKS.includes(m.id)) k *= f.ordered === 'legs' ? 7 : 4;
       break;
     case 'body':
-      if (BODY_MOVES.includes(m.id)) k *= 2;
+      if (BODY_MOVES.includes(m.id)) k *= f.ordered === 'body' ? 3.2 : 2;
       break;
     case 'finish':
       if (POWER_MOVES.includes(m.id)) k *= 1.8;

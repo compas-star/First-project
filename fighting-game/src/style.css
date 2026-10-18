@@ -2112,3 +2112,43 @@ body.cutting #moment,
 body.cutting #btnRec {
   display: none !important;
 }
+/* Gym tabs, drilled strikes, tonus, the fight plan. */
+#career .gtabs button {
+  flex: 1;
+}
+#career .sbar.tonus i {
+  background: repeating-linear-gradient(90deg, var(--cyan) 0 6px, #2a9fb8 6px 8px);
+}
+#career .mrow {
+  padding: 6px 10px;
+}
+#career .mrow .sbar {
+  height: 8px;
+}
+#career .gprow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0;
+  padding: 10px 12px;
+  background: #15111a;
+}
+#career .gprow > span {
+  font: 400 9px/1.4 var(--px);
+  color: var(--cyan);
+}
+#career .gprow > b {
+  font: 600 15px/1.2 var(--pxb);
+  color: var(--muted);
+}
+#career .gprow.on > b {
+  color: var(--gold);
+}
+#career .gtabs {
+  flex-wrap: nowrap;
+}
+#career .gtabs button {
+  min-width: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+}

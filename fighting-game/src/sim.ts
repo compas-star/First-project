@@ -356,6 +356,8 @@ export class Fighter {
   readW = 0;
   plan: PlanId = 'outbox';
   nextPlanW = 0;
+  /** The corner's plan for this round, if it has one. */
+  ordered: PlanId | null = null;
   /** After a feint: the opponent may be caught reacting until this world time. */
   baitUntilW = 0;
   /** Which leg gave way in a buckle. */
@@ -565,12 +567,18 @@ export class Fighter {
 
   /** How much this fighter's style likes a strike; 0 = never used. */
   weightOf(m: Move): number {
-    const w = this.disc.weights[m.id] ?? 0;
+    const L = this.drill(m);
+    const w = (this.disc.weights[m.id] ?? 0) + 1.6 * L;
     // A lame leg: he hardly kicks with it, and kicking with the other means standing on it.
     const foot = m.limb === 'lFoot' || m.limb === 'lKnee' ? 'lLeg' : m.limb === 'rFoot' || m.limb === 'rKnee' ? 'rLeg' : null;
     if (!foot || !w) return w;
     const other = foot === 'lLeg' ? 'rLeg' : 'lLeg';
     return w * (1 - 0.8 * this.lame(foot)) * (1 - 0.5 * this.lame(other));
+  }
+
+  /** How well he has drilled this strike, 0..1. */
+  drill(m: Move): number {
+    return this.p.moves?.[m.id] ?? 0;
   }
 
   canUse(m: Move): boolean {
@@ -581,7 +589,7 @@ export class Fighter {
   durOf(m: Move): number {
     const foot = m.limb === 'lFoot' || m.limb === 'lKnee' ? 'lLeg' : m.limb === 'rFoot' || m.limb === 'rKnee' ? 'rLeg' : null;
     const lame = foot ? 1 + 0.4 * this.lame(foot) : 1;
-    return (lame * m.duration * STRIKE_TEMPO * (1 + 0.35 * (1 - this.tech)) * (1 + 0.45 * this.fatigue)) / (m.path ? this.style.handSpeed : 1);
+    return ((1 - 0.12 * this.drill(m)) * lame * m.duration * STRIKE_TEMPO * (1 + 0.35 * (1 - this.tech)) * (1 + 0.45 * this.fatigue)) / (m.path ? this.style.handSpeed : 1);
   }
 
   /** World seconds from starting a move until it can hit. */
@@ -1846,6 +1854,8 @@ export class Sim {
       f.action = null;
       f.combo = null;
       f.initiativeW = 0;
+      // The corner's word for the new round is heard at once.
+      f.nextPlanW = 0;
     }
     this.round++;
     this.roundT = 0;
@@ -2405,6 +2415,7 @@ export class Sim {
     let dmg = (8.8 * Math.sqrt(J / 9) * part.def.dmg * Math.sqrt(m.power)) / Math.pow(def.mass / 78, 0.4);
     // A well placed blow lands on the point, a wild one spreads its force.
     dmg *= m.style === 'clean' ? 0.75 + 0.5 * att.tech : 0.85;
+    dmg *= 1 + 0.15 * att.drill(m);
     // A real striker hits harder and cleaner than his style's average, a poor one softer.
     dmg *= (0.8 + 0.4 * att.striking) / (0.8 + 0.4 * styleStriking(att.p.discipline));
     if (fromBehind) dmg *= 1.3;

@@ -46,6 +46,11 @@ export interface FighterParams {
   skin?: SkinId;
   /** Overrides the habits outright (used while training). */
   genome?: Genome;
+  /** Strikes he has drilled, 0..1 by move id: thrown more, quicker, harder; a strike
+   *  outside his style becomes his own. */
+  moves?: Record<string, number>;
+  /** The corner's plan for each round (brain PlanId, or 'auto'). */
+  roundPlan?: string[];
 }
 
 export interface Skill {

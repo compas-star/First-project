@@ -6,6 +6,8 @@ import type { DisciplineId } from './disciplines';
 import type { MapId } from './maps';
 import type { Rules } from './sim';
 import type { SkinId } from './skins';
+import { MOVES } from './moves';
+import { DISCIPLINE_BY_ID } from './disciplines';
 import { rollTraits, ensureLife, dailyLife, trainK, lifeParams, moodAfterFight, type TraitId, type Incident } from './life';
 
 export type StatKey = 'bodySpeed' | 'strength' | 'mindSpeed' | 'skill' | 'evasion' | 'cardio';
@@ -41,11 +43,11 @@ export interface CareerFighter {
   busyFrom: number;
   busyWhat: string;
   /** A training session in progress, applied when it ends. */
-  session?: { stat: StatKey; gain: number; injury: number };
+  session?: { stat: StatKey; gain: number; injury: number; move?: string; tonus?: number };
   /** Ranking points (Elo): wins over better men raise them more. */
   elo?: number;
   /** Planned sessions, one a day, started as days go by. */
-  queue?: { stat: StatKey; it: Intensity['id'] }[];
+  queue?: { stat: StatKey; it: Intensity['id']; move?: string }[];
   /** Character (life.ts): drinker, hothead, lazy... and mood -100..100. */
   traits?: TraitId[];
   mood?: number;
@@ -53,6 +55,12 @@ export interface CareerFighter {
   hangover?: number;
   /** A look of his own instead of his style's (a bouncer in a leather jacket). */
   skin?: SkinId;
+  /** Sharpness 0..100: kept up by training (even at his ceiling), lost on days off. */
+  tonus?: number;
+  /** Strikes drilled in the gym, 0..1 by move id (see FighterParams.moves). */
+  drills?: Record<string, number>;
+  /** The manager's plan for each round of his next fights (PlanId or 'auto'). */
+  gamePlan?: string[];
 }
 
 export interface Tier {
@@ -315,8 +323,59 @@ export function toParams(f: CareerFighter, team: 0 | 1, angry = false): FighterP
     powers: [],
   };
   if (f.skin) p.skin = f.skin;
+  // Sharp or rusty: a fighter who keeps training is a bit quicker, harder and fresher.
+  const tk = tonusK(f);
+  p.bodySpeed *= tk;
+  p.strength *= tk;
+  p.cardio = (p.cardio ?? 1) * tk;
+  p.mindSpeed *= 1 + (tk - 1) * 0.5;
+  if (f.drills) p.moves = { ...f.drills };
+  if (f.gamePlan?.some((x) => x !== 'auto')) p.roundPlan = [...f.gamePlan];
   lifeParams(f, p);
   return p;
+}
+
+// ---------- Sharpness (tonus) ----------
+
+export const TONUS_START = 60;
+export const tonusOf = (f: CareerFighter) => f.tonus ?? TONUS_START;
+/** 100 = +5% speed, power and wind; 0 = -7.5%. World fighters keep in shape on their own. */
+export const tonusK = (f: CareerFighter) => 1 + 0.05 * (tonusOf(f) - TONUS_START) / 40;
+export function tonusWord(f: CareerFighter): string {
+  const t = tonusOf(f);
+  return t >= 85 ? 'отличная' : t >= 65 ? 'хорошая' : t >= 45 ? 'средняя' : t >= 25 ? 'уходит' : 'заржавел';
+}
+const TONUS_GAIN: Record<Intensity['id'], number> = { light: 8, normal: 14, hard: 22 };
+
+// ---------- Strikes (drills) and style ----------
+
+/** Strikes that can be drilled (not the street's flailing). */
+export const DRILLABLE = MOVES.filter((m) => m.id !== 'flail');
+export const drillOf = (f: CareerFighter, id: string) => f.drills?.[id] ?? 0;
+/** What a day of drilling a strike adds: less as he masters it, more with good technique. */
+export function drillGain(f: CareerFighter, id: string, it: Intensity): number {
+  const L = drillOf(f, id);
+  return 0.1 * it.k * trainK(f) * (0.55 + 0.6 * f.stats.skill) * (1 - 0.7 * L);
+}
+export const styleCost = (f: CareerFighter) => 150 + Math.round(f.fame * 3);
+/** A new school: 3 days of learning; his old style's strikes stay with him as drills. */
+export function changeStyle(c: Career, f: CareerFighter, d: DisciplineId): string | null {
+  if (d === f.discipline) return 'Уже этот стиль';
+  if (busy(c, f)) return 'Боец занят';
+  for (let x = c.day; x < c.day + 3; x++) if (bookedOn(c, f, x)) return `В ${dayName(x)} у него бой`;
+  const cost = styleCost(f);
+  if (c.money < cost) return 'Не хватает денег';
+  c.money -= cost;
+  const old = DISCIPLINE_BY_ID[f.discipline];
+  f.drills ??= {};
+  for (const [id, w] of Object.entries(old.weights)) if (w >= 0.5) f.drills[id] = Math.max(f.drills[id] ?? 0, Math.min(0.35, 0.12 * w));
+  f.discipline = d;
+  f.queue = [];
+  f.busyFrom = c.day;
+  f.busyUntil = c.day + 3;
+  f.busyWhat = `переучивается: ${DISCIPLINE_BY_ID[d].name}`;
+  save(c);
+  return null;
 }
 
 // ---------- Training ----------
@@ -350,7 +409,7 @@ export const busy = (c: Career, f: CareerFighter, day = c.day) => f.busyUntil > 
 /** His fight booked on that day, if any. */
 export const bookedOn = (c: Career, f: CareerFighter, day: number) => c.events.find((e) => e.f === f.id && e.day === day && !e.done) ?? null;
 
-export function startTraining(c: Career, f: CareerFighter, k: StatKey, it: Intensity): string | null {
+export function startTraining(c: Career, f: CareerFighter, k: StatKey, it: Intensity, move?: string): string | null {
   if (busy(c, f)) return 'Боец занят';
   if (c.tour?.fighter === f.id) return 'Боец на турнире';
   for (let d = c.day; d < c.day + it.days; d++) if (bookedOn(c, f, d)) return `В ${dayName(d)} у него бой`;
@@ -358,17 +417,20 @@ export function startTraining(c: Career, f: CareerFighter, k: StatKey, it: Inten
   c.money -= it.cost;
   // Real rounds of real work: a hard week can also leave him hurt.
   const hurt = Math.random() < it.injury ? 1 : 0;
-  f.session = { stat: k, gain: gainOf(f, k, it) * (0.75 + 0.5 * Math.random()), injury: hurt };
+  const luck = 0.75 + 0.5 * Math.random();
+  f.session = move
+    ? { stat: k, gain: drillGain(f, move, it) * luck, injury: hurt, move, tonus: TONUS_GAIN[it.id] }
+    : { stat: k, gain: gainOf(f, k, it) * luck, injury: hurt, tonus: TONUS_GAIN[it.id] };
   f.busyFrom = c.day;
   f.busyUntil = c.day + it.days;
-  f.busyWhat = `${STAT_INFO[k].drill} (${it.name.toLowerCase()})`;
+  f.busyWhat = move ? `отработка: ${moveName(move)} (${it.name.toLowerCase()})` : `${STAT_INFO[k].drill} (${it.name.toLowerCase()})`;
   save(c);
   return null;
 }
 
 /** Adds a session to his plan; if he is free today, the first one starts right away. */
-export function queueTraining(c: Career, f: CareerFighter, k: StatKey, it: Intensity): string | null {
-  (f.queue ??= []).push({ stat: k, it: it.id });
+export function queueTraining(c: Career, f: CareerFighter, k: StatKey, it: Intensity, move?: string): string | null {
+  (f.queue ??= []).push(move ? { stat: k, it: it.id, move } : { stat: k, it: it.id });
   const err = startQueued(c, f);
   save(c);
   return err;
@@ -380,7 +442,7 @@ export function startQueued(c: Career, f: CareerFighter): string | null {
   if (!q?.length || busy(c, f) || c.tour?.fighter === f.id || bookedOn(c, f, c.day)) return null;
   const next = q[0];
   const it = INTENSITY.find((x) => x.id === next.it)!;
-  const err = startTraining(c, f, next.stat, it);
+  const err = startTraining(c, f, next.stat, it, next.move);
   if (err) {
     // Cannot go on (no money): the rest of the plan is dropped, said once.
     f.queue = [];
@@ -516,15 +578,25 @@ export function nextDay(c: Career, force = false): string | null {
 function endDay(c: Career): string[] {
   const out = worldDay(c, c.day);
   c.day++;
+  const trained = new Set<CareerFighter>();
   for (const f of c.roster) {
     if (f.session && f.busyUntil <= c.day) {
       const s = f.session;
       f.session = undefined;
-      const before = f.stats[s.stat];
-      f.stats[s.stat] = Math.min(f.caps[s.stat], before + s.gain);
-      const d = f.stats[s.stat] - before;
-      const shown = s.stat === 'skill' || s.stat === 'evasion' ? `${(d * 100).toFixed(1)}%` : `×${d.toFixed(3)}`;
-      out.push(`${short(f)}: ${STAT_INFO[s.stat].name} +${shown}${d < 1e-4 ? ' — упёрся в потолок' : ''}`);
+      f.tonus = Math.min(100, tonusOf(f) + (s.tonus ?? 12));
+      trained.add(f);
+      if (s.move) {
+        f.drills ??= {};
+        const was = f.drills[s.move] ?? 0;
+        f.drills[s.move] = Math.min(1, was + s.gain);
+        out.push(`${short(f)}: ${moveName(s.move)} ${Math.round(was * 100)}→${Math.round(f.drills[s.move] * 100)}%`);
+      } else {
+        const before = f.stats[s.stat];
+        f.stats[s.stat] = Math.min(f.caps[s.stat], before + s.gain);
+        const d = f.stats[s.stat] - before;
+        const shown = s.stat === 'skill' || s.stat === 'evasion' ? `${(d * 100).toFixed(1)}%` : `×${d.toFixed(3)}`;
+        out.push(`${short(f)}: ${STAT_INFO[s.stat].name} +${shown}${d < 1e-4 ? ' — потолок, но тонус держит' : ''}`);
+      }
       if (s.injury) {
         f.busyFrom = c.day;
         f.busyUntil = c.day + 3;
@@ -535,6 +607,13 @@ function endDay(c: Career): string[] {
       out.push(`${short(f)} восстановился`);
       f.busyWhat = '';
     }
+  }
+  // A day without the gym: he goes soft (slower while getting over a fight).
+  for (const f of c.roster) {
+    if (trained.has(f)) continue;
+    const before = tonusOf(f);
+    f.tonus = Math.max(0, before - (f.busyWhat && !f.session ? 3 : 6));
+    if (before >= 45 && f.tonus < 45) out.push(`${short(f)} теряет форму: пора в зал`);
   }
   if (c.day - c.marketAt >= MARKET_DAYS) refreshMarket(c);
   plan(c);
@@ -1192,5 +1271,7 @@ export function reset(): Career {
   save(c);
   return c;
 }
+
+export const moveName = (id: string) => MOVES.find((m) => m.id === id)?.name ?? id;
 
 export const short = (f: CareerFighter) => f.name.replace(/^(\S+) «(.+)» (\S+)$/, '$1 $3');

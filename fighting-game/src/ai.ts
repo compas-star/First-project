@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { combos, comboName, CLASSICS, classicOn } from './combos';
+import { combos, comboName, CLASSICS, classicOn, type ComboStep } from './combos';
 import { MOVE_BY_ID, type Move } from './moves';
 import type { Fighter, Sim } from './sim';
 import {
-  updatePlan, planDistance, planEagerness, planComboBonus, moveWeight, bodyBias, feintChance, counterBonus, predict, blowKind, kindName, favourite,
+  updatePlan, planMoves, planDistance, planEagerness, planComboBonus, moveWeight, bodyBias, feintChance, counterBonus, predict, blowKind, kindName, favourite,
   type Reaction,
 } from './brain';
 import { readOpponent, fitOf, zoneBias, type Read } from './tactics';
@@ -619,8 +619,11 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     const classic = planned
       ? CLASSICS.filter((c) => classicOn(c.id) && c.styles.includes(f.p.discipline) && starts(c.steps) && c.steps.every((st) => f.canUse(MOVE_BY_ID[st.move]) && f.weightOf(MOVE_BY_ID[st.move]) > 0))
       : [];
-    const pool = mine.length && (!classic.length || sim.rng() < 0.65) ? mine : classic;
-    const script = pool.length && sim.rng() < 0.5 ? pool[Math.floor(sim.rng() * pool.length)] : null;
+    let pool: { steps: ComboStep[]; name?: string }[] = mine.length && (!classic.length || sim.rng() < 0.65) ? mine : classic;
+    // Told to work a target: combinations that carry it, or mostly single blows.
+    const target = f.ordered === f.plan ? planMoves(f.plan) : null;
+    if (target) pool = pool.filter((c) => c.steps.some((st) => target.includes(st.move)));
+    const script = pool.length && sim.rng() < (target ? 0.4 : 0.5) ? pool[Math.floor(sim.rng() * pool.length)] : null;
     if (script) m = MOVE_BY_ID[script.steps[0].move];
     f.script = null;
     const r = sim.attackRange(f, m);

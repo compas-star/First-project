@@ -236,6 +236,19 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   the pelvis, `view.confetti`, low circling camera). Career fight hook `opts` {intro, barName,
   title, cls}; `careerFight.belt`. Fixed on the way: the victory pose never showed (smooth(u)
   with dur 1e9) -> by local time. `window.__cut` for tests.
+  Coaching (user picked from another AI's list): (1) **plan per round** on the preview screen
+  (`planEditor`, tap a round to cycle сам решает / дистанция / давление / контратаки / ноги /
+  корпус; `CareerFighter.gamePlan` -> `FighterParams.roundPlan`); `cornerOrder` in brain.ts
+  adds 0.6+0.35 tech to that plan's score (0.25 when finish/survive apply), `Fighter.ordered`
+  makes legs/body moves weigh more and combos carry the target; `nextRound` re-plans at once.
+  Tool `gameplan`: low kicks ~1-3 -> 6-8 per 60 s round when told "legs". (2) **Tonus**
+  (`CareerFighter.tonus` 0..100, start 60): any session adds 8/14/22 even at the cap, a day
+  without the gym -6 (-3 while recovering); `tonusK` scales speed, power, cardio (mind half):
+  0 = -7.5%, 100 = +5%. Shown in the hero card and the gym. (3) **Strikes and style**: gym tabs
+  Качества / Приёмы / Стиль. Drilling a strike (`drills`, 0..1, `drillGain`, `queue.move`) ->
+  `FighterParams.moves`: weight +1.6 L (a strike outside the style becomes his), duration
+  x(1-0.12 L), damage x(1+0.15 L) (`Fighter.drill`). `changeStyle`: 3 days, $150+3 fame; old
+  style's main strikes stay as drills (<=0.35).
 - "Записать бой" (`recorder.ts`): the last 12 s at 15 fps (via `Sim.onStep`), body segments
   in cm as deltas + actions + hits, gzip+base64 code `БОЙ1:` (~16k chars). Button shows when
   paused (#btnRec) and on the KO card. Decode: `tools/run.sh replay code.txt out.json`, then

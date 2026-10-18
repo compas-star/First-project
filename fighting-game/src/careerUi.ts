@@ -10,9 +10,11 @@ import {
   rankings, rankOf, relOf, WCLASSES, classOf, sameClass, isChamp, champOf, type WClass, relWord, rivalsOf, titleBout, tierOf, TITLE_PURSE,
   DAY_MS, MARKET_DAYS, dayName, weekday, weekStart, eventsOn, evById, dayCost, nextDay, canBook, book, unbook, rebook,
   challenge, startTour, evTitle, bookedOn,
+  tonusOf, tonusWord, DRILLABLE, drillOf, drillGain, moveName, styleCost, changeStyle,
   type Career, type CareerFighter, type Tier, type FightResult, type StatKey, type Ev,
 } from './career';
-import { DISCIPLINE_BY_ID } from './disciplines';
+import { DISCIPLINE_BY_ID, type DisciplineId } from './disciplines';
+import { PLAN_NAME } from './brain';
 import { TRAITS, moodWord, resolve, afterBrawl, drunk, barIncident } from './life';
 import type { FighterParams } from './config';
 import { exportSave, importSave } from './saveCode';
@@ -38,6 +40,8 @@ export class CareerUi {
   c: Career;
   private screen: Screen = 'home';
   private stat: StatKey = 'bodySpeed';
+  private gymTab: 'stats' | 'moves' | 'style' = 'stats';
+  private move = 'jab';
   private toast = '';
   private timer = 0;
   /** The fight about to happen (preview screen). */
@@ -230,6 +234,7 @@ export class CareerUi {
       ${compact || !this.c.roster.includes(f) ? '' : `<div class="fnote">${(f.traits ?? []).map((t) => TRAITS[t].desc).join(' ')}</div>`}
       ${this.status(f)}
       ${statsTable(f)}
+      ${this.c.roster.includes(f) ? tonusRow(f) : ''}
       <div class="fnote">Полоса — уровень сейчас, белая чёрточка — его потолок (примерно). Тренер: <b>${talentWord(f)}</b>. Известность <b>${f.fame}</b>.</div>
     </div>`;
   }
@@ -250,6 +255,84 @@ export class CareerUi {
 
   private gym(): string {
     const f = this.me();
+    const tabs = `<div class="row gtabs">${(
+      [['stats', 'Качества'], ['moves', 'Приёмы'], ['style', 'Стиль']] as const
+    ).map(([id, name]) => `<button type="button" class="${this.gymTab === id ? 'primary' : ''}" data-act="gymtab" data-t="${id}">${name}</button>`).join('')}</div>`;
+    const head = `<div class="h1">Зал · ${esc(short(f))}</div>
+      ${this.dayBar()}
+      ${this.status(f)}
+      ${tonusRow(f)}
+      <div class="fnote">Любая тренировка держит <b>тонус</b>, даже на потолке. День без зала — минус форма: боец медленнее, слабее и быстрее выдыхается.</div>
+      ${tabs}
+      ${this.queueBox(f)}`;
+    if (this.gymTab === 'moves') return head + this.movesTab(f);
+    if (this.gymTab === 'style') return head + this.styleTab(f);
+    return head + this.statsTab(f);
+  }
+
+  private movesTab(f: CareerFighter): string {
+    const c = this.c;
+    const disc = DISCIPLINE_BY_ID[f.discipline];
+    const known = (id: string) => (disc.weights[id] ?? 0) > 0;
+    const list = [...DRILLABLE].sort((a, b) => Number(known(b.id) || drillOf(f, b.id) > 0) - Number(known(a.id) || drillOf(f, a.id) > 0));
+    const sel = DRILLABLE.find((m) => m.id === this.move) ?? list[0];
+    const its = INTENSITY.map((it) => {
+      const g = drillGain(f, sel.id, it);
+      const no = c.money < it.cost ? 'мало денег' : '';
+      return `<button type="button" class="ibtn" data-act="train" data-it="${it.id}" data-m="${sel.id}" ${no ? 'disabled' : ''}>
+        <b>${it.name}</b><span class="gain">+${Math.round(g * 100)}%</span><span>1 день · $${it.cost}</span>
+        <small>${it.injury ? `травма ${Math.round(it.injury * 100)}%` : 'без риска'}${no ? ` · ${no}` : ''}</small></button>`;
+    }).join('');
+    const rows = list.map((m) => {
+      const L = drillOf(f, m.id);
+      const tag = known(m.id) ? 'в стиле' : L > 0 ? 'выучен' : 'чужой';
+      return `<button type="button" class="trow mrow${m.id === sel.id ? ' on' : ''}" data-act="move" data-m="${m.id}">
+        <div class="trow-top"><b>${esc(m.name)}</b><span>${Math.round(L * 100)}% <em>${tag}</em></span></div>
+        <div class="sbar"><i style="width:${L * 100}%"></i></div></button>`;
+    }).join('');
+    return `<div class="fnote">Отработанный приём боец бьёт <b>чаще, быстрее и сильнее</b>. Чужой приём после отработки становится его собственным. Чем выше техника, тем быстрее учит.</div>
+      <div class="h2">${esc(sel.name)}: добавить отработку</div>
+      <div class="ibtns">${its}</div>
+      <div class="trows">${rows}</div>`;
+  }
+
+  private styleTab(f: CareerFighter): string {
+    const c = this.c;
+    const ids: DisciplineId[] = ['mma', 'boxing', 'muaythai', 'kickboxing', 'karate', 'street'];
+    const cost = styleCost(f);
+    const rows = ids.map((id) => {
+      const d = DISCIPLINE_BY_ID[id];
+      const top = Object.entries(d.weights).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([m]) => moveName(m)).join(', ');
+      const mine = id === f.discipline;
+      return `<div class="hero"><div class="fname">${esc(d.name)}${mine ? ' <span class="pill green">его стиль</span>' : ''}</div>
+        <div class="fnote">${esc(top)}</div>
+        ${mine ? '' : `<button type="button" data-act="style" data-d="${id}" ${c.money < cost || busy(c, f) ? 'disabled' : ''}>Переучить · 3 дня · $${cost}</button>`}</div>`;
+    }).join('');
+    return `<div class="fnote">Стиль задаёт стойку, дистанцию и любимые удары. При смене стиля старые коронные удары остаются как отработанные приёмы.</div>${rows}`;
+  }
+
+  private queueBox(f: CareerFighter): string {
+    const c = this.c;
+    const q = f.queue ?? [];
+    const what = (x: { stat: StatKey; move?: string }) => (x.move ? moveName(x.move) : STAT_INFO[x.stat].name);
+    const now = f.session ? `<div class="qrow now"><span>Сегодня</span><b>${esc(what(f.session))}</b><small>${esc(f.busyWhat)}</small></div>` : '';
+    const plan = q.map((x, i) => {
+      const it = INTENSITY.find((y) => y.id === x.it)!;
+      return `<div class="qrow"><span>${f.session || busy(c, f) ? `+${i + 1} дн.` : i === 0 ? 'Сегодня' : `+${i} дн.`}</span><b>${esc(what(x))}</b><small>${it.name.toLowerCase()} · $${it.cost}</small><button type="button" class="qx" data-act="unqueue" data-i="${i}">✕</button></div>`;
+    }).join('');
+    const sk = planSkip(c, f);
+    return now || plan
+      ? `<div class="qbox"><div class="h2">План тренировок</div>${now}${plan}
+          <div class="row">
+            <button type="button" data-act="nextday"><b>${this.dayBtn()}</b></button>
+            <button type="button" class="primary" data-act="skipplan" ${sk.days && c.tokens >= sk.tokens ? '' : 'disabled'}>Пропустить весь план<br><small>${sk.days} дн. · ${sk.tokens} ◆</small></button>
+          </div>
+          ${q.length ? '<button type="button" data-act="clearplan">Очистить план</button>' : ''}
+        </div>`
+      : '';
+  }
+
+  private statsTab(f: CareerFighter): string {
     const c = this.c;
     const rows = STAT_KEYS.map((k) => {
       const info = STAT_INFO[k];
@@ -270,28 +353,7 @@ export class CareerUi {
         <small>${it.injury ? `травма ${Math.round(it.injury * 100)}%` : 'без риска'}${no ? ` · ${no}` : ''}</small>
       </button>`;
     }).join('');
-    // Today's session and the plan after it, one day each.
-    const q = f.queue ?? [];
-    const now = f.session ? `<div class="qrow now"><span>Сегодня</span><b>${STAT_INFO[f.session.stat].name}</b><small>${esc(f.busyWhat)}</small></div>` : '';
-    const plan = q.map((x, i) => {
-      const it = INTENSITY.find((y) => y.id === x.it)!;
-      return `<div class="qrow"><span>${f.session || busy(c, f) ? `+${i + 1} дн.` : i === 0 ? 'Сегодня' : `+${i} дн.`}</span><b>${STAT_INFO[x.stat].name}</b><small>${it.name.toLowerCase()} · $${it.cost}</small><button type="button" class="qx" data-act="unqueue" data-i="${i}">✕</button></div>`;
-    }).join('');
-    const sk = planSkip(c, f);
-    const queueBox = now || plan
-      ? `<div class="qbox"><div class="h2">План тренировок</div>${now}${plan}
-          <div class="row">
-            <button type="button" data-act="nextday"><b>${this.dayBtn()}</b></button>
-            <button type="button" class="primary" data-act="skipplan" ${sk.days && c.tokens >= sk.tokens ? '' : 'disabled'}>Пропустить весь план<br><small>${sk.days} дн. · ${sk.tokens} ◆</small></button>
-          </div>
-          ${q.length ? '<button type="button" data-act="clearplan">Очистить план</button>' : ''}
-        </div>`
-      : '';
-    return `<div class="h1">Зал · ${esc(short(f))}</div>
-      ${this.dayBar()}
-      ${this.status(f)}
-      <div class="fnote">Выбери качество, потом жми тренировки — каждая занимает один день и встаёт в план. Можно набрать несколько и пропустить их все за жетоны. Чем ближе к потолку, тем меньше даёт. В день боя тренировки нет.</div>
-      ${queueBox}
+    return `<div class="fnote">Выбери качество, потом жми тренировки — каждая занимает один день и встаёт в план. Чем ближе к потолку, тем меньше даёт. В день боя тренировки нет.</div>
       <div class="trows">${rows}</div>
       <div class="h2">${STAT_INFO[this.stat].name}: добавить тренировку</div>
       <div class="ibtns">${its}</div>`;
@@ -388,8 +450,26 @@ export class CareerUi {
       ${feel <= -50 ? '<div class="pill red">Заклятые враги: гонорар ×1,5, известность ×2. Оба лезут вперёд злее и небрежнее.</div>' : ''}
       <div class="vtable">${rows}</div>
       <div class="pill ${p >= 55 ? 'green' : p <= 45 ? 'red' : 'gold'}">Букмекеры дают тебе примерно ${p}%</div>
+      ${this.planEditor(me, b.tier.rules.rounds)}
       <button type="button" class="primary wide" data-act="fight">В бой</button>
 `;
+  }
+
+  /** The corner's plan, a tap per round cycles what he is told. */
+  private planEditor(f: CareerFighter, rounds: number): string {
+    if (!rounds) return '';
+    const plan = f.gamePlan ?? [];
+    const rows = Array.from({ length: rounds }, (_, r) => {
+      const o = plan[r] ?? 'auto';
+      return `<button type="button" class="gprow${o === 'auto' ? '' : ' on'}" data-act="gp" data-r="${r}"><span>Раунд ${r + 1}</span><b>${GP_LABEL[o]}</b></button>`;
+    }).join('');
+    const noLegs = plan.slice(0, rounds).includes('legs') && !['lowkick', 'calfkick'].some((id) => (DISCIPLINE_BY_ID[f.discipline].weights[id] ?? 0) > 0 || drillOf(f, id) > 0);
+    return `<div class="qbox"><div class="h2">План на бой</div>
+      <div class="fnote">Жми на раунд, чтобы сменить задачу. Дисциплинированный (с техникой) держится плана лучше; если соперник поплыл, добивать он всё равно будет.</div>
+      ${rows}
+      ${noLegs ? '<div class="pill red">Бить по ногам нечем: отработай лоу-кик или удар по икре в зале</div>' : ''}
+      ${plan.some((x) => x !== 'auto') ? '<button type="button" data-act="gpclear">Сбросить: пусть решает сам</button>' : ''}
+    </div>`;
   }
 
   private tourBanner(): string {
@@ -731,9 +811,34 @@ export class CareerUi {
         return say(null);
       case 'train': {
         const it = INTENSITY.find((x) => x.id === b.dataset.it)!;
-        const err = queueTraining(c, me, this.stat, it);
-        return say(err ?? `+ ${STAT_INFO[this.stat].name.toLowerCase()} (${it.name.toLowerCase()}) в плане`);
+        const m = b.dataset.m;
+        const err = queueTraining(c, me, this.stat, it, m);
+        return say(err ?? `+ ${(m ? moveName(m) : STAT_INFO[this.stat].name).toLowerCase()} (${it.name.toLowerCase()}) в плане`);
       }
+      case 'gymtab':
+        this.gymTab = b.dataset.t as 'stats' | 'moves' | 'style';
+        return say(null);
+      case 'move':
+        this.move = b.dataset.m!;
+        return say(null);
+      case 'style': {
+        const d = b.dataset.d as DisciplineId;
+        return ask(`Переучить ${short(me)} на «${DISCIPLINE_BY_ID[d].name}»? 3 дня, $${styleCost(me)}.`, () =>
+          say(changeStyle(c, me, d) ?? `${short(me)} переучивается: ${DISCIPLINE_BY_ID[d].name}`));
+      }
+      case 'gp': {
+        const r = Number(b.dataset.r);
+        const who = this.bill?.tour && c.tour ? c.roster.find((x) => x.id === c.tour!.fighter) ?? me : me;
+        const plan = (who.gamePlan ??= []);
+        while (plan.length <= r) plan.push('auto');
+        plan[r] = GP_OPTS[(GP_OPTS.indexOf(plan[r]) + 1) % GP_OPTS.length];
+        save(c);
+        return say(null);
+      }
+      case 'gpclear':
+        (this.bill?.tour && c.tour ? c.roster.find((x) => x.id === c.tour!.fighter) ?? me : me).gamePlan = [];
+        save(c);
+        return say('План боя сброшен: решает сам');
       case 'unqueue': {
         me.queue?.splice(Number(b.dataset.i), 1);
         save(c);
@@ -889,6 +994,14 @@ export class CareerUi {
       this.show();
     }, undefined, { title: !!b.title, cls: classOf(me).name });
   }
+}
+
+const GP_OPTS = ['auto', 'outbox', 'pressure', 'counter', 'legs', 'body'];
+const GP_LABEL: Record<string, string> = { auto: 'сам решает', ...PLAN_NAME };
+
+function tonusRow(f: CareerFighter): string {
+  const t = tonusOf(f);
+  return `<div class="stats"><div class="stat"><span>Тонус</span><div class="sbar tonus"><i style="width:${t}%"></i></div><b>${Math.round(t)}</b></div></div><div class="fnote">Форма: <b>${tonusWord(f)}</b></div>`;
 }
 
 /** Current level against how far he can go, for each quality. */

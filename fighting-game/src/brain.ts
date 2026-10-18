@@ -287,7 +287,7 @@ export function moveWeight(f: Fighter, m: Move): number {
       if (PRESSURE_MOVES.includes(m.id)) k *= 1.6;
       break;
     case 'legs':
-      if (LOW_KICKS.includes(m.id)) k *= f.ordered === 'legs' ? 7 : 4;
+      if (LOW_KICKS.includes(m.id)) k *= f.ordered === 'legs' ? 10 : 4;
       break;
     case 'body':
       if (BODY_MOVES.includes(m.id)) k *= f.ordered === 'body' ? 3.2 : 2;

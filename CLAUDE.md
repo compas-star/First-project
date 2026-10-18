@@ -241,7 +241,7 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   корпус; `CareerFighter.gamePlan` -> `FighterParams.roundPlan`); `cornerOrder` in brain.ts
   adds 0.6+0.35 tech to that plan's score (0.25 when finish/survive apply), `Fighter.ordered`
   makes legs/body moves weigh more and combos carry the target; `nextRound` re-plans at once.
-  Tool `gameplan`: low kicks ~1-3 -> 6-8 per 60 s round when told "legs". (2) **Tonus**
+  Tool `gameplan` (env TIER, ONLY): low kicks ~1-3 -> 4-8 per round when told "legs". (2) **Tonus**
   (`CareerFighter.tonus` 0..100, start 60): any session adds 8/14/22 even at the cap, a day
   without the gym -6 (-3 while recovering); `tonusK` scales speed, power, cardio (mind half):
   0 = -7.5%, 100 = +5%. Shown in the hero card and the gym. (3) **Strikes and style**: gym tabs
@@ -249,6 +249,13 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   `FighterParams.moves`: weight +1.6 L (a strike outside the style becomes his), duration
   x(1-0.12 L), damage x(1+0.15 L) (`Fighter.drill`). `changeStyle`: 3 days, $150+3 fame; old
   style's main strikes stay as drills (<=0.35).
+  Career rounds (user: 3 min of fight clock in 1 real minute): every tier `roundLen 180,
+  clock 3` (`Rules.clock` = clock seconds per sim second; `roundT` and `wear` run x clock).
+  Legs in bouts (user: a whole round on the legs did not even make him limp): bout toughness
+  multiplied the leg limit x3.5-9 and limbs healed 0.35/s; now `legLimit` grows only
+  1+0.2(tough-1), legs heal 0.03/s and keep 95% between rounds, low kicks x2.4 (`LOW_K`), lame
+  = smoothstep(ratio, 0.15, 0.8), a leg breaks at `legBreak` (x2 in bouts, x1.6 else).
+  `gameplan` (TIER=3, legs ordered): lame ~0.1-0.2 after R1, 0.65-0.8 after R2, ~1 after R3.
 - "Записать бой" (`recorder.ts`): the last 12 s at 15 fps (via `Sim.onStep`), body segments
   in cm as deltas + actions + hits, gzip+base64 code `БОЙ1:` (~16k chars). Button shows when
   paused (#btnRec) and on the KO card. Decode: `tools/run.sh replay code.txt out.json`, then

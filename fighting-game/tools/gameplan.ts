@@ -48,7 +48,7 @@ function run(a: CareerFighter, b: CareerFighter, seed: number) {
 const fmt = (o: Record<string, number>) => Object.entries(o).filter(([k]) => !k.startsWith('#')).map(([k, v]) => `${k}=${v.toFixed(0)}`).join(' ');
 RAPIER.init().then(() => {
   const cls = WCLASSES[1];
-  for (const plan of [undefined, ['legs', 'body', 'pressure']]) {
+  for (const plan of process.env.ONLY ? [['legs', 'legs', 'pressure']] : [undefined, ['legs', 'body', 'pressure']]) {
     console.log('plan', plan ?? 'auto');
     for (let s = 1; s <= N; s++) {
       const a = makeFighter(0.35, 0.6, cls), b = makeFighter(0.35, 0.6, cls);

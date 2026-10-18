@@ -160,6 +160,12 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
   const own = f.action;
   if (own && own.kind !== 'block') {
     if (own.kind !== 'attack') return;
+    // My own blow is over before his lands: decide again once it is (a quick mind saw his
+    // blow early and was knocked out standing, the blow already "dealt with").
+    if (((own.dur - own.t) / f.body) < tti - 0.08) {
+      f.handledThreat = 0;
+      return;
+    }
     const early = own.t < own.dur * own.move!.active[0] * 0.6;
     if (!early || sim.rng() > f.tech * 0.7) {
       noted(f, 'none');

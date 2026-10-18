@@ -7,7 +7,7 @@ const MIND = Number(process.argv[2] ?? 3), N = Number(process.argv[3] ?? 10);
 RAPIER.init().then(() => {
   (globalThis as { __noLook?: boolean }).__noLook = true;
   let shown = 0;
-  for (let s = 1; s <= N && shown < 3; s++) {
+  for (let s = 1; s <= N && shown < 6; s++) {
     const [a, b] = applyPreset(PRESETS[0]);
     a.mindSpeed = MIND; a.linkMind = false;
     const sim = new Sim(a, b, s * 17 + 4000, MAP_BY_ID.void, { ...QUICK, standing: true });
@@ -27,7 +27,7 @@ RAPIER.init().then(() => {
     if (me.out) {
       shown++;
       console.log(`--- fight ${s} KO at ${sim.t.toFixed(2)} reactDelay ${me.reactDelay.toFixed(3)}`);
-      const t0 = sim.t - 1.6;
+      const t0 = sim.t - 1.0;
       console.log(log.filter((l) => parseFloat(l) > t0).join('\n'));
     }
     sim.dispose();

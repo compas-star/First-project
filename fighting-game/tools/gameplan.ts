@@ -48,7 +48,7 @@ function run(a: CareerFighter, b: CareerFighter, seed: number) {
 const fmt = (o: Record<string, number>) => Object.entries(o).filter(([k]) => !k.startsWith('#')).map(([k, v]) => `${k}=${v.toFixed(0)}`).join(' ');
 RAPIER.init().then(() => {
   const cls = WCLASSES[1];
-  for (const plan of process.env.ONLY ? [['legs', 'legs', 'pressure']] : [undefined, ['legs', 'body', 'pressure']]) {
+  for (const plan of process.env.ONLY ? [['legs', 'legs', 'pressure']] : process.env.SKIP ? [] : [undefined, ['legs', 'body', 'pressure']]) {
     console.log('plan', plan ?? 'auto');
     for (let s = 1; s <= N; s++) {
       const a = makeFighter(0.35, 0.6, cls), b = makeFighter(0.35, 0.6, cls);
@@ -63,11 +63,11 @@ RAPIER.init().then(() => {
     for (let s = 1; s <= N; s++) {
       const a = makeFighter(0.35, 0.6, cls), b = makeFighter(0.35, 0.6, cls);
       a.discipline = 'boxing';
-      a.drills = drill ? { lowkick: drill } : undefined;
+      a.craft = drill ? { hands: 0, legs: drill } : undefined;
       const { per } = run(a, b, s * 11);
-      for (const p of per) for (const [k, v] of Object.entries(p)) if (k.startsWith('#')) { tot += v; if (k === '#lowkick') low += v; }
+      for (const p of per) for (const [k, v] of Object.entries(p)) if (k.startsWith('#')) { tot += v; if (/kick|teep|knee/.test(k)) low += v; }
     }
-    console.log(`boxer, lowkick drilled ${drill}: low kicks ${low} of ${tot} strikes`);
+    console.log(`boxer, legs ${drill}: kicks ${low} of ${tot} strikes`);
   }
   const f = makeFighter(0.35, 0.6, cls);
   for (const t of [0, 60, 100]) {

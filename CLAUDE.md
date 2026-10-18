@@ -244,11 +244,15 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   Tool `gameplan` (env TIER, ONLY): low kicks ~1-3 -> 4-8 per round when told "legs". (2) **Tonus**
   (`CareerFighter.tonus` 0..100, start 60): any session adds 8/14/22 even at the cap, a day
   without the gym -6 (-3 while recovering); `tonusK` scales speed, power, cardio (mind half):
-  0 = -7.5%, 100 = +5%. Shown in the hero card and the gym. (3) **Strikes and style**: gym tabs
-  Качества / Приёмы / Стиль. Drilling a strike (`drills`, 0..1, `drillGain`, `queue.move`) ->
-  `FighterParams.moves`: weight +1.6 L (a strike outside the style becomes his), duration
-  x(1-0.12 L), damage x(1+0.15 L) (`Fighter.drill`). `changeStyle`: 3 days, $150+3 fame; old
-  style's main strikes stay as drills (<=0.35).
+  0 = -7.5%, 100 = +5%. Shown in the hero card and the gym. (3) **Hands, legs and style**: gym tabs
+  Качества / Приёмы / Стиль. User: not 20 single strikes, just hands and legs. `CareerFighter.craft`
+  {hands, legs} 0..1 (`craftGain` 0.05 x k x trainK x skill, less near 1; `queue.move` /
+  `session.move` = 'hands'|'legs'). `CRAFT_TIERS`: basics / harder (open at 35%) / spinning and
+  flying (70%) (`TIER_OPEN`); `craftMoves` -> `FighterParams.moves` (0.25..1 per open tier, x1 /
+  0.7 / 0.4 by tier): weight +1.6 L (a strike outside the style becomes his), duration
+  x(1-0.12 L), damage x(1+0.15 L) (`Fighter.drill`). Old saves' `drills` turn into craft on
+  load. A new tier is announced at midnight. Boxer with legs 0.8 kicks ~20% of his blows
+  (`gameplan`, SKIP=1). `changeStyle`: 3 days, $150+3 fame; craft stays.
   Career rounds (user: 3 min of fight clock in 1 real minute): every tier `roundLen 180,
   clock 3` (`Rules.clock` = clock seconds per sim second; `roundT` and `wear` run x clock).
   Legs in bouts (user: a whole round on the legs did not even make him limp): bout toughness

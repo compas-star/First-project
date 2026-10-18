@@ -10,7 +10,7 @@ import {
   rankings, rankOf, relOf, WCLASSES, classOf, sameClass, isChamp, champOf, type WClass, relWord, rivalsOf, titleBout, tierOf, TITLE_PURSE,
   DAY_MS, MARKET_DAYS, dayName, weekday, weekStart, eventsOn, evById, dayCost, nextDay, canBook, book, unbook, rebook,
   challenge, startTour, evTitle, bookedOn,
-  tonusOf, tonusWord, DRILLABLE, drillOf, drillGain, moveName, styleCost, changeStyle,
+  tonusOf, tonusWord, CRAFT_NAME, CRAFT_TIERS, TIER_OPEN, craftOf, craftGain, craftMoves, type Craft, moveName, styleCost, changeStyle,
   type Career, type CareerFighter, type Tier, type FightResult, type StatKey, type Ev,
 } from './career';
 import { DISCIPLINE_BY_ID, type DisciplineId } from './disciplines';
@@ -41,7 +41,7 @@ export class CareerUi {
   private screen: Screen = 'home';
   private stat: StatKey = 'bodySpeed';
   private gymTab: 'stats' | 'moves' | 'style' = 'stats';
-  private move = 'jab';
+  private move: Craft = 'hands';
   private toast = '';
   private timer = 0;
   /** The fight about to happen (preview screen). */
@@ -273,27 +273,33 @@ export class CareerUi {
   private movesTab(f: CareerFighter): string {
     const c = this.c;
     const disc = DISCIPLINE_BY_ID[f.discipline];
-    const known = (id: string) => (disc.weights[id] ?? 0) > 0;
-    const list = [...DRILLABLE].sort((a, b) => Number(known(b.id) || drillOf(f, b.id) > 0) - Number(known(a.id) || drillOf(f, a.id) > 0));
-    const sel = DRILLABLE.find((m) => m.id === this.move) ?? list[0];
+    const sel: Craft = this.move === 'legs' ? 'legs' : 'hands';
     const its = INTENSITY.map((it) => {
-      const g = drillGain(f, sel.id, it);
+      const g = craftGain(f, sel, it);
       const no = c.money < it.cost ? 'мало денег' : '';
-      return `<button type="button" class="ibtn" data-act="train" data-it="${it.id}" data-m="${sel.id}" ${no ? 'disabled' : ''}>
-        <b>${it.name}</b><span class="gain">+${Math.round(g * 100)}%</span><span>1 день · $${it.cost}</span>
+      return `<button type="button" class="ibtn" data-act="train" data-it="${it.id}" data-m="${sel}" ${no ? 'disabled' : ''}>
+        <b>${it.name}</b><span class="gain">+${(g * 100).toFixed(1)}%</span><span>1 день · $${it.cost}</span>
         <small>${it.injury ? `травма ${Math.round(it.injury * 100)}%` : 'без риска'}${no ? ` · ${no}` : ''}</small></button>`;
     }).join('');
-    const rows = list.map((m) => {
-      const L = drillOf(f, m.id);
-      const tag = known(m.id) ? 'в стиле' : L > 0 ? 'выучен' : 'чужой';
-      return `<button type="button" class="trow mrow${m.id === sel.id ? ' on' : ''}" data-act="move" data-m="${m.id}">
-        <div class="trow-top"><b>${esc(m.name)}</b><span>${Math.round(L * 100)}% <em>${tag}</em></span></div>
-        <div class="sbar"><i style="width:${L * 100}%"></i></div></button>`;
+    const rows = (['hands', 'legs'] as Craft[]).map((k) => {
+      const L = craftOf(f, k);
+      const tiers = CRAFT_TIERS[k].map((ids, t) => {
+        const open = L > 0 && L >= TIER_OPEN[t];
+        const names = ids.map((id) => {
+          const mine = (disc.weights[id] ?? 0) > 0;
+          return `<span class="mv${open || mine ? ' on' : ''}">${esc(moveName(id))}${mine ? '' : open ? ' ✦' : ''}</span>`;
+        }).join(' ');
+        return `<div class="ctier"><small>${open ? 'открыто' : t === 0 ? 'с первой тренировки' : `откроется на ${Math.round(TIER_OPEN[t] * 100)}%`}</small> ${names}</div>`;
+      }).join('');
+      return `<button type="button" class="trow${k === sel ? ' on' : ''}" data-act="move" data-m="${k}">
+        <div class="trow-top"><b>${CRAFT_NAME[k]}</b><span>${Math.round(L * 100)}%</span></div>
+        <div class="sbar"><i style="width:${L * 100}%"></i>${TIER_OPEN.slice(1).map((o) => `<em style="left:${o * 100}%"></em>`).join('')}</div>
+        ${tiers}</button>`;
     }).join('');
-    return `<div class="fnote">Отработанный приём боец бьёт <b>чаще, быстрее и сильнее</b>. Чужой приём после отработки становится его собственным. Чем выше техника, тем быстрее учит.</div>
-      <div class="h2">${esc(sel.name)}: добавить отработку</div>
-      <div class="ibtns">${its}</div>
-      <div class="trows">${rows}</div>`;
+    return `<div class="fnote">Качай <b>руки</b> или <b>ноги</b>. Чем выше, тем чаще, быстрее и сильнее он бьёт этим, а на 35% и 70% открываются более сложные удары. ✦ — удар не из его стиля, теперь он его бьёт. Чем выше техника, тем быстрее учится.</div>
+      <div class="trows">${rows}</div>
+      <div class="h2">${CRAFT_NAME[sel]}: добавить тренировку</div>
+      <div class="ibtns">${its}</div>`;
   }
 
   private styleTab(f: CareerFighter): string {
@@ -308,13 +314,13 @@ export class CareerUi {
         <div class="fnote">${esc(top)}</div>
         ${mine ? '' : `<button type="button" data-act="style" data-d="${id}" ${c.money < cost || busy(c, f) ? 'disabled' : ''}>Переучить · 3 дня · $${cost}</button>`}</div>`;
     }).join('');
-    return `<div class="fnote">Стиль задаёт стойку, дистанцию и любимые удары. При смене стиля старые коронные удары остаются как отработанные приёмы.</div>${rows}`;
+    return `<div class="fnote">Стиль задаёт стойку, дистанцию и любимые удары. Руки и ноги при смене стиля остаются как были.</div>${rows}`;
   }
 
   private queueBox(f: CareerFighter): string {
     const c = this.c;
     const q = f.queue ?? [];
-    const what = (x: { stat: StatKey; move?: string }) => (x.move ? moveName(x.move) : STAT_INFO[x.stat].name);
+    const what = (x: { stat: StatKey; move?: string }) => (x.move ? CRAFT_NAME[x.move as Craft] ?? moveName(x.move) : STAT_INFO[x.stat].name);
     const now = f.session ? `<div class="qrow now"><span>Сегодня</span><b>${esc(what(f.session))}</b><small>${esc(f.busyWhat)}</small></div>` : '';
     const plan = q.map((x, i) => {
       const it = INTENSITY.find((y) => y.id === x.it)!;
@@ -463,11 +469,11 @@ export class CareerUi {
       const o = plan[r] ?? 'auto';
       return `<button type="button" class="gprow${o === 'auto' ? '' : ' on'}" data-act="gp" data-r="${r}"><span>Раунд ${r + 1}</span><b>${GP_LABEL[o]}</b></button>`;
     }).join('');
-    const noLegs = plan.slice(0, rounds).includes('legs') && !['lowkick', 'calfkick'].some((id) => (DISCIPLINE_BY_ID[f.discipline].weights[id] ?? 0) > 0 || drillOf(f, id) > 0);
+    const noLegs = plan.slice(0, rounds).includes('legs') && !['lowkick', 'calfkick'].some((id) => (DISCIPLINE_BY_ID[f.discipline].weights[id] ?? 0) > 0 || (craftMoves(f)[id] ?? 0) > 0);
     return `<div class="qbox"><div class="h2">План на бой</div>
       <div class="fnote">Жми на раунд, чтобы сменить задачу. Дисциплинированный (с техникой) держится плана лучше; если соперник поплыл, добивать он всё равно будет.</div>
       ${rows}
-      ${noLegs ? '<div class="pill red">Бить по ногам нечем: отработай лоу-кик или удар по икре в зале</div>' : ''}
+      ${noLegs ? '<div class="pill red">Бить по ногам нечем: покачай в зале «Ноги» (Приёмы)</div>' : ''}
       ${plan.some((x) => x !== 'auto') ? '<button type="button" data-act="gpclear">Сбросить: пусть решает сам</button>' : ''}
     </div>`;
   }
@@ -813,13 +819,13 @@ export class CareerUi {
         const it = INTENSITY.find((x) => x.id === b.dataset.it)!;
         const m = b.dataset.m;
         const err = queueTraining(c, me, this.stat, it, m);
-        return say(err ?? `+ ${(m ? moveName(m) : STAT_INFO[this.stat].name).toLowerCase()} (${it.name.toLowerCase()}) в плане`);
+        return say(err ?? `+ ${(m ? CRAFT_NAME[m as Craft] : STAT_INFO[this.stat].name).toLowerCase()} (${it.name.toLowerCase()}) в плане`);
       }
       case 'gymtab':
         this.gymTab = b.dataset.t as 'stats' | 'moves' | 'style';
         return say(null);
       case 'move':
-        this.move = b.dataset.m!;
+        this.move = b.dataset.m as Craft;
         return say(null);
       case 'style': {
         const d = b.dataset.d as DisciplineId;

@@ -57,7 +57,9 @@ export interface CareerFighter {
   skin?: SkinId;
   /** Sharpness 0..100: kept up by training (even at his ceiling), lost on days off. */
   tonus?: number;
-  /** Strikes drilled in the gym, 0..1 by move id (see FighterParams.moves). */
+  /** Hands and legs worked on in the gym, 0..1 (see craftMoves). */
+  craft?: { hands: number; legs: number };
+  /** Old saves: single strikes drilled (turned into craft on load). */
   drills?: Record<string, number>;
   /** The manager's plan for each round of his next fights (PlanId or 'auto'). */
   gamePlan?: string[];
@@ -329,7 +331,7 @@ export function toParams(f: CareerFighter, team: 0 | 1, angry = false): FighterP
   p.strength *= tk;
   p.cardio = (p.cardio ?? 1) * tk;
   p.mindSpeed *= 1 + (tk - 1) * 0.5;
-  if (f.drills) p.moves = { ...f.drills };
+  if (f.craft) p.moves = craftMoves(f);
   if (f.gamePlan?.some((x) => x !== 'auto')) p.roundPlan = [...f.gamePlan];
   lifeParams(f, p);
   return p;
@@ -347,18 +349,49 @@ export function tonusWord(f: CareerFighter): string {
 }
 const TONUS_GAIN: Record<Intensity['id'], number> = { light: 8, normal: 14, hard: 22 };
 
-// ---------- Strikes (drills) and style ----------
+// ---------- Hands and legs (strike craft) and style ----------
 
-/** Strikes that can be drilled (not the street's flailing). */
-export const DRILLABLE = MOVES.filter((m) => m.id !== 'flail');
-export const drillOf = (f: CareerFighter, id: string) => f.drills?.[id] ?? 0;
-/** What a day of drilling a strike adds: less as he masters it, more with good technique. */
-export function drillGain(f: CareerFighter, id: string, it: Intensity): number {
-  const L = drillOf(f, id);
-  return 0.1 * it.k * trainK(f) * (0.55 + 0.6 * f.stats.skill) * (1 - 0.7 * L);
+/** Two things to work on instead of twenty strikes (user): hands and legs. The higher, the
+ *  more and harder strikes he has: the basics first, then the tricky ones, then the
+ *  spinning and flying ones. A strike his style does not teach becomes his once open. */
+export type Craft = 'hands' | 'legs';
+export const CRAFT_NAME: Record<Craft, string> = { hands: 'Руки', legs: 'Ноги' };
+export const CRAFT_TIERS: Record<Craft, string[][]> = {
+  hands: [
+    ['jab', 'cross', 'hook', 'rhook', 'luppercut', 'uppercut'],
+    ['overhand', 'shovel', 'checkhook', 'lelbow', 'relbow'],
+    ['superman', 'backfist', 'spinelbow'],
+  ],
+  legs: [
+    ['teep', 'lowkick', 'calfkick', 'frontkick', 'rknee', 'lknee'],
+    ['bodykick', 'leadkick', 'headkick', 'sweep'],
+    ['spinkick', 'flyknee'],
+  ],
+};
+/** Level a tier opens at. */
+export const TIER_OPEN = [0, 0.35, 0.7];
+export const craftOf = (f: CareerFighter, k: Craft) => f.craft?.[k] ?? 0;
+/** How well he has each strike from his hands and legs (FighterParams.moves). */
+export function craftMoves(f: CareerFighter): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const k of ['hands', 'legs'] as Craft[]) {
+    const L = craftOf(f, k);
+    CRAFT_TIERS[k].forEach((ids, t) => {
+      // Fresh in a tier = a little; grows to full over the next stretch. Fancy strikes
+      // stay rarer even when mastered.
+      if (L <= 0 || L < TIER_OPEN[t]) return;
+      const v = Math.min(1, 0.25 + (L - TIER_OPEN[t]) / 0.4) * [1, 0.7, 0.4][t];
+      for (const id of ids) out[id] = v;
+    });
+  }
+  return out;
+}
+/** What a day on hands or legs adds: less as he masters them, more with good technique. */
+export function craftGain(f: CareerFighter, k: Craft, it: Intensity): number {
+  return 0.05 * it.k * trainK(f) * (0.55 + 0.6 * f.stats.skill) * (1 - 0.6 * craftOf(f, k));
 }
 export const styleCost = (f: CareerFighter) => 150 + Math.round(f.fame * 3);
-/** A new school: 3 days of learning; his old style's strikes stay with him as drills. */
+/** A new school: 3 days of learning; his hands and legs stay what they are. */
 export function changeStyle(c: Career, f: CareerFighter, d: DisciplineId): string | null {
   if (d === f.discipline) return 'Уже этот стиль';
   if (busy(c, f)) return 'Боец занят';
@@ -366,9 +399,6 @@ export function changeStyle(c: Career, f: CareerFighter, d: DisciplineId): strin
   const cost = styleCost(f);
   if (c.money < cost) return 'Не хватает денег';
   c.money -= cost;
-  const old = DISCIPLINE_BY_ID[f.discipline];
-  f.drills ??= {};
-  for (const [id, w] of Object.entries(old.weights)) if (w >= 0.5) f.drills[id] = Math.max(f.drills[id] ?? 0, Math.min(0.35, 0.12 * w));
   f.discipline = d;
   f.queue = [];
   f.busyFrom = c.day;
@@ -419,11 +449,11 @@ export function startTraining(c: Career, f: CareerFighter, k: StatKey, it: Inten
   const hurt = Math.random() < it.injury ? 1 : 0;
   const luck = 0.75 + 0.5 * Math.random();
   f.session = move
-    ? { stat: k, gain: drillGain(f, move, it) * luck, injury: hurt, move, tonus: TONUS_GAIN[it.id] }
+    ? { stat: k, gain: craftGain(f, move as Craft, it) * luck, injury: hurt, move, tonus: TONUS_GAIN[it.id] }
     : { stat: k, gain: gainOf(f, k, it) * luck, injury: hurt, tonus: TONUS_GAIN[it.id] };
   f.busyFrom = c.day;
   f.busyUntil = c.day + it.days;
-  f.busyWhat = move ? `отработка: ${moveName(move)} (${it.name.toLowerCase()})` : `${STAT_INFO[k].drill} (${it.name.toLowerCase()})`;
+  f.busyWhat = move ? `${move === 'hands' ? 'работа рук' : 'работа ног'} (${it.name.toLowerCase()})` : `${STAT_INFO[k].drill} (${it.name.toLowerCase()})`;
   save(c);
   return null;
 }
@@ -586,10 +616,13 @@ function endDay(c: Career): string[] {
       f.tonus = Math.min(100, tonusOf(f) + (s.tonus ?? 12));
       trained.add(f);
       if (s.move) {
-        f.drills ??= {};
-        const was = f.drills[s.move] ?? 0;
-        f.drills[s.move] = Math.min(1, was + s.gain);
-        out.push(`${short(f)}: ${moveName(s.move)} ${Math.round(was * 100)}→${Math.round(f.drills[s.move] * 100)}%`);
+        const k = s.move as Craft;
+        f.craft ??= { hands: 0, legs: 0 };
+        const was = f.craft[k];
+        f.craft[k] = Math.min(1, was + s.gain);
+        out.push(`${short(f)}: ${CRAFT_NAME[k]} ${Math.round(was * 100)}→${Math.round(f.craft[k] * 100)}%`);
+        const opened = TIER_OPEN.findIndex((o) => was < o && f.craft![k] >= o);
+        if (opened > 0) out.push(`${short(f)} освоил новые удары: ${CRAFT_TIERS[k][opened].map(moveName).join(', ')}`);
       } else {
         const before = f.stats[s.stat];
         f.stats[s.stat] = Math.min(f.caps[s.stat], before + s.gain);
@@ -1214,6 +1247,15 @@ export function load(): Career | null {
     c.gifts ??= [];
     ensureWorld(c);
     ensureLife(c);
+    // Single drilled strikes from before hands/legs: the best of each kind carries over.
+    for (const f of c.roster) {
+      if (!f.drills) continue;
+      const best = (k: Craft) => Math.max(0, ...CRAFT_TIERS[k].flat().map((id) => f.drills![id] ?? 0));
+      f.craft = { hands: best('hands'), legs: best('legs') };
+      delete f.drills;
+      for (const q of f.queue ?? []) if (q.move && q.move !== 'hands' && q.move !== 'legs') q.move = CRAFT_TIERS.legs.flat().includes(q.move) ? 'legs' : 'hands';
+      if (f.session?.move && f.session.move !== 'hands' && f.session.move !== 'legs') f.session.move = CRAFT_TIERS.legs.flat().includes(f.session.move) ? 'legs' : 'hands';
+    }
     // A tournament from before the brackets: give the fee back.
     if (c.tour && !(c.tour as Partial<Tour>).rounds) {
       c.money += TIER_BY_ID[c.tour.tier]?.fee ?? 0;

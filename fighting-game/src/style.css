@@ -2145,10 +2145,28 @@ body.cutting #btnRec {
   color: var(--gold);
 }
 #career .gtabs {
-  flex-wrap: nowrap;
+  grid-template-columns: 1fr 1fr 1fr;
 }
 #career .gtabs button {
   min-width: 0;
   padding-left: 4px;
   padding-right: 4px;
+}
+#career .ctier {
+  margin-top: 4px;
+  font: 400 13px/1.5 var(--pxb);
+  line-height: 1.5;
+  text-align: left;
+}
+#career .ctier small {
+  font: 400 11px/1.5 var(--pxb);
+  color: var(--cyan);
+  margin-right: 4px;
+}
+#career .ctier .mv {
+  color: #6b6070;
+  white-space: nowrap;
+}
+#career .ctier .mv.on {
+  color: #e8e0d8;
 }

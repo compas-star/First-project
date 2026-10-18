@@ -2175,8 +2175,14 @@ export class Sim {
     }
     // Leaned back out of his blow: fire back while he is still missing.
     if (a.kind === 'dodge' && a.counterAt !== undefined && a.t >= a.counterAt) {
-      a.counterAt = undefined;
-      if (f.enemy.state === 'ok' && this.counterFromDodge(f)) return;
+      // Not while his blow is still in the air: coming forward out of the lean walks the
+      // head back into it (quick minds were knocked out like this).
+      const ea = f.enemy.action;
+      const live = ea?.kind === 'attack' && !ea.feint && !ea.hitDone && ea.t < ea.dur * ea.move!.active[1] + 0.03;
+      if (!live || a.t >= a.dur - 0.03) {
+        a.counterAt = undefined;
+        if (!live && f.enemy.state === 'ok' && this.counterFromDodge(f)) return;
+      }
     }
     // Combinations flow: the next blow starts while the last one is coming back.
     if (a.kind === 'attack' && u >= 0.72 && f.comboLeft > 0 && f.enemy.state === 'ok') {

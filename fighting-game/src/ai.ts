@@ -53,6 +53,15 @@ function sideStep(sim: Sim, f: Fighter): { dir: THREE.Vector3; left: boolean } {
 }
 
 /** The opponent remembers how I answer his strikes. */
+/** How readily he checks kicks with the shin: a Thai fighter lives by it, a boxer hardly knows it. */
+const CHECK_STYLE: Record<string, number> = { muaythai: 0.55, kickboxing: 0.45, mma: 0.32, karate: 0.25, wrestling: 0.1, bjj: 0.1, street: 0.06, boxing: 0.04 };
+function checkChance(f: Fighter): number {
+  const own = (CHECK_STYLE[f.p.discipline] ?? 0.2) * (0.5 + 0.8 * f.tech);
+  // Once his legs are getting chopped, every fighter starts lifting the knee.
+  const hurt = Math.max(f.lame('lLeg'), f.lame('rLeg'));
+  return Math.min(0.85, own + 0.35 * hurt - (f.winded ? 0.1 : 0));
+}
+
 function noted(f: Fighter, r: Reaction): void {
   f.enemy.mem.oppReact[r]++;
 }
@@ -183,6 +192,17 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
     sim.startAction(f, 'parry', { dur: Math.max(0.3, tti * f.body + 0.12) });
     if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * f.tech) / f.mind;
     f.say(`парирую ${m.name}`);
+    return;
+  }
+
+  // Check a round or low kick: lift the knee on that side and let his shin hit mine.
+  const checkable = (m.limb === 'lFoot' || m.limb === 'rFoot') && (m.path === 'low' || m.path === 'round') && ea.zone !== 'head' && !m.spin;
+  const leg: 0 | 1 = m.limb === 'rFoot' ? 0 : 1;
+  if (checkable && !f.broken[leg ? 'rLeg' : 'lLeg'] && tti > 0.07 / f.body && sim.rng() < checkChance(f)) {
+    noted(f, 'block');
+    sim.startAction(f, 'check', { dur: tti * f.body + 0.25 });
+    f.action!.leg = leg;
+    f.say(`ставлю голень под ${m.name}`);
     return;
   }
 

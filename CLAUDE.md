@@ -264,6 +264,14 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   there; after every attack (unless the other is hurt) he backs out (`exitUntilW`, then
   `Fighter.exiting` up to 1 s more until 0.9 pref); entries wait x1.8, probes x0.6. In reach
   while idle 15-24% -> 4-5% (brawler preset ~22%), attacks/min ~60 -> ~50, no self-falls.
+- Shin check (user: leg blocks; kicking into one hurts your own leg). Action 'check'
+  (`Action.leg` = lifted leg: his right-foot kick comes to my left): `react` before the kick
+  catch, round/low foot kicks not to the head, chance `checkChance` = style (`CHECK_STYLE`:
+  Thai 0.55, kickboxing 0.45, MMA 0.32, karate 0.25 ... boxing 0.04) x (0.5+0.8 tech) + 0.35
+  x his own limp. Pose: knee up 75°, knee 115°, out 28°, guard up (`pose.ts`); the foot is
+  freed like a kick's and stability floored like a kick. `resolveHit`: the kick is stopped,
+  the kicker's leg takes raw x `CHECK_BACK` 0.75 x (0.8+0.4 tech), the checker's 0.12, kicker's
+  knee buckles, may break at `legBreak`; moment "ЧЕК ГОЛЕНЬЮ!". Tool `checks "2,3"`.
 - "Записать бой" (`recorder.ts`): the last 12 s at 15 fps (via `Sim.onStep`), body segments
   in cm as deltas + actions + hits, gzip+base64 code `БОЙ1:` (~16k chars). Button shows when
   paused (#btnRec) and on the KO card. Decode: `tools/run.sh replay code.txt out.json`, then

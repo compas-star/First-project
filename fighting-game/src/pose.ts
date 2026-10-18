@@ -393,6 +393,20 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
       case 'sprawl':
         lerpPose(out, out, withStance(POSES.sprawl), smooth(Math.min(u * 6, (1 - u) * 2.5)));
         break;
+      case 'check': {
+        // Knee up and turned out to meet the kick with the shin, gloves up, a little sit
+        // on the standing leg.
+        const k = smooth(Math.min(u * 9, (1 - u) * 4));
+        lerpPose(out, out, withStance(POSES.block), smooth(u * 8));
+        const L = a.leg === 1 ? 'r' : 'l';
+        const S = a.leg === 1 ? 'l' : 'r';
+        out[`${L}HipF`] += (75 - out[`${L}HipF`]) * k;
+        out[`${L}Kn`] += (115 - out[`${L}Kn`]) * k;
+        out[`${L}HipS`] += (28 - out[`${L}HipS`]) * k;
+        out[`${S}Kn`] += 10 * k;
+        out.crouch += 0.03 * k;
+        break;
+      }
       case 'catch':
       case 'sweep':
         lerpPose(out, out, withStance(POSES.block), smooth(Math.min(u * 6, (1 - u) * 4)));

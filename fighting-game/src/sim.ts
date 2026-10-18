@@ -48,6 +48,9 @@ export interface Rules {
   standing?: boolean;
 }
 
+/** A checked kick: share of the blow that comes back into the kicker's own leg. */
+const CHECK_BACK = 0.75;
+
 /** Low kicks do this much more to the leg than a stray blow. */
 const LOW_K = 2.4;
 
@@ -58,7 +61,7 @@ export const FLOOR_R = 13.5;
 
 export type DodgePose = 'dodgeL' | 'dodgeR' | 'dodgeBack' | 'slipL' | 'slipR' | 'duck' | 'weaveL' | 'weaveR' | 'pull';
 
-export type ActionKind = 'attack' | 'dodge' | 'block' | 'stagger' | 'getup' | 'victory' | 'parry' | 'dash' | 'slam' | 'catch' | 'sweep' | 'shoot' | 'sprawl';
+export type ActionKind = 'attack' | 'dodge' | 'block' | 'stagger' | 'getup' | 'victory' | 'parry' | 'dash' | 'slam' | 'catch' | 'sweep' | 'shoot' | 'sprawl' | 'check';
 
 export type Limb = 'lArm' | 'rArm' | 'lLeg' | 'rLeg';
 
@@ -116,6 +119,8 @@ export interface Action {
   /** A lean back with the whole body, and the local time to fire back from it (while he is still missing). */
   lean?: boolean;
   counterAt?: number;
+  /** A check: which leg is lifted to meet the kick (0 left, 1 right). */
+  leg?: 0 | 1;
   /** Facing when the action started; spinning techniques turn from here. */
   baseFacing: number;
   /** How far an attack steps in during its wind-up, meters. */
@@ -1216,7 +1221,7 @@ export class Sim {
     f.legsIK = standing;
     if (standing) {
       // A kick or knee takes its foot off the floor; the other one stays planted.
-      const kickFoot = f.action?.kind === 'attack' ? FOOT_OF_STRIKER[f.action.move!.limb] : undefined;
+      const kickFoot = f.action?.kind === 'attack' ? FOOT_OF_STRIKER[f.action.move!.limb] : f.action?.kind === 'check' ? f.action.leg : undefined;
       for (const i of [0, 1] as const) {
         const busy = kickFoot === i;
         if (busy) f.feet[i].free = true;
@@ -2022,7 +2027,7 @@ export class Sim {
       // On one leg in a kick the body leans to counter the leg: judged more leniently,
       // the planted foot grips and the trunk is held, as a trained kicker does.
       const ka = f.action;
-      const kicking = ka?.kind === 'attack' && FOOT_OF_STRIKER[ka.move!.limb] !== undefined;
+      const kicking = (ka?.kind === 'attack' && FOOT_OF_STRIKER[ka.move!.limb] !== undefined) || ka?.kind === 'check';
       let want = kicking
         ? 1 - THREE.MathUtils.smoothstep(f.balanceErr, (0.2 + 0.15 * f.tech) * s, (0.65 + 0.3 * f.tech) * s)
         : 1 - THREE.MathUtils.smoothstep(f.balanceErr, 0.12 * s, 0.5 * s);
@@ -2400,6 +2405,37 @@ export class Sim {
       def.say('парировал!');
       att.say('парировали!');
       this.events.push({ type: 'parry', pos: at, target: def });
+      return;
+    }
+
+    // Checked kick: his shin meets the knee and shin lifted in its way. The kicker's leg
+    // takes it (bone on bone, the hard edge on the soft side), the checking leg a little.
+    if (def.action?.kind === 'check' && (m.limb === 'lFoot' || m.limb === 'rFoot') && (m.path === 'low' || m.path === 'round') && zone !== 'head' && facingAtt > 0) {
+      const ea = att.action!;
+      ea.hitDone = true;
+      const raw = (8.8 * Math.sqrt(J / 9) * Math.sqrt(m.power)) / Math.pow(att.mass / 78, 0.4);
+      const kl: Limb = m.limb === 'lFoot' ? 'lLeg' : 'rLeg';
+      const dl: Limb = def.action.leg === 1 ? 'rLeg' : 'lLeg';
+      att.limbDmg[kl] += raw * CHECK_BACK * (0.8 + 0.4 * def.tech);
+      def.limbDmg[dl] += raw * 0.12;
+      att.stamina -= 0.03 / Math.sqrt(att.cardio);
+      att.combo = null;
+      att.comboLeft = 0;
+      att.mem.oppReact.block++;
+      att.buckleSide = kl === 'lLeg' ? 'l' : 'r';
+      att.buckleK = Math.min(1, 0.4 + raw / 30 + 0.5 * att.lame(kl));
+      att.buckleW = att.clock + 0.3 + 0.3 * att.buckleK;
+      att.wobbleUntilW = Math.max(att.wobbleUntilW, this.t + 0.15 / att.body);
+      def.say(`чек голенью: ${m.name}`);
+      const lame = att.lame(kl);
+      att.say(lame > 0.5 ? `отбил ${LIMB_NAME[kl] === 'левая нога' ? 'левую' : 'правую'} ногу, хромаю` : 'ударил в голень');
+      if (raw > 9 || lame > 0.5) this.moment('ЧЕК ГОЛЕНЬЮ!', def);
+      this.events.push({ type: 'hit', pos: at.clone(), power: raw * 0.25, blocked: true, dmg: raw * 0.5, target: att, fromBehind: false, zone: 'нога', stone: false, part: kl === 'lLeg' ? 'lShin' : 'rShin' });
+      if (!att.broken[kl] && att.limbDmg[kl] > att.legBreak) {
+        att.broken[kl] = true;
+        this.events.push({ type: 'break', pos: at.clone(), target: att, limb: kl });
+        att.action = null;
+      }
       return;
     }
 

@@ -290,6 +290,14 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   (outcome per kick in fights). Body kick clean in fights ~25-45% (was ~8-11%).
 - Feel of weight so far: hit-stop (view.hitStop), head/trunk snap (partTone dips), heavy
   legs (LIMB_MASS), kick catch + sweep.
+- Recoil and pivot (user picked from a list: blows should feel heavier). `Fighter.recoil*`
+  (set in `resolveHit` on a landed head/body blow, dmg > 2): on his own clock the pose throws
+  the head and trunk the way the blow came (pose.ts: quick snap at 20% then back; head shots
+  lean back + twist/side by the blow's x, uppercuts tip the chin up via `recoilY`; body shots
+  fold), dmg > 7 knocks the rear foot back a step. Pivot (`pivotOf` in feet.ts): during a power
+  blow the leg IK pole turns about the vertical (rear foot behind a rear-hand punch, lead foot
+  behind a lead hook, the standing foot under a round kick) and the heel lifts; scaled by tech.
+  `drunk` after: self-falls ~0.33/min (unchanged).
 
 - Condition, not hit points (user's request): `daze` (consciousness, clears with
   time and breath), `trauma` (head damage for the whole fight, weakens the chin),

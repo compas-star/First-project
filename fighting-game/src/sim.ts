@@ -442,6 +442,17 @@ export class Fighter {
   buckleW = 0;
   buckleSide: 'l' | 'r' = 'l';
   buckleK = 0;
+  /**
+   * Thrown back by a blow that landed (his own clock): head and trunk go with the blow,
+   * x/z = its direction in his frame (x to his left, z forward), k = how hard 0..1.
+   */
+  recoilW = 0;
+  recoilLen = 0.3;
+  recoilK = 0;
+  recoilX = 0;
+  recoilZ = 0;
+  recoilY = 0;
+  recoilZone: 'head' | 'body' = 'head';
   snapChestW = 0;
   /** His kicking leg is held by the enemy until this world time. */
   caughtUntilW = 0;
@@ -2369,6 +2380,29 @@ export class Sim {
     if (!blocked && !stone) {
       if (zone === 'head') def.snapHeadW = this.t + (0.1 + 0.012 * dmg) / def.body;
       if (zone === 'body' || dmg > 9) def.snapChestW = this.t + (0.08 + 0.008 * dmg) / def.body;
+    }
+    // Recoil: the head and trunk go with a blow that landed, in the way it came; a hard one
+    // rocks him back a step.
+    if (!blocked && (zone === 'head' || zone === 'body') && dmg > 2 && def.state === 'ok') {
+      const k = Math.min(1, dmg / 14) * (stone ? 0.4 : 1);
+      tmpA.copy(push).setY(0);
+      if (tmpA.lengthSq() < 1e-8) tmpA.subVectors(def.pos, att.pos).setY(0);
+      tmpA.normalize();
+      const fw = def.forward(tmpB);
+      def.recoilZ = tmpA.dot(fw);
+      def.recoilX = tmpA.x * Math.cos(def.facing) - tmpA.z * Math.sin(def.facing);
+      def.recoilY = Math.min(1, Math.max(0, m.lift * 2 + (m.path === 'upper' ? 0.6 : 0)));
+      def.recoilK = Math.max(k, def.clock < def.recoilW ? def.recoilK * 0.6 : 0);
+      def.recoilLen = 0.22 + 0.2 * k;
+      def.recoilW = def.clock + def.recoilLen;
+      def.recoilZone = zone;
+      if (dmg > 7 && !def.feet[1].free && def.feet[1].t < 0 && def.action?.kind !== 'attack') {
+        const ft = def.feet[1];
+        ft.from.copy(ft.pos).setY(0);
+        ft.to.copy(ft.from).addScaledVector(tmpA, (0.08 + 0.01 * dmg) * def.scale);
+        ft.dur = 0.14;
+        ft.t = 0;
+      }
     }
     def.poise -= blocked ? dmg * 0.5 : dmg * (zone === 'head' ? 1.4 : 1);
     att.hits++;

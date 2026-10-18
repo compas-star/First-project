@@ -249,6 +249,48 @@ export function anchorFeet(f: Fighter, h: number): void {
 
 const pole = new THREE.Vector3();
 const target = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
+
+/**
+ * Pivot of foot i during a power blow, radians about the vertical (positive turns toward his
+ * left): the rear foot turns in behind a rear-hand punch, the lead foot behind a lead hook,
+ * the standing foot turns out under a kick; the heel comes up as it turns. 0 otherwise.
+ */
+export function pivotOf(f: Fighter, i: 0 | 1): number {
+  const a = f.action;
+  if (a?.kind !== 'attack' || !a.move || a.feint || a.move.spin) return 0;
+  const m = a.move;
+  let foot: 0 | 1;
+  let dir: number;
+  let amp: number;
+  switch (m.limb) {
+    case 'rHand':
+    case 'rElbow':
+      [foot, dir, amp] = [1, 1, m.path === 'straight' ? 0.75 : 0.95];
+      break;
+    case 'lHand':
+      [foot, dir, amp] = [0, -1, m.path === 'straight' ? 0.2 : 0.85];
+      break;
+    case 'lElbow':
+      [foot, dir, amp] = [0, -1, 0.85];
+      break;
+    case 'rFoot':
+    case 'rKnee':
+      [foot, dir, amp] = [0, 1, m.path === 'round' || m.path === 'low' ? 1.4 : 0.5];
+      break;
+    case 'lFoot':
+    case 'lKnee':
+      [foot, dir, amp] = [1, -1, m.path === 'round' || m.path === 'low' ? 1.4 : 0.5];
+      break;
+    default:
+      return 0;
+  }
+  if (foot !== i) return 0;
+  const u = a.t / a.dur;
+  const [s0, s1] = m.active;
+  const env = u < s0 ? THREE.MathUtils.smoothstep(u / s0, 0.2, 1) : u < s1 ? 1 : 1 - THREE.MathUtils.smoothstep((u - s1) / (1 - s1), 0, 1);
+  return dir * amp * 0.75 * env * (0.5 + 0.5 * f.tech);
+}
 const hip = new THREE.Vector3();
 
 /**
@@ -268,8 +310,13 @@ export function legOverride(f: Fighter, pelvisY: number, res: Partial<Record<Par
     target.y += 0.035 * f.scale;
     v(f.rag.byName[i === 0 ? 'lThigh' : 'rThigh'].body.translation(), hip);
     hip.y += THREE.MathUtils.clamp(lift, -0.2 * f.scale, 0.3 * f.scale);
-    // Knees point forward and a little out.
+    // Knees point forward and a little out; on a power blow the foot turns on its ball.
     pole.copy(fwd).addScaledVector(left, i === 0 ? 0.25 : -0.25);
+    const pv = pivotOf(f, i);
+    if (pv) {
+      pole.applyAxisAngle(UP, pv);
+      target.y += 0.06 * f.scale * Math.min(1, Math.abs(pv) / 0.6);
+    }
     const thigh: PartName = i === 0 ? 'lThigh' : 'rThigh';
     const shin: PartName = i === 0 ? 'lShin' : 'rShin';
     solveTwoBone(

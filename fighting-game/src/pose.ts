@@ -477,6 +477,24 @@ export function targetPose(f: Fighter, out: Pose = clonePose(STANCE)): Pose {
     out.spineSide += -sign * 9 * env;
     out.spineLean += 6 * env;
   }
+  // A blow that landed throws the head and trunk the way it came: a snap at once, then back.
+  if (f.clock < f.recoilW && f.state === 'ok') {
+    const u = 1 - (f.recoilW - f.clock) / f.recoilLen;
+    const env = (u < 0.2 ? smooth(u / 0.2) : 1 - smooth((u - 0.2) / 0.8)) * f.recoilK;
+    const back = Math.max(0, -f.recoilZ);
+    if (f.recoilZone === 'head') {
+      out.headPitch -= (14 * back + 26 * f.recoilY) * env;
+      out.spineLean -= (9 * back + 6 * f.recoilY) * env;
+      out.spineTwist += 22 * f.recoilX * env;
+      out.spineSide -= 9 * f.recoilX * env;
+    } else {
+      // A body shot folds him round it.
+      out.spineLean += 14 * env;
+      out.crouch += 0.05 * env;
+      out.headPitch += 8 * env;
+      out.spineTwist += 12 * f.recoilX * env;
+    }
+  }
   // Losing balance: the arms go out to catch the fall.
   if (f.stability < 0.75 && a?.kind !== 'getup') {
     lerpPose(out, out, withStance(POSES.brace, base), smooth((0.75 - f.stability) / 0.5));

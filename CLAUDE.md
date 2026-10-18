@@ -256,6 +256,14 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   1+0.2(tough-1), legs heal 0.03/s and keep 95% between rounds, low kicks x2.4 (`LOW_K`), lame
   = smoothstep(ratio, 0.15, 0.8), a leg breaks at `legBreak` (x2 in bouts, x1.6 else).
   `gameplan` (TIER=3, legs ordered): lame ~0.1-0.2 after R1, 0.65-0.8 after R2, ~1 after R3.
+- Distance (user: keep the distance, come in only to strike). Tool `range "0,1,2,3" seeds secs`
+  (time in reach while nobody strikes, quiet gaps, attacks/min by kind; env OLD=1 =
+  `globalThis.__oldRange`, the old behaviour). `think`: between exchanges `pref` is just
+  outside the other's reach for everyone (was down to 0.6 of own range for brawlers), plans
+  scale it only 0.97-1.35; lunge reach 0.4+0.5 tech (was 0.15+0.6) so blows step in from
+  there; after every attack (unless the other is hurt) he backs out (`exitUntilW`, then
+  `Fighter.exiting` up to 1 s more until 0.9 pref); entries wait x1.8, probes x0.6. In reach
+  while idle 15-24% -> 4-5% (brawler preset ~22%), attacks/min ~60 -> ~50, no self-falls.
 - "Записать бой" (`recorder.ts`): the last 12 s at 15 fps (via `Sim.onStep`), body segments
   in cm as deltas + actions + hits, gzip+base64 code `БОЙ1:` (~16k chars). Button shows when
   paused (#btnRec) and on the KO card. Decode: `tools/run.sh replay code.txt out.json`, then

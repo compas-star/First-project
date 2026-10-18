@@ -398,7 +398,7 @@ function patienceOf(f: Fighter): number {
 /** World seconds until he takes the initiative again. */
 function waitTime(f: Fighter, sim: Sim): number {
   // In a long fight with rounds he paces himself.
-  const pace = sim.rules.roundLen ? 1.5 : 1;
+  const pace = (sim.rules.roundLen ? 1.5 : 1) * ((globalThis as { __oldRange?: boolean }).__oldRange ? 1 : 1.8);
   return ((0.8 + 5.5 * patienceOf(f)) * (0.6 + 0.8 * sim.rng()) * (1 + 1.2 * f.fatigue) * pace) / f.mind;
 }
 
@@ -514,16 +514,24 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
   const myRange = sim.attackRange(f, jab);
   const enemyRange = sim.attackRange(e, jab) + jab.lunge * e.scale;
   // How far a lunge can carry the fighter into range.
-  const lungeMax = (0.15 + 0.6 * tech) * f.scale * Math.exp(f.gene('lunge'));
+  // Everyone steps in with the blow (the user: keep the distance, come in only to strike);
+  // a trained man covers more ground in one step.
+  const OLD = (globalThis as { __oldRange?: boolean }).__oldRange;
+  const lungeMax = (OLD ? 0.15 + 0.6 * tech : 0.4 + 0.5 * tech) * f.scale * Math.exp(f.gene('lunge'));
   // How long he is willing to stand and read the other man before going in.
   const patience = patienceOf(f);
   // Measuring distance: just outside the enemy's reach. A brawler stands close.
   const outside = Math.max(enemyRange + (0.15 + 0.35 * patience) * f.scale, myRange + 0.05);
   const gap = minGap(f, e);
-  const pref = Math.max(
-    gap + 0.1 * f.scale,
-    THREE.MathUtils.lerp(myRange * 0.6, outside, Math.min(1, patience * 1.4)) * f.disc.range * planDistance(f),
-  );
+  // Between exchanges he stands just outside the other man's reach, even a brawler
+  // (only a little closer) and even when pressing: pressure is cutting off, not standing
+  // in the pocket.
+  const pref = OLD
+    ? Math.max(gap + 0.1 * f.scale, THREE.MathUtils.lerp(myRange * 0.6, outside, Math.min(1, patience * 1.4)) * f.disc.range * planDistance(f))
+    : Math.max(
+        gap + 0.1 * f.scale,
+        Math.max(enemyRange + (0.05 + 0.3 * patience) * f.scale, myRange * 0.95) * (0.94 + 0.06 * f.disc.range) * THREE.MathUtils.clamp(planDistance(f), 0.97, 1.35),
+      );
   f.wantDist = pref - (f.moveMode === 'stalk' ? 0.12 * f.scale : 0);
   if (f.initiativeW === 0) f.initiativeW = sim.t + waitTime(f, sim) * 0.6;
 
@@ -534,8 +542,11 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     return;
   }
 
-  if (sim.t < f.exitUntilW) {
-    intent(f, 'выхожу под углом');
+  // After his blows he gets back out of reach before anything else (up to a second),
+  // unless the other man comes after him.
+  f.exiting = !OLD && sim.t >= f.exitUntilW && sim.t < f.exitUntilW + 1 / f.body && dist < pref * 0.9 && e.action?.kind !== 'attack';
+  if (sim.t < f.exitUntilW || f.exiting) {
+    intent(f, 'выхожу из размена');
     return;
   }
 
@@ -673,7 +684,7 @@ export function think(f: Fighter, e: Fighter, sim: Sim): void {
     return;
   }
   // Reading him: now and then a feint to draw a reaction, or a probing jab.
-  if (patience > 0.3 && Math.abs(dist - pref) < 0.3 * f.scale && sim.rng() < per(0.07 + 0.05 * tech)) {
+  if (patience > 0.3 && Math.abs(dist - pref) < 0.3 * f.scale && sim.rng() < per((OLD ? 1 : 0.6) * (0.07 + 0.05 * tech))) {
     const jabLike = options.find((m) => m.id === 'jab' || m.id === 'teep' || m.id === 'leadkick');
     if (jabLike && sim.rng() < 0.5) {
       sim.startAction(f, 'attack', { move: jabLike, lunge: 0.05, zone: 'head', feint: true });

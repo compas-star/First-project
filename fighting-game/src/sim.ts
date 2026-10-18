@@ -415,6 +415,8 @@ export class Fighter {
   dazed = false;
   /** After a clean attack a technical fighter steps back out until this world time. */
   exitUntilW = 0;
+  /** Still backing out of reach after his blows (ai.ts). */
+  exiting = false;
   /** World time he takes the initiative next (0 = not decided yet). */
   initiativeW = 0;
   /** After defending a blow he may answer until this world time. */
@@ -1316,7 +1318,7 @@ export class Sim {
       want.copy(behind).normalize().multiplyScalar(f.stride * 1.1);
     } else {
       let target = f.wantDist;
-      if (this.t < f.exitUntilW) target += 0.35 * f.scale;
+      if (this.t < f.exitUntilW || f.exiting) target += 0.35 * f.scale;
       target = Math.max(target, f.radius + e.radius + 0.3 * Math.max(f.scale, e.scale));
       const err = dist - target;
       // Small changes of distance are ignored: nobody steps back for every inch.
@@ -2265,7 +2267,7 @@ export class Sim {
         return;
       }
       // A trained fighter does not stay in the pocket after striking.
-      if (a.kind === 'attack' && f.tech + 0.5 * (1 - f.p.aggression) > 0.45) {
+      if (a.kind === 'attack' && ((globalThis as { __oldRange?: boolean }).__oldRange ? f.tech + 0.5 * (1 - f.p.aggression) > 0.45 : !f.enemy.dazed)) {
         f.exitUntilW = this.t + (0.35 + 0.45 * f.tech) / f.body;
         if (this.rng() < f.tech * 0.6) {
           // Step off the line at an angle rather than straight back.

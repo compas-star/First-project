@@ -191,7 +191,7 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
 
   // Out of breath: no dancing and no trading, just hands up and take it on the guard.
   if (f.winded && tti > 0.05 / f.body && sim.rng() < 0.85) {
-    sim.startAction(f, 'block', { dur: 0.5 });
+    sim.startAction(f, 'block', { dur: Math.max(0.5, tti * f.body + 0.25) });
     noted(f, 'block');
     f.say('выдохся, закрываюсь');
     return;
@@ -230,7 +230,7 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
   if (tryDodge(f, e, m, ea, sim, tti, 0)) return;
 
   if (tti > 0.05 / f.body && sim.rng() < 0.4 + 0.6 * f.tech + f.gene('block') + (f.dazed ? 0.35 : 0)) {
-    sim.startAction(f, 'block', { dur: 0.5 });
+    sim.startAction(f, 'block', { dur: Math.max(0.5, tti * f.body + 0.25) });
     if (!ea.reply) f.answerUntilW = ea.impactW + (0.3 + 0.3 * f.tech) / f.mind;
     noted(f, 'block');
     f.say('блок');

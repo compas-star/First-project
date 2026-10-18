@@ -214,7 +214,8 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   choices; training gain x0.85..1.15 via `trainK`, lazy x0.85, grinder x1.15, hangover x0.5;
   fight skill x(1 +- 0.04), hothead +0.12 aggression via `lifeParams` in `toParams`).
   `dailyLife` (end of `endDay`): unanswered incidents settle as 'ignore', then one may happen
-  per fighter: bar brawl (drinker), binge, street fight + bail (hothead, rel -30 with a world
+  per fighter: bar brawl (drinker 11%/day, hothead 5%, anyone 2%; test button "🍺 Бар" =
+  `barIncident` for the picked fighter), binge, street fight + bail (hothead, rel -30 with a world
   man of his class), skipped training (lazy), sponsor (star/fame), interview before a booked
   fight (trash talk = rel -35, fame), love (ladies), wants to leave (mood < -60). Cards on
   the career home (`incidents()`, data-act 'inc'); `resolve` applies a choice. "Ехать

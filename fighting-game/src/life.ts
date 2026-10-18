@@ -89,6 +89,18 @@ export function ensureLife(c: Career): void {
   c.nextInc ??= 1;
 }
 
+/** A night call: he is drunk in a bar and fighting the bouncer. */
+export function barIncident(c: Career, f: CareerFighter): void {
+  ensureLife(c);
+  const bill = Math.round(rnd(60, 140));
+  c.incidents = c.incidents!.filter((x) => x.f !== f.id);
+  add(c, {
+    f: f.id, kind: 'bar', day: c.day, money: bill,
+    text: `Звонок ночью: ${short(f)} напился в баре ${pick(BARS)} и машется с вышибалой. Бармен грозит полицией.`,
+    opts: [{ id: 'fetch', label: 'Ехать вытаскивать' }, { id: 'pay', label: `Заплатить бармену $${bill}` }, { id: 'ignore', label: 'Пусть сидит' }],
+  });
+}
+
 function add(c: Career, i: Omit<Incident, 'id'>): void {
   c.incidents!.push({ ...i, id: c.nextInc!++ });
 }
@@ -113,13 +125,8 @@ export function dailyLife(c: Career): string[] {
     const low = moodOf(f) < -10 ? 1.6 : 1;
     if (moodOf(f) < -60 && !has(f, 'loyal') && r < 0.35) {
       add(c, { f: f.id, kind: 'leave', day: c.day, text: `${name} собирает вещи: «Найду себе менеджера получше».`, opts: [{ id: 'talk', label: 'Уговорить (10 ◆)' }, { id: 'ignore', label: 'Пусть уходит' }] });
-    } else if (has(f, 'drinker') && r < 0.11 * low) {
-      const bill = Math.round(rnd(60, 140));
-      add(c, {
-        f: f.id, kind: 'bar', day: c.day, money: bill,
-        text: `Звонок ночью: ${name} напился в баре ${pick(BARS)} и машется с вышибалой. Бармен грозит полицией.`,
-        opts: [{ id: 'fetch', label: 'Ехать вытаскивать' }, { id: 'pay', label: `Заплатить бармену $${bill}` }, { id: 'ignore', label: 'Пусть сидит' }],
-      });
+    } else if (r < (has(f, 'drinker') ? 0.11 : has(f, 'hothead') ? 0.05 : 0.02) * low) {
+      barIncident(c, f);
     } else if (has(f, 'drinker') && moodOf(f) < 0 && r < 0.16 && free) {
       add(c, { f: f.id, kind: 'binge', day: c.day, text: `${name} ушёл в загул и не берёт трубку.`, opts: [{ id: 'search', label: 'Искать по барам (3 ◆)' }, { id: 'ignore', label: 'Сам вернётся' }] });
     } else if (has(f, 'hothead') && r < 0.06 * low) {

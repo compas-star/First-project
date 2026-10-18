@@ -13,7 +13,7 @@ import {
   type Career, type CareerFighter, type Tier, type FightResult, type StatKey, type Ev,
 } from './career';
 import { DISCIPLINE_BY_ID } from './disciplines';
-import { TRAITS, moodWord, resolve, afterBrawl, drunk } from './life';
+import { TRAITS, moodWord, resolve, afterBrawl, drunk, barIncident } from './life';
 import type { FighterParams } from './config';
 import { exportSave, importSave } from './saveCode';
 import { cloudFlush, cloudRestore, cloudAt, cloudState } from './cloud';
@@ -119,6 +119,7 @@ export class CareerUi {
       <button type="button" data-act="cheat" data-k="money" data-v="500">+$500</button>
       <button type="button" data-act="cheat" data-k="money" data-v="-500">−$500</button>
       <button type="button" data-act="peak">До пика</button>
+      <button type="button" data-act="testbar">🍺 Бар</button>
     </div>`;
     const body =
       this.screen === 'home' ? this.home()
@@ -682,6 +683,10 @@ export class CareerUi {
         save(c);
         return say(what);
       }
+      case 'testbar':
+        barIncident(c, me);
+        this.screen = 'home';
+        return say('Тест: драка в баре');
       case 'peak': {
         // For testing: the chosen fighter at the top of what he can ever become.
         for (const k of STAT_KEYS) me.stats[k] = me.caps[k];

@@ -150,7 +150,7 @@ function reactInner(f: Fighter, e: Fighter, sim: Sim): void {
     }
     if (tryDodge(f, e, m, ea, sim, tti, 0.3 + read, read)) {
       // A dodge he was ready for is small and costs little.
-      f.stamina += (0.035 * (1 - 0.4 * f.p.evasion) * 0.6 * read) / f.cardio;
+      f.stamina += (0.035 * (1 - 0.4 * f.p.evasion) - 0.006) / f.cardio;
       if (!e.comboLeft && !e.script) f.readW = sim.t + 1.2 / f.mind;
       f.say(`ждал ${kindName(kind)}`);
       return;

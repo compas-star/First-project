@@ -414,7 +414,20 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
    it, rest restores; tired = slower strikes and reactions, weaker blows, hands drop,
    less eager. Strikes at body speed 1 slowed by `STRIKE_TEMPO` 1.4 (user: too fast).
    School habits were trained before these two changes; retrain when convenient.
-4. **Lookahead where mind = depth:** faster perception simulates more options ahead.
+4. Look-ahead, first pass (mind = depth). `Fighter.insight` = clamp((mind / enemy body - 0.6) /
+   1.6) x (0.4 + 0.6 tech). Memory by blow kind (`blowKind`: side + line, e.g. 'rstraight'):
+   `mem.follow` (his next blow after each of his), `mem.answer` (his answer to each of mine),
+   `mem.kinds` (favourite); `predict`/`favourite` in brain.ts; carried across fights. An
+   expected blow (`Fighter.expect`, or his favourite) is perceived sooner (react delay x(1-0.7
+   read)), then beaten to the punch or dodged with its line known (cheap as a block), answer
+   ready (`readW`). Thought: "ждал прямой правой". Feint traps were tried and removed (cost
+   wins). Bugs found on the way (quick minds lost to normal ones, 28%): think() chances were
+   per decision, so a quick mind feinted/probed/blocked 3x as often -> now per second (`per`);
+   the lean-back counter fired while his blow was still in the air -> waits until it passed;
+   an early block expired before slow blows -> held until the blow; a blow seen during my own
+   attack was marked handled even if my attack ended first -> reconsidered. Tools `look`
+   (mind xN vs x1, on/off, 4 parallel seeds), `lookko` (timeline before a KO). After: mind x3
+   vs x1 stand-up wins ~41% off / ~37% on (was 28%); still below 50%: open question.
 5. Known issues: rare support-shin velocity spike during cross/bodykick (IK flip?);
    no sweeps as a technique; no southpaw; no grappling; crates are the only props.
 6. Later from the vision: move editor, 3-5 fighters, flight and arena destruction for

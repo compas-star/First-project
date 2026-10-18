@@ -501,18 +501,21 @@ function frame(now: number): void {
     worldDt = sim.advance(realDt * viewScale * (sim.winner ? 1 : speed) * (lab.active ? lab.slow : 1));
   }
 
+  // The setup sheet (or the career) is open over the fight: the cards wait until it is closed,
+  // or they would cover it and take its taps (it looked frozen).
+  const covered = !$('sheet').hidden || !$('career').hidden;
   // Between rounds: the card, then the next round (by tap or after a few seconds).
-  if (sim.betweenRounds) {
+  if (sim.betweenRounds && !covered) {
     if (roundShownAt < 0) {
       roundShownAt = now;
       showRound();
     } else if (now - roundShownAt > 6000 && !paused) startNextRound();
   }
-  if (sim.draw && koShownAt < 0) {
+  if (sim.draw && koShownAt < 0 && !covered) {
     koShownAt = now;
     showDraw();
   }
-  if (sim.winner && koShownAt < 0) {
+  if (sim.winner && koShownAt < 0 && !covered) {
     const w = sim.winner;
     const decision = w.enemy.koReason.startsWith('решение');
     if (decision) {

@@ -137,7 +137,9 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   `maskHead`'s face branch; only the luchador and the ninja keep masks.
   Switching to or from it rebuilds the fighters (`view.setFigure` -> `setSim`). Dock button
   cycles маски / комикс / тени (`arena-figure-v2`). `view.debugCam` lets tests place the camera.
-- `main.ts`: HUD, time scale ("eyes"), setup sheet, presets.
+- `main.ts`: HUD, time scale ("eyes"), setup sheet, presets. KO / draw / round cards wait while
+  the setup sheet or the career is open (`covered` in `frame`): the KO overlay took the sheet's
+  taps and the game looked frozen (user).
 - `career.ts` + `careerUi.ts`: manager mode ("Карьера" button; the sandbox stays as is).
   Fighters with a story, stats (`bodySpeed, strength, mindSpeed, skill, evasion, cardio`)
   and hidden caps (talent). **Calendar** (user's request): the career runs by days

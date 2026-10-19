@@ -13,7 +13,8 @@ import { DISCIPLINE_BY_ID } from './disciplines';
 import { rollTraits, ensureLife, dailyLife, trainK, lifeParams, moodAfterFight, type TraitId, type Incident } from './life';
 import { cityNight, needsK, fightToll } from './city';
 import { act1Day, type Act1 } from './act1';
-import { cupDay, ladderLock, type Ladder } from './clubs';
+import { act2Day, type Act2 } from './act2';
+import { cupDay, ladderLock, known, type Ladder } from './clubs';
 
 export type StatKey = 'bodySpeed' | 'strength' | 'mindSpeed' | 'skill' | 'evasion' | 'cardio';
 export type Stats = Record<StatKey, number>;
@@ -171,6 +172,8 @@ export interface Career {
   act1?: Act1;
   /** Clubs, the ladder of stages and the weekly tournament (clubs.ts). */
   ladder?: Ladder;
+  /** Act 2 of the main story (act2.ts). */
+  act2?: Act2;
 }
 
 export type EvKind = 'night' | 'tour' | 'title';
@@ -688,6 +691,7 @@ function endDay(c: Career): string[] {
   out.push(...gymDay(c));
   out.push(...storyDay(c));
   out.push(...act1Day(c));
+  out.push(...act2Day(c));
   out.push(...cupDay(c));
   out.unshift(`— ${dayName(c.day)}, ${weekday(c.day)} —`);
   return out;
@@ -907,6 +911,13 @@ export function odds(a: CareerFighter, b: CareerFighter): number {
 }
 
 /** Name of a round by how many fights are in it. */
+/** Rounds in a tournament bout (user: the first fights 1 round, then 3, the final 5). */
+export function roundTier(t: Tier, fights: number, firstFights: number): Tier {
+  if (!t.rules.rounds) return t;
+  const rounds = fights === 1 ? 5 : fights >= firstFights ? 1 : 3;
+  return { ...t, rules: { ...t.rules, rounds } };
+}
+
 export const roundName = (fights: number) =>
   fights === 1 ? 'финал' : fights === 2 ? 'полуфинал' : fights === 4 ? 'четвертьфинал' : `1/${fights} финала`;
 
@@ -1227,7 +1238,7 @@ function worldDay(c: Career, day: number): string[] {
   const a = pickOf(all.filter((x) => !c.roster.includes(x)));
   const near = all.filter((x) => x !== a && Math.abs((x.elo ?? 0) - (a.elo ?? 0)) < 120);
   if (near.length && Math.random() < 0.8) {
-    const mine = near.filter((x) => c.roster.includes(x));
+    const mine = known(c) ? near.filter((x) => c.roster.includes(x)) : [];
     const b = mine.length && Math.random() < 0.35 ? pickOf(mine) : pickOf(near);
     addRel(c, a, b, -(c.roster.includes(b) ? rnd(30, 55) : rnd(20, 40)));
     const line = pickOf(TRASH)(short(a), short(b));

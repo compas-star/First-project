@@ -204,7 +204,7 @@ export function cityNight(c: Career): string[] {
     f.boost = 1;
   }
   // Sunday night: the rent for the flat over the basement.
-  if (DOW(c.day) === 6) {
+  if (DOW(c.day) === 6 && !c.act2?.flags.sewer) {
     if (c.money >= RENT) {
       c.money -= RENT;
       out.push(`Квартплата за неделю: −$${RENT}`);

@@ -5,7 +5,7 @@
 import {
   STAT_KEYS, STAT_INFO, INTENSITY, TIERS, TIER_BY_ID, MAX_ROSTER,
   load, save, reset, newCareer, tick, busy, refreshMarket, buy, sell,
-  rating, talentWord, value, opponent, toParams, afterFight, tourFight, roundName, short, odds,
+  rating, talentWord, value, opponent, toParams, afterFight, tourFight, roundName, roundTier, short, odds,
   person, current, myMatch, settle, settleOthers, finished, closeTour,
   rankings, rankOf, relOf, WCLASSES, classOf, sameClass, isChamp, champOf, type WClass, relWord, rivalsOf, titleBout, tierOf, TITLE_PURSE,
   MARKET_DAYS, dayName, weekday, weekStart, eventsOn, evById, nextDay, canBook, book, unbook, rebook,
@@ -33,7 +33,9 @@ import {
   ladder, cup, cupCanJoin, cupJoin, cupMyMatch, cupAdvance, cupFought, ambushFight, ambushDone, clubOf, ranked, nextStageNeeds,
   CUP_TIER, STREET_TIER, CUP_PRIZE, CUP_FEE, STAGE_NAME, type Club, type CupMatch,
 } from './clubs';
-import { callDue, callScene, callDone, ensureAct1, act1Check, act1Card, act1Film, act1Seen, act1Choose, act1FightDone, act1Pay, act1Goal, watchLesson, basementLost, act, type A1Fight } from './act1';
+import { callDue, callScene, callDone, act1Pay, watchLesson, basementLost, act, type A1Fight } from './act1';
+import { actCheck, actCard, actFilm, actSeen, actChoose, actFightDone, actGoal, forcedNow } from './acts';
+import { act2Fee, inSewer } from './act2';
 
 export interface CareerHooks {
   /** Show this fight in the arena; `done` gets the result when it is over. */
@@ -119,12 +121,11 @@ export class CareerUi {
   show(): void {
     $('career').hidden = false;
     tick(this.c);
-    ensureAct1(this.c);
-    act1Check(this.c);
+    actCheck(this.c);
     if (storyCheck(this.c).length) save(this.c);
     this.render();
     // The very first scene plays by itself.
-    const card = act1Card(this.c);
+    const card = actCard(this.c);
     if (card?.id === 's1' && !card.watched) this.playFilm();
     else if (callDue(this.c)) this.playCall();
     clearInterval(this.timer);
@@ -145,12 +146,12 @@ export class CareerUi {
 
   /** Plays the open act 1 card's film, then back here with its choices. */
   private playFilm(): void {
-    const spec = act1Film(this.c);
+    const spec = actFilm(this.c);
     if (!spec) return;
     $('career').hidden = true;
     clearInterval(this.timer);
     this.hooks.scene(spec, () => {
-      act1Seen(this.c);
+      actSeen(this.c);
       this.screen = 'home';
       this.show();
     });
@@ -159,11 +160,11 @@ export class CareerUi {
   /** A fight of act 1: its scene first, then the result, then a scene after it if any. */
   private a1Fight(fight: A1Fight): void {
     const c = this.c;
-    const f = c.roster.find((x) => x.id === c.pick) ?? c.roster[0];
+    const f = fight.who ?? c.roster.find((x) => x.id === c.pick) ?? c.roster[0];
     $('career').hidden = true;
     clearInterval(this.timer);
     this.hooks.fight(f, fight.opp, fight.tier, fight.title, (r) => {
-      const res = act1FightDone(c, f, fight, r);
+      const res = actFightDone(c, f, fight, r);
       this.outcome = { won: r.won, title: `${fight.title} · ${r.won ? 'победа' : 'поражение'}`, lines: res.lines };
       this.screen = 'result';
       if (res.scene) this.hooks.scene(res.scene, () => this.show());
@@ -174,17 +175,34 @@ export class CareerUi {
   /** Act 1: the goal and the open scene. */
   private goalCard(): string {
     const c = this.c;
-    const g = act1Goal(c);
+    const g = actGoal(c);
     const goal = g
       ? `<div class="goal slim"><div>🎯 ${g.debt > 0 ? `Долг Гусю <b>$${g.debt}</b>` : esc(g.text)} · ${g.left > 0 ? `<b>${g.left}</b> дн.` : '<b>сегодня!</b>'}</div>
+          ${g.fee ? `<div class="row"><button type="button" data-act="a2fee" ${c.money >= g.fee ? '' : 'disabled'}>Взнос $${g.fee}</button></div>` : ''}
           ${g.debt > 0 ? `<div class="row">${[100, 300].map((n) => `<button type="button" data-act="a1pay" data-n="${n}" ${c.money >= n ? '' : 'disabled'}>$${n}</button>`).join('')}<button type="button" data-act="a1pay" data-n="${g.debt}" ${c.money >= g.debt ? '' : 'disabled'}>Всё</button></div>` : ''}
         </div>`
       : '';
     return goal;
   }
 
+  /** The blocking screen: no sleeping, no walking away. */
+  private forcedView(kind: 'card' | 'ambush'): string {
+    const c = this.c;
+    if (kind === 'ambush') {
+      const a = ambushFight(c)!;
+      return `<div class="incident story act1 forced">
+        <div class="h2">👊 У подъезда</div>
+        <div class="who">${esc(a.club.name)}</div>
+        <div>Утро перед финалом. У подъезда ждёт ${esc(short(a.opp))}: «Привет от ${esc(a.club.name)}. До финала ты не дойдёшь». Мимо не пройти.</div>
+        <div class="incopts"><button type="button" class="primary" data-act="ambush">Драться</button></div>
+      </div>`;
+    }
+    return this.act1CardHtml().replace('class="incident story act1"', 'class="incident story act1 forced"') +
+      '<div class="fnote">От этого не уйти: пока не разберёшься, день не закончится.</div>';
+  }
+
   private act1CardHtml(): string {
-    const card = act1Card(this.c);
+    const card = actCard(this.c);
     if (!card) return '';
     const showOpts = !card.film || card.watched;
     return `<div class="incident story act1">
@@ -229,8 +247,11 @@ export class CareerUi {
       ${main ? '<button type="button" data-act="sandbox">← Арена</button>' : '<button type="button" data-act="back">← Назад</button>'}
       <div class="wallet"><span title="деньги">$<b>${c.money.toLocaleString('ru')}</b></span><span title="жетоны">◆ <b>${c.tokens}</b></span></div>
     </div>`;
+    // A fight the story will not let him walk past covers every screen until it is fought.
+    const forced = this.screen === 'result' ? null : forcedNow(c);
     const body =
-      this.screen === 'home' ? this.home()
+      forced ? this.forcedView(forced.kind)
+      : this.screen === 'home' ? this.home()
       : this.screen === 'gym' ? this.gym()
       : this.screen === 'fights' || this.screen === 'cal' ? this.calendar()
       : this.screen === 'preview' ? this.preview()
@@ -252,11 +273,11 @@ export class CareerUi {
       ? `<div class="askbox"><div>${esc(this.asking.text)}</div><div class="row"><button type="button" class="primary" data-act="yes">Да</button><button type="button" data-act="no">Нет</button></div></div>`
       : '';
     // The pixel font has no ◆: the token sign is drawn in another font.
-    const nav = main
+    const nav = main && !forced
       ? `<nav class="cnav">${([['home', '🏠', 'Дом'], ['map', '🗺', 'Город'], ['cal', '📅', 'Бои'], ['team', '👥', 'Команда'], ['more', '☰', 'Ещё']] as const)
           .map(([id, icon, name]) => `<button type="button" class="${this.screen === id ? 'on' : ''}" data-act="to" data-s="${id}"><span>${icon}</span>${name}</button>`).join('')}</nav>`
       : '';
-    const inSheet = this.screen === 'home' && !!this.sheet;
+    const inSheet = this.screen === 'home' && !!this.sheet && !forced;
     const toast = this.toast ? `<div class="toast">${esc(this.toast)}</div>` : '';
     const sheet = inSheet ? `<div class="sheetbg" data-act="sheetx"></div><div class="sheet">${toast}${this.sheetHtml(this.sheet!)}</div>` : '';
     $('career').innerHTML = (top + ask + (inSheet ? '' : toast) + body + nav + sheet).replace(/◆/g, '<i class="gem">◆</i>');
@@ -281,7 +302,7 @@ export class CareerUi {
         </div>`;
     const a = act(c);
     const calls = (c.incidents?.length ?? 0) + (pendingChapter(c) ? 1 : 0);
-    const card = act1Card(c);
+    const card = actCard(c);
     cupAdvance(c);
     const amb = ambushFight(c);
     const myCup = cupMyMatch(c);
@@ -294,7 +315,7 @@ export class CareerUi {
     const look = HOME_LOOK[f.discipline] ?? HOME_LOOK.mma;
     const art = homeSvg({
       badges: { tv: card ? '!' : '', phone: calls ? String(calls) : '', calendar: c.events.some((e) => e.f && !e.done && e.day === c.day) ? '!' : '' },
-      tvOn: !!card, lost: !!a?.flags.lost, skin: SKIN_TONES[f.name.length % SKIN_TONES.length], shorts: look[0], hair: look[1],
+      tvOn: !!card, lost: !!a?.flags.lost, sewer: inSewer(c), skin: SKIN_TONES[f.name.length % SKIN_TONES.length], shorts: look[0], hair: look[1],
       part: partOf(f), sleepy: partsLeft(c, f) === 0 && !bookedOn(c, f, c.day),
     });
     const fights = c.events.some((e) => e.f && !e.done && e.day >= c.day) ? this.today() : '';
@@ -461,7 +482,7 @@ export class CareerUi {
       case 'flat':
         body = `${food(['cheap'])}
           <div class="h2">Отдых</div>${restBtn('😌 Отдохнуть · 1 часть · +15⚡, настроение')}
-          <button type="button" data-act="to" data-s="gym" ${gymOf(c).id === 'basement' ? '' : 'disabled'}>🥊 ${basementLost(c) ? 'Тренироваться во дворе (−20%)' : 'Спуститься в подвал'}${gymOf(c).id === 'basement' ? ' · тренировка' : ' · команда ходит в другой зал'}</button>
+          <button type="button" data-act="to" data-s="gym" ${gymOf(c).id === 'basement' ? '' : 'disabled'}>🥊 ${inSewer(c) ? 'Тренироваться в канализации (−20%)' : basementLost(c) ? 'Тренироваться во дворе (−20%)' : 'Спуститься в подвал'}${gymOf(c).id === 'basement' ? ' · тренировка' : ' · команда ходит в другой зал'}</button>
           ${act(c)?.done.includes('s3') && !act(c)?.flags.tape2 ? '<button type="button" data-act="a1tape">📼 Кассета Михалыча «Урок 1» · часть дня</button>' : ''}
           ${DOW(c.day) === 6 ? `<div class="fnote">Сегодня ночью квартплата: $${RENT}.</div>` : `<div class="fnote">Квартплата $${RENT} — в ночь с воскресенья на понедельник.</div>`}`;
         break;
@@ -1256,6 +1277,8 @@ export class CareerUi {
       case 'a1film':
         this.sheet = null;
         return this.playFilm();
+      case 'a2fee':
+        return say(act2Fee(c));
       case 'a1pay':
         return say(act1Pay(c, Number(b.dataset.n)));
       case 'a1tape': {
@@ -1267,7 +1290,7 @@ export class CareerUi {
         return this.hooks.scene(r.scene, () => this.show());
       }
       case 'a1': {
-        const r = act1Choose(c, b.dataset.o!);
+        const r = actChoose(c, b.dataset.o!);
         if (r.fight) return this.a1Fight(r.fight);
         if (r.scene) {
           this.toast = r.lines.join(' · ');
@@ -1292,7 +1315,7 @@ export class CareerUi {
         const title = `Подвальный турнир: ${short(f)} против ${short(opp)}${k ? ` (${k.name})` : ''}`;
         $('career').hidden = true;
         clearInterval(this.timer);
-        this.hooks.fight(f, opp, CUP_TIER, title, (r) => {
+        this.hooks.fight(f, opp, roundTier(CUP_TIER, m === cp.final ? 1 : cp.qf.includes(m) ? 4 : 2, 4), title, (r) => {
           fightToll(f, true);
           const lines = cupFought(c, f, m, r.won);
           this.outcome = { won: r.won, title, lines };
@@ -1355,6 +1378,8 @@ export class CareerUi {
         save(c);
         return say('План боя сброшен: решает сам');
       case 'nextday': {
+        const fz = forcedNow(c);
+        if (fz) return say(`Сначала разберись: ${fz.title}`);
         const done = (err: string | null) => {
           if (err) return say(err);
           this.calDay = c.day;
@@ -1443,13 +1468,13 @@ export class CareerUi {
         const f = c.roster.find((x) => x.id === tour.fighter)!;
         if (busy(c, f)) return say(`${short(f)} ещё восстанавливается`);
         const m = myMatch(tour)!;
-        this.bill = { tier: TIER_BY_ID[tour.tier], opp: person(c, m.a === f.id ? m.b : m.a), tour: true };
+        this.bill = { tier: roundTier(TIER_BY_ID[tour.tier], current(tour).length, TIER_BY_ID[tour.tier].size / 2), opp: person(c, m.a === f.id ? m.b : m.a), tour: true };
         return this.go('preview');
       }
       case 'watch': {
         const tour = c.tour!;
         const m = current(tour)[Number(b.dataset.i)];
-        const t = TIER_BY_ID[tour.tier];
+        const t = roundTier(TIER_BY_ID[tour.tier], current(tour).length, TIER_BY_ID[tour.tier].size / 2);
         const A = person(c, m.a);
         const B = person(c, m.b);
         $('career').hidden = true;

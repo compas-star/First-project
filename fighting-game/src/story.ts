@@ -3,6 +3,7 @@
 // the bookmaker Лис and a fixed fight, a kid at the door, and the rival gym «Железный
 // кулак». A chapter is a card on the home screen with choices; some choices start a fight
 // with a scene before it (talkCut). One open chapter at a time, a few days apart.
+import { known } from './clubs';
 import {
   makeFighter, short, value, rating, champOf, classOf, rankOf, save, afterFight, addRel, MAX_ROSTER,
   type Career, type CareerFighter, type Tier, type FightResult,
@@ -211,7 +212,7 @@ const CHAPTERS: Chapter[] = [
   // --- The champion ---
   {
     id: 'rival1', line: 'rival', title: 'Пресс-конференция', who: 'Чемпион',
-    when: (c, _s, f) => c.day >= 6 && f.fame >= 12 && !!champOf(c, classOf(f)),
+    when: (c, _s, f) => known(c) && c.day >= 6 && f.fame >= 12 && !!champOf(c, classOf(f)),
     text: (c, _s, f) => {
       const ch = champOf(c, classOf(f))!;
       return `На пресс-конференции чемпион ${short(ch)} кивает на нашего бойца: «${short(f)}? Это кто? Я таких на разминке роняю. Пусть сначала научится стоять.» Зал смеётся.`;
@@ -287,7 +288,7 @@ const CHAPTERS: Chapter[] = [
   // --- The bookmaker ---
   {
     id: 'fix1', line: 'fix', title: 'Предложение', who: 'Лис',
-    when: (c, _s, f) => c.day >= 12 && f.fame >= 8 && c.events.some((e) => e.f === f.id && !e.done && e.day > c.day),
+    when: (c, _s, f) => known(c) && c.day >= 12 && f.fame >= 8 && c.events.some((e) => e.f === f.id && !e.done && e.day > c.day),
     text: (_c, _s, f) => `Вечером звонит вкрадчивый голос: «Меня зовут Лис. На следующем бою ${short(f)} ляжет. Тихо, красиво. Тысяча двести наличными. Подумай.»`,
     opts: [
       { id: 'yes', label: 'Согласиться ($1200)', run: (_c, s) => {
@@ -515,6 +516,7 @@ export function pendingChapter(c: Career): { id: string; line: string; lineName:
 export function storyCheck(c: Career): string[] {
   // While act 1 runs, its scenes are the story.
   if (c.act1 && !c.act1.ending) return [];
+  if (c.act2 && !c.act2.ending) return [];
   const s = story(c);
   if (s.pending || c.day - s.last < 3) return [];
   const f = main(c);

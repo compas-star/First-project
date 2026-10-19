@@ -145,6 +145,10 @@ export function ladder(c: Career): Ladder {
   return c.ladder;
 }
 
+/** Known beyond the basement (district champion or higher): before that no sponsors, no
+ * interviews, no champions calling him out (user: odd for a nobody from a basement). */
+export const known = (c: Career) => ladder(c).stage >= 3;
+
 export const clubOf = (c: Career, id: string): Club | null => ladder(c).clubs.find((k) => k.members.some((m) => m.id === id)) ?? null;
 export const isLeader = (c: Career, id: string) => ladder(c).clubs.some((k) => k.leader === id);
 /** Club members by strength. */

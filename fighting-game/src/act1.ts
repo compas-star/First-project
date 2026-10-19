@@ -63,11 +63,11 @@ export function ensureAct1(c: Career): void {
 
 // ---------- People ----------
 
-function gus(c: Career, f: CareerFighter): CareerFighter {
+export function gus(c: Career, f: CareerFighter): CareerFighter {
   const s = story(c);
   return npc(c, s, 'a1gus', () => heavy(f, 0.06, 'Гусь «Коллектор» Гусев', 'boxing', 'biker', 0.3), f);
 }
-function kirpich(c: Career, f: CareerFighter): CareerFighter {
+export function kirpich(c: Career, f: CareerFighter): CareerFighter {
   const s = story(c);
   return npc(c, s, 'a1kirpich', () => {
     // A wall of a man, whatever ours weighs: the story fight is not a bout.
@@ -77,11 +77,11 @@ function kirpich(c: Career, f: CareerFighter): CareerFighter {
     return m;
   }, f);
 }
-function scar(c: Career, f: CareerFighter): CareerFighter {
+export function scar(c: Career, f: CareerFighter): CareerFighter {
   const s = story(c);
   return npc(c, s, 'a1scar', () => heavy(f, 0.2, 'Шрам «Хозяин» Железнов', 'muaythai', 'clerk'), f);
 }
-function kid(c: Career): CareerFighter {
+export function kid(c: Career): CareerFighter {
   const s = story(c);
   return (s.npc.a1kid ??= (() => {
     const k = makeFighter(0.0, 0.92, classOf(main(c)));
@@ -94,7 +94,7 @@ function kid(c: Career): CareerFighter {
   })());
 }
 
-const P = (f: CareerFighter, team: 0 | 1): FighterParams => {
+export const P = (f: CareerFighter, team: 0 | 1): FighterParams => {
   const p = toParams(f, team);
   p.name = short(f);
   return p;
@@ -264,6 +264,8 @@ export function endingScene(c: Career, f: CareerFighter, e: Ending): SceneSpec {
 
 export interface A1Fight {
   opp: CareerFighter;
+  /** Who fights for us (default: the picked fighter). */
+  who?: CareerFighter;
   tier: Tier;
   title: string;
   pre?: SceneSpec;
@@ -662,6 +664,8 @@ export interface Act1Card {
   /** A film to watch first; the choices show once it was seen (or skipped). */
   film: boolean;
   watched: boolean;
+  /** Cannot be put off: the screen is blocked until it is dealt with. */
+  forced?: boolean;
   opts: { id: string; label: string; no: string | null }[];
 }
 
@@ -682,7 +686,7 @@ export function act1Card(c: Career): Act1Card | null {
   const card = BY[a.pending];
   return {
     id: card.id, title: card.title, who: card.who, text: card.text(c, a, f),
-    film: !!card.scene, watched: a.seen.includes(card.id),
+    film: !!card.scene, watched: a.seen.includes(card.id), forced: card.id === 's4h',
     opts: card.opts.map((o) => ({ id: o.id, label: o.label, no: o.no?.(c, a, f) ?? null })),
   };
 }

@@ -33,7 +33,13 @@ export const gymOf = (c: Career): Gym => GYM_BY_ID[c.gym ?? 'basement'] ?? GYMS[
 
 /** How much more a session of this kind gives in the team's gym. */
 export const gymK = (c: Career | undefined, k: GymKey): number =>
-  c ? (gymOf(c).bonus[k] ?? 1) * (gymOf(c).id === 'basement' && c.act1?.flags.lost ? 0.8 : 1) : 1;
+  c
+    ? (gymOf(c).bonus[k] ?? 1) *
+      // The yard (basement lost) or the sewer (act 2 lost): −20%.
+      (gymOf(c).id === 'basement' && (c.act1?.flags.lost || c.act2?.flags.sewer) ? 0.8 : 1) *
+      // Кирпич holds the pads through act 2.
+      (k === 'strength' && c.act2?.flags.kirpichGym && !c.act2.ending ? 1.1 : 1)
+    : 1;
 
 /** Whether this gym can be chosen now (and why not). */
 export function gymOpen(c: Career, g: Gym): string | null {

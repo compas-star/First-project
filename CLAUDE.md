@@ -397,6 +397,24 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   '📞 Голос' / '📞 Голос сзади' mumble through the phone filter: names starting with 📞 use
   the tape band) right after "Спать" or on opening the career; `callDone` opens the cup.
   `SceneLine.name` gives a line any speaker name.
+- **Act 2 «Район»** (`act2.ts`, doc tab «Акт 2»): `Career.act2` (start, done/seen, pending,
+  flags, ending champ/final/out, tourDay = start + 23, bet). Starts for any career whose act 1
+  is over and its 'end' card closed (old saves too: `ensureAct2` via `actCheck` on show and
+  `act2Day` at midnight; waits for the fight-club call). Cards s1 афиша, s2 Кирпич (pads:
+  strength x1.1 in `gymK`, or he enters the tournament), s3 Сталь (Шрам's son) + Шрам, s4 note
+  (by act 1 ending), s5 Лис (bet x6 / lie down in the SF for $800), s6 Тимоха's first fight
+  (`A1Fight.who`), s7 tape «Урок 2», s8 weigh-in; tournament over 2 days: t1 QF + (tfix) + t2 SF,
+  t3 final vs Сталь next day (5 rounds). Fee $300 (goal card button `a2fee`). Champ: +$3000,
+  ladder stage 3, basement back. Lost: `flags.sewer` = home is the sewer (`homeSvg` `sewer`,
+  no rent, training −20%). `acts.ts` = one face for the UI (actCard/Film/Seen/Choose/FightDone/
+  Goal dispatch to act 2 while it runs). Tool `act2test [runs]` (softlocks, old-save case).
+- Forced fights (user: story must not be skippable): `forcedNow` (cup ambush, act 1 's4h',
+  act 2 cards with `forced`) replaces every career screen with the card (no nav, no sheet)
+  and 'nextday' refuses until it is fought.
+- Nobody from a basement (user): `known(c)` = ladder stage >= 3; before it no sponsors or
+  interviews (life.ts), no world trash talk at ours, no champion line (rival1) or old Лис line.
+- Tournament rounds (user): `roundTier`: first round 1, then 3, final 5 (calendar tournaments
+  and the weekly cup; district tournament 3/3/5).
 - Ring ropes are one solid springy wall per side in physics (user: men got stuck between /
   behind thin rope colliders); plus a referee rescue if a pelvis spends >1.2 s outside them.
 - Gyms (`gyms.ts`, user: different gyms): `Career.gym`/`gymUntil`, weekly price (`gymDay` at

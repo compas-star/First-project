@@ -27,6 +27,8 @@ export interface HomeState {
   part: number;
   /** He is asleep in bed (the day is over). */
   sleepy: boolean;
+  /** Thrown out of the district (act 2 lost): home is a sewer tunnel. */
+  sewer?: boolean;
 }
 
 /** A standing fighter, 12 x 30, feet at (x, y). */
@@ -84,6 +86,46 @@ function room(s: HomeState): string {
   return o;
 }
 
+/** The sewer (act 2 lost): the same things, made of what was found down there. */
+function sewerRoom(s: HomeState): string {
+  let o = '';
+  // Tunnel: dark bricks in an arch, a channel of water in the middle of the floor.
+  o += R(0, 0, 160, 120, '#1e2a26');
+  for (let y = 0; y < 92; y += 6) {
+    o += R(0, y, 160, 1, '#16201c');
+    for (let x = (y / 6) % 2 ? 0 : 6; x < 160; x += 12) o += R(x, y, 1, 6, '#16201c');
+  }
+  for (let x = 0; x < 160; x += 4) {
+    const d = Math.abs(x - 78) / 80;
+    o += R(x, 0, 4, Math.round(22 * d * d), '#0c1210');
+  }
+  o += R(0, 88, 160, 32, '#2e3430');
+  o += R(0, 98, 160, 10, '#1d4a44') + R(0, 98, 160, 1, '#3a8a7a');
+  for (const x of [12, 44, 90, 132]) o += R(x, 102, 8, 1, '#4fa898');
+  o += R(0, 20, 160, 4, '#4a5048') + R(0, 25, 160, 2, '#3a403a') + R(70, 27, 3, 6, '#4a5048') + R(71, 33, 1, 4, '#3a8a7a');
+  // A lamp on a wire.
+  o += R(98, 0, 1, 10, '#111') + R(96, 10, 5, 4, '#ffe39a') + `<circle cx="98" cy="13" r="18" fill="#ffe39a" opacity="0.1"/>`;
+  // Mattress = bed.
+  o += obj('bed', R(4, 82, 40, 6, '#8a7a5a') + R(4, 86, 40, 2, '#5a4a3a') + R(6, 80, 10, 4, '#a89a80') + R(16, 81, 26, 5, '#4a5a3a')
+    + (s.sleepy ? `<text x="30" y="76" class="hz">z Z</text>` : '') + label(24, 96, 'матрас'), [2, 70, 44, 30]);
+  // The phone on a pipe, the calendar scratched on the bricks.
+  o += obj('phone', R(22, 38, 10, 14, '#a8262a') + R(23, 39, 8, 4, '#6a1418') + R(24, 45, 6, 5, '#e8d8c0') + label(27, 35, 'телефон') + (s.badges.phone ? badge(33, 40, s.badges.phone) : ''), [18, 28, 18, 26]);
+  o += obj('calendar', [0, 1, 2, 3, 4].map((k) => R(108 + k * 3, 34, 1, 8, '#c8d0c0')).join('') + R(106, 37, 16, 1, '#c8d0c0') + [0, 1, 2].map((k) => R(108 + k * 3, 46, 1, 8, '#c8d0c0')).join('') + label(116, 62, 'календарь') + (s.badges.calendar ? badge(126, 34, s.badges.calendar) : ''), [102, 28, 28, 38]);
+  // The old TV on a crate (the tapes came along).
+  const screen = s.tvOn
+    ? R(55, 62, 22, 14, '#2a3a5a') + R(62, 64, 8, 9, '#c99a7a') + R(61, 63, 10, 3, '#b0b4b8') + R(63, 67, 2, 1, '#1a1a1a') + R(67, 67, 2, 1, '#1a1a1a') + R(55, 72, 22, 1, 'rgba(255,255,255,0.25)')
+    : R(55, 62, 22, 14, '#1a2024') + R(57, 63, 4, 2, 'rgba(255,255,255,0.12)');
+  o += obj('tv', R(50, 84, 32, 10, '#7a5a30') + R(50, 88, 32, 1, '#5a4020') + R(52, 58, 28, 26, '#2a2620') + screen + R(64, 52, 1, 6, '#888')
+    + label(66, 116, 'телевизор') + (s.badges.tv ? badge(80, 58, s.badges.tv) : ''), [48, 46, 36, 50]);
+  // A cooler box = the fridge.
+  o += obj('fridge', R(132, 72, 22, 16, '#3a7ac8') + R(132, 72, 22, 4, '#e8ecf0') + R(140, 70, 6, 2, '#e8ecf0') + label(143, 96, 'ящик с едой'), [128, 64, 30, 36]);
+  // The ladder up = the door.
+  o += obj('door', R(108, 66, 2, 32, '#8a8a80') + R(120, 66, 2, 32, '#8a8a80') + [0, 1, 2, 3, 4].map((k) => R(110, 70 + k * 6, 10, 1, '#8a8a80')).join('') + R(106, 62, 18, 4, '#3a403a')
+    + label(115, 116, '↑ наверх'), [102, 58, 26, 46]);
+  if (!s.sleepy) o += obj('me', guy(86, 112, s) + label(92, 118, 'боец'), [82, 78, 20, 42]);
+  return o;
+}
+
 function basement(s: HomeState): string {
   const y0 = 124;
   let o = '';
@@ -99,7 +141,7 @@ function basement(s: HomeState): string {
   // Pipes and the bulb.
   o += R(0, y0 + 2, 160, 3, '#6a6a6a') + R(0, y0 + 7, 160, 2, '#555');
   o += R(79, y0 + 9, 1, 8, '#111') + R(77, y0 + 17, 5, 5, '#ffe39a') + `<circle cx="79" cy="${y0 + 20}" r="16" fill="#ffe39a" opacity="0.12"/>`;
-  o += `<text x="80" y="${y0 + 32}" class="hsign" text-anchor="middle">${s.lost ? 'ПОДВАЛ ЗАКРЫТ — ДВОР' : 'ПОДВАЛ'}</text>`;
+  o += `<text x="80" y="${y0 + 32}" class="hsign" text-anchor="middle">${s.sewer ? 'КАНАЛИЗАЦИЯ' : s.lost ? 'ПОДВАЛ ЗАКРЫТ — ДВОР' : 'ПОДВАЛ'}</text>`;
   // Михалыч's belt on the wall.
   o += obj('belt', R(54, y0 + 38, 30, 5, '#2a1a10') + R(64, y0 + 36, 10, 9, '#c9a640') + R(66, y0 + 38, 6, 5, '#e8c860') + label(69, y0 + 52, 'пояс'), [52, y0 + 34, 34, 20]);
   // The bag on its chain.
@@ -114,12 +156,13 @@ function basement(s: HomeState): string {
   o += obj('ball', R(136, y0 + 9, 1, 40, '#ccc') + R(131, y0 + 49, 11, 10, '#e8e0d0') + R(133, y0 + 51, 3, 2, '#fff') + R(131, y0 + 57, 11, 2, '#c8c0b0') + label(137, y0 + 68, 'маятник'), [126, y0 + 8, 22, 64]);
   // Old tyres.
   o += obj('tires', R(124, y0 + 80, 30, 6, '#1a1a1a') + R(124, y0 + 74, 30, 6, '#222') + R(128, y0 + 76, 22, 2, '#3a3a3a') + R(128, y0 + 82, 22, 2, '#333') + label(139, y0 + 98, 'покрышки'), [120, y0 + 70, 38, 32]);
-  if (s.lost) o += R(0, y0, 160, 110, 'rgba(10,10,20,0.35)');
+  if (s.sewer) o += R(0, y0, 160, 110, 'rgba(20,60,50,0.35)');
+  else if (s.lost) o += R(0, y0, 160, 110, 'rgba(10,10,20,0.35)');
   return o;
 }
 
 export function homeSvg(s: HomeState): string {
-  return `<svg class="homeart" viewBox="0 0 160 234" shape-rendering="crispEdges" role="img" aria-label="Дом и подвал">${room(s)}${basement(s)}</svg>`;
+  return `<svg class="homeart" viewBox="0 0 160 234" shape-rendering="crispEdges" role="img" aria-label="Дом и подвал">${s.sewer ? sewerRoom(s) : room(s)}${basement(s)}</svg>`;
 }
 
 /** What each apparatus trains: a quality (StatKey) or hands/legs. */

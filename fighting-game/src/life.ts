@@ -1,4 +1,5 @@
 import type { FighterParams } from './config';
+import { known } from './clubs';
 import {
   type Career, type CareerFighter, type Tier, addRel, busy, bookedOn, makeFighter, WCLASSES, classOf, short, save,
 } from './career';
@@ -141,10 +142,10 @@ export function dailyLife(c: Career): string[] {
     } else if (has(f, 'lazy') && f.session && r < 0.15) {
       add(c, { f: f.id, kind: 'skip', day: c.day, text: `${name} прогулял тренировку: «Голова болит».`, opts: [{ id: 'talk', label: 'Поговорить' }, { id: 'fine', label: 'Оштрафовать' }] });
       f.session = { ...f.session, gain: f.session.gain * 0.3 };
-    } else if ((has(f, 'star') ? 0.07 : 0.015) + Math.min(0.05, f.fame / 2000) > r && free) {
+    } else if (known(c) && (has(f, 'star') ? 0.07 : 0.015) + Math.min(0.05, f.fame / 2000) > r && free) {
       const pay = Math.round(rnd(80, 200) + f.fame * 3);
       add(c, { f: f.id, kind: 'sponsor', day: c.day, money: pay, text: `Спонсор хочет снять ${name} в рекламе энергетика: $${pay}, займёт день.`, opts: [{ id: 'yes', label: 'Согласиться' }, { id: 'ignore', label: 'Отказать' }] });
-    } else if (has(f, 'star') && r < 0.12) {
+    } else if (known(c) && has(f, 'star') && r < 0.12) {
       const next = c.events.find((e) => e.f === f.id && !e.done && e.opp);
       if (next) {
         add(c, {

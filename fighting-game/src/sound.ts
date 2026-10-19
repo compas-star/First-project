@@ -4,6 +4,30 @@
 
 const KEY = 'arena-sound-v1';
 
+/** A short silent WAV (8 kHz, 0.1 s), built once. */
+const SILENT_WAV = (() => {
+  const n = 800;
+  const buf = new Uint8Array(44 + n);
+  const dv = new DataView(buf.buffer);
+  const str = (o: number, t: string) => [...t].forEach((ch, i) => (buf[o + i] = ch.charCodeAt(0)));
+  str(0, 'RIFF');
+  dv.setUint32(4, 36 + n, true);
+  str(8, 'WAVEfmt ');
+  dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true);
+  dv.setUint16(22, 1, true);
+  dv.setUint32(24, 8000, true);
+  dv.setUint32(28, 8000, true);
+  dv.setUint16(32, 1, true);
+  dv.setUint16(34, 8, true);
+  str(36, 'data');
+  dv.setUint32(40, n, true);
+  buf.fill(128, 44);
+  let bin = '';
+  for (const x of buf) bin += String.fromCharCode(x);
+  return 'data:audio/wav;base64,' + btoa(bin);
+})();
+
 export class Sound {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -22,13 +46,53 @@ export class Sound {
     } catch {
       /* storage unavailable */
     }
-    // Browsers start audio only after a tap or a key.
-    const wake = () => {
-      this.start();
-      if (this.ctx?.state === 'suspended') void this.ctx.resume();
-    };
-    window.addEventListener('pointerdown', wake);
-    window.addEventListener('keydown', wake);
+    // Browsers start audio only after a tap or a key. Phones are picky about which tap
+    // counts (iOS: touchend / click, not touchstart), and put the sound to sleep when the
+    // app is hidden or a call comes ('interrupted'), so every tap wakes it again if needed.
+    const wake = () => this.wake();
+    for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) window.addEventListener(ev, wake, { capture: true, passive: true });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.wake();
+    });
+  }
+
+  /** A silent <audio> playing on a loop: on iPhones it moves the page to the media audio
+   *  channel, so the silent switch no longer mutes the game. */
+  private keepAlive: HTMLAudioElement | null = null;
+
+  private wake(): void {
+    this.start();
+    const ctx = this.ctx;
+    if (!ctx || typeof OfflineAudioContext !== 'undefined' && ctx instanceof OfflineAudioContext) return;
+    // Newer iOS: say this page plays media, so the ring/silent switch does not mute it.
+    const nav = navigator as unknown as { audioSession?: { type: string } };
+    try {
+      if (nav.audioSession && nav.audioSession.type !== 'playback') nav.audioSession.type = 'playback';
+    } catch {
+      /* not supported */
+    }
+    if (ctx.state !== 'running') {
+      void ctx.resume().catch(() => {});
+      // Old iOS unlock: a one-sample buffer played inside the tap.
+      try {
+        const b = ctx.createBuffer(1, 1, 22050);
+        const src = ctx.createBufferSource();
+        src.buffer = b;
+        src.connect(ctx.destination);
+        src.start(0);
+      } catch {
+        /* nothing */
+      }
+    }
+    if (!this.keepAlive) {
+      const el = document.createElement('audio');
+      el.setAttribute('playsinline', '');
+      el.loop = true;
+      el.volume = 0.01;
+      el.src = SILENT_WAV;
+      this.keepAlive = el;
+    }
+    if (this.keepAlive.paused && this.enabled) void this.keepAlive.play().catch(() => {});
   }
 
   toggle(): boolean {
@@ -39,6 +103,8 @@ export class Sound {
       /* storage unavailable */
     }
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.enabled ? 0.8 : 0, this.ctx.currentTime, 0.05);
+    if (!this.enabled) this.keepAlive?.pause();
+    else this.wake();
     return this.enabled;
   }
 

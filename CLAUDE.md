@@ -79,7 +79,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   ~320 Hz; was white noise = hiss, user: "super loud, sounds like hissing") whose level follows
   `view.excite` (per map `CROWD` in view.ts), "ooh" on moments, roar on the KO. Slow motion
   lowers the pitch. Levels measured offline (`window.__sound.start(OfflineAudioContext)`): crowd
-  RMS ~0.008 at rest, ~0.03 at full excitement, a head hit ~0.03 RMS. 🔊/🔇 button in the dock (`arena-sound-v1`). Max 5 new sounds a frame.
+  RMS ~0.008 at rest, ~0.03 at full excitement, a head hit ~0.03 RMS. Phones (user: no sound, or only
+  sometimes): `Sound.wake()` on every pointerdown/pointerup/touchend/click/keydown and on
+  becoming visible: resumes a suspended/'interrupted' context, plays a 1-sample buffer (old
+  iOS unlock), sets `navigator.audioSession.type = 'playback'` and loops a silent <audio>
+  (`SILENT_WAV`) so the iPhone silent switch does not mute Web Audio. 🔊/🔇 button in the dock (`arena-sound-v1`). Max 5 new sounds a frame.
   Also: sweat spray on clean head shots.
 - Pixel look (user: graphics in the career's style; then: fighters too blurry, want them
   comic-like, the backdrop may stay pixel), on by default at 2, dock button "▦ пиксели" toggles

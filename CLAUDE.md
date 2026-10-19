@@ -285,10 +285,12 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   real twist over a strike). Hooks, haymakers, overhands asked for ~160°. `solveArmIK` now
   swings the elbow round the shoulder-fist line (steps of 0.5 rad) until the twist is within
   `ARM_TWIST` 100°: attack twist p2..p98 -120..155 -> -61..81.
-- Faces (user: horrid; cuts like pimples). `maskHead` face branch: one faceted egg
-  (SphereGeometry 9x7 deformed: narrow jaw, flatter face, longer), brow shelf, small dark eyes,
-  thin brows, small 3-sided nose, thin mouth, ears; `front(y, x)` puts features on the surface;
-  beard = a shell (partial sphere, same deform) over the jaw. Head marks: raycast to the head
+- Faces (user: horrid; then the carved boxes were even worse). `maskHead` face branch: one
+  faceted egg (SphereGeometry 9x7 deformed: narrow jaw, flatter face, longer) with a PAINTED
+  pixel-art face (`faceMat`: 256x128 canvas wrapped on the sphere, face at u 0.25, nearest
+  filter, PS1 look): hairline, eye sockets, white eyes with dark irises and lids, brows, nose
+  shadow and nostrils, mouth, beard, scar. 3D only: a tiny 4-sided nose, ears, shades. Tool:
+  /tmp script faces3.cjs pattern (set `__cut.params[i].skin`, restart, camera on `rig.head`). Head marks: raycast to the head
   meshes (`ray.layers.enableAll()`: fighters are on layer 1), flat decals (MeshBasic,
   polygonOffset, no outline): bruise = 7-gon disc deepening to purple, cut = thin dark line
   with a kink. `__cutAll` forces cuts in tests.

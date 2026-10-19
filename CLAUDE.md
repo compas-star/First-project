@@ -336,6 +336,27 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   rating/100, far too high); `heavy(f, d, ..., cap)` = ours + d (0.05 ≈ 3 rating points);
   Кирпич capped at level 0.15, Гусь 0.25 (a street collector); `npc()` remakes a cached man
   more than 10 rating points above ours. Tool `storylv` (story opponents' ratings vs ours).
+- **Act 1 «Подвал»** (`act1.ts`, screenplay = doc «Сценарий. Акт 1», the user directs it):
+  `Career.act1` (start day, debt $1500, plan pay/bold/sport, done/seen, pending card, flags,
+  ending ours/lost/deal, kirpichDay/gusDay/roofNext). Started for every career (`ensureAct1`
+  on show; the old debt/kid/gym story lines are marked done; `storyCheck` waits until the act
+  ends). Cards s1 Ключи (TV tape, plays by itself), s2 Гусь (+Кирпич behind him), s3 second
+  tape (lesson: hands +8%, skill +2%, also from the flat later), s4 Кирпич in the alley (no
+  rounds; win −$500 → s4b hand/leave/taunt), s5 Шрам (deal = ending), s6 Тимоха (joins / roofs
+  only / home), s7 roof fight every 3 nights (1 round, win $300 → s7pay), s8 Гусь in the bar
+  (fight / pay / keys; if paid: friendly fight / later), endings with films (`endingScene`).
+  Monday payments, the 20th forces an ending (`act1Day` from endDay). Goal card with "Отдать"
+  buttons on home; card shows "▶ Смотреть сцену" first, then the choices. Ending lost/deal:
+  basement training x0.8 (`gymK`, "двор"). Kirpich is 1.96 m / 112 kg. Tool `act1test`.
+  Engine for it: map 'basement' (`arena.ts basement()`: bricks, pipes, bag on chain, belt,
+  photo, bulb; old TV + VCR whose 64x48 canvas plays Михалыч's tape when `TV.on`, mouth moves
+  while `TV.talk`, snow and rolling bar); `storyCut` in cutscenes.ts (a shot per line: wide,
+  tv, over0/over1, group, close0/1, low, top, orbit0; lines by 0/1/2 (extra)/'tv'/caption,
+  `CutLine.name`); `Cut.hide` (a scene with one man), `Cut.extra` (a third man: a fighter of a
+  side Sim shown via `view.addExtra(f, place)`, stepped in `stepCut`, cleared in `endCut`).
+  Hooks: `CareerHooks.scene(spec, done)`, fight opts `scene` (film before the fight).
+- Ring ropes are one solid springy wall per side in physics (user: men got stuck between /
+  behind thin rope colliders); plus a referee rescue if a pelvis spends >1.2 s outside them.
 - Gyms (`gyms.ts`, user: different gyms): `Career.gym`/`gymUntil`, weekly price (`gymDay` at
   midnight, back to the basement when broke), fame needed; bonuses multiply `gainOf`,
   `craftGain` (hands/legs) and tonus gains (`gymK`). Gym screen tab "Залы" (`hallsTab`,

@@ -73,14 +73,14 @@ export function story(c: Career): StoryState {
   return c.story;
 }
 
-const main = (c: Career) => c.roster.find((x) => x.id === c.pick) ?? c.roster[0];
+export const main = (c: Career) => c.roster.find((x) => x.id === c.pick) ?? c.roster[0];
 /** The makeFighter level that gives about his rating (rating ≈ 17 + 67 × level). */
-const levelOf = (f: CareerFighter) => clamp((rating(f) - 17) / 67, 0, 1);
+export const levelOf = (f: CareerFighter) => clamp((rating(f) - 17) / 67, 0, 1);
 const since = (c: Career, s: StoryState, id: string) => (s.at[id] === undefined ? -1 : c.day - s.at[id]);
 const did = (s: StoryState, id: string) => s.done.includes(id);
 
 /** A place to fight a story fight: rounds or none. */
-function place(map: MapId, rounds: number, purse: [number, number] = [0, 0]): Tier {
+export function place(map: MapId, rounds: number, purse: [number, number] = [0, 0]): Tier {
   return {
     id: 'story', name: 'Сюжет', desc: '', map,
     rules: rounds ? { roundLen: 180, clock: 3, rounds, tough: 1.4, standing: true } : { roundLen: 0, rounds: 0, tough: 1, standing: true },
@@ -89,7 +89,7 @@ function place(map: MapId, rounds: number, purse: [number, number] = [0, 0]): Ti
 }
 
 /** A man of the story, made once and kept. */
-function npc(c: Career, s: StoryState, key: string, make: () => CareerFighter, f?: CareerFighter): CareerFighter {
+export function npc(c: Career, s: StoryState, key: string, make: () => CareerFighter, f?: CareerFighter): CareerFighter {
   // One made too strong (before the level fix) is made again.
   const old = s.npc[key];
   if (old && f && rating(old) > rating(f) + 10) delete s.npc[key];
@@ -97,7 +97,7 @@ function npc(c: Career, s: StoryState, key: string, make: () => CareerFighter, f
 }
 
 /** A story opponent about as good as ours, `d` levels better (0.05 ≈ 3 rating points), never above `cap`. */
-function heavy(f: CareerFighter, d: number, name: string, disc: CareerFighter['discipline'], skin?: CareerFighter['skin'], cap = 1): CareerFighter {
+export function heavy(f: CareerFighter, d: number, name: string, disc: CareerFighter['discipline'], skin?: CareerFighter['skin'], cap = 1): CareerFighter {
   const m = makeFighter(clamp(Math.min(levelOf(f) + d, cap), 0.02, 1), 0.5, classOf(f));
   m.name = name;
   m.discipline = disc;
@@ -513,6 +513,8 @@ export function pendingChapter(c: Career): { id: string; line: string; lineName:
 
 /** Opens the next chapter if it is time (called at midnight and when the career opens). */
 export function storyCheck(c: Career): string[] {
+  // While act 1 runs, its scenes are the story.
+  if (c.act1 && !c.act1.ending) return [];
   const s = story(c);
   if (s.pending || c.day - s.last < 3) return [];
   const f = main(c);

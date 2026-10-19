@@ -12,6 +12,7 @@ import { gymDay, gymK, type GymId } from './gyms';
 import { DISCIPLINE_BY_ID } from './disciplines';
 import { rollTraits, ensureLife, dailyLife, trainK, lifeParams, moodAfterFight, type TraitId, type Incident } from './life';
 import { cityNight, needsK, fightToll } from './city';
+import { act1Day, type Act1 } from './act1';
 
 export type StatKey = 'bodySpeed' | 'strength' | 'mindSpeed' | 'skill' | 'evasion' | 'cardio';
 export type Stats = Record<StatKey, number>;
@@ -165,6 +166,8 @@ export interface Career {
   /** The gym the team trains in (gyms.ts), paid until this day. */
   gym?: GymId;
   gymUntil?: number;
+  /** Act 1 of the main story (act1.ts). */
+  act1?: Act1;
 }
 
 export type EvKind = 'night' | 'tour' | 'title';
@@ -681,6 +684,7 @@ function endDay(c: Career): string[] {
   out.push(...dailyLife(c));
   out.push(...gymDay(c));
   out.push(...storyDay(c));
+  out.push(...act1Day(c));
   out.unshift(`— ${dayName(c.day)}, ${weekday(c.day)} —`);
   return out;
 }

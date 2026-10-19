@@ -21,7 +21,8 @@ import { Recorder } from './recorder';
 import { toParams, relOf, load as loadCareer, saveHook, type FightResult } from './career';
 import { cloudStart, cloudDirty } from './cloud';
 import type { Rules } from './sim';
-import { barCut, faceoffCut, beltCut, talkCut, type Cut } from './cutscenes';
+import { barCut, faceoffCut, beltCut, talkCut, storyCut, type Cut } from './cutscenes';
+import { TV, TV_POS, TV_FACING } from './arena';
 
 type Eyes = 'fastest' | 'red' | 'blue' | 'real';
 const EYES: Eyes[] = ['fastest', 'red', 'blue', 'real'];
@@ -306,7 +307,7 @@ let careerFight: { done: (r: FightResult) => void; belt?: string } | null = null
 
 // ---------- Cutscenes ----------
 
-let cutState: { c: Cut; t0: number; next: number; line: number; done: () => void } | null = null;
+let cutState: { c: Cut; t0: number; next: number; line: number; done: () => void; side: Sim | null } | null = null;
 const cutEl = document.createElement('div');
 cutEl.id = 'cut';
 cutEl.hidden = true;
@@ -321,12 +322,23 @@ function playCut(c: Cut, done: () => void): void {
   sim.scene = { dist: c.dist, drunk: c.drunk };
   (window as unknown as { __sim: Sim }).__sim = sim;
   view.setSim(sim);
+  if (c.hide) view.hidden = [...c.hide];
   c.start?.(sim);
+  // A third man in the scene: a fighter of a small side sim, standing where the scene says.
+  let side: Sim | null = null;
+  if (c.extra) {
+    side = new Sim(c.extra.p, { ...c.extra.p, name: '—' }, 5, MAP_BY_ID.dojo, QUICK);
+    const [x, y] = side.fighters;
+    side.scene = { dist: Math.abs(y.pos.z - x.pos.z) };
+    const ex = c.extra;
+    const main = sim;
+    view.addExtra(x, () => ex.place(main));
+  }
   // No knockout card for a scene (the belt scene has a man down).
   koShownAt = 1;
   $('ko').hidden = true;
   paused = false;
-  cutState = { c, t0: performance.now(), next: 0, line: -1, done };
+  cutState = { c, t0: performance.now(), next: 0, line: -1, done, side };
   view.debugCam = (cam) => {
     if (cutState) cutState.c.cam((performance.now() - cutState.t0) / 1000, cam, sim);
   };
@@ -342,6 +354,7 @@ function stepCut(): void {
   const t = (performance.now() - cs.t0) / 1000;
   const beats = cs.c.beats;
   while (cs.next < beats.length && beats[cs.next].at <= t) beats[cs.next++].run(sim, view);
+  if (cs.side) cs.side.advance(1 / 60);
   let li = -1;
   cs.c.lines.forEach((l, i) => {
     if (l.at <= t) li = i;
@@ -352,8 +365,9 @@ function stepCut(): void {
     const l = cs.c.lines[li];
     box.hidden = !l;
     if (l) {
-      box.className = `cutline ${l.who === null ? 'cap' : `team${l.who}`}`;
-      (box.querySelector('b') as HTMLElement).textContent = l.who === null ? '' : sim.fighters[l.who].p.name;
+      box.className = `cutline ${l.who === null ? 'cap' : `team${l.who}`}${l.name === 'Михалыч' ? ' tape' : ''}`;
+      (box.querySelector('b') as HTMLElement).textContent = l.who === null ? '' : l.name ?? sim.fighters[l.who].p.name;
+      TV.talk = l.name === 'Михалыч';
       (box.querySelector('span') as HTMLElement).textContent = l.text;
     }
   }
@@ -363,7 +377,11 @@ function stepCut(): void {
 function endCut(): void {
   if (!cutState) return;
   const done = cutState.done;
+  view.clearExtras();
+  view.hidden = [false, false];
+  cutState?.side?.dispose();
   cutState = null;
+  TV.on = TV.talk = false;
   view.debugCam = undefined;
   cutEl.hidden = true;
   document.body.classList.remove('cutting');
@@ -947,6 +965,7 @@ try {
 }
 saveHook.after = cloudDirty;
 
+const TVSPOT = { pos: TV_POS, facing: TV_FACING };
 const career = new CareerUi({
   fight(me, opp, tier, title, done, tweak, opts) {
     careerFight = { done, belt: opts?.title && opts.cls ? opts.cls : undefined };
@@ -963,6 +982,7 @@ const career = new CareerUi({
       showBill(title);
     };
     // A scene first: the bar, or face to face before a title fight or one with a sworn enemy.
+    if (opts?.scene) return playCut(storyCut(opts.scene, TVSPOT), go);
     if (opts?.intro === 'bar') return playCut(barCut(mine, theirs, map, opts.barName ?? '«Подкова»'), go);
     if (opts?.intro === 'story' && opts.talk?.length) {
       const [first, ...rest] = opts.talk;
@@ -970,6 +990,12 @@ const career = new CareerUi({
     }
     if (opts?.title || grudge) return playCut(faceoffCut(mine, theirs, map, { title: !!opts?.title, hate: grudge, recA: rec(me), recB: rec(opp) }), go);
     go();
+  },
+  scene(spec, done) {
+    playCut(storyCut(spec, TVSPOT), () => {
+      startFight();
+      done();
+    });
   },
   close() {
     paused = false;

@@ -796,12 +796,11 @@ export class Sim {
     if (m.outside === 'ground') this.fixedBox(0, -1.6, 0, 30, 0.5, 30);
     switch (m.edge) {
       case 'ropes':
-        // Three ropes on each side: they give and throw a fighter back in.
-        for (const y of [0.5, 0.9, 1.3]) {
-          for (const sgn of [-1, 1]) {
-            this.fixedBox(0, y, sgn * S, S, 0.03, 0.03, 0, 0.6, 0.3);
-            this.fixedBox(sgn * S, y, 0, 0.03, 0.03, S, 0, 0.6, 0.3);
-          }
+        // The ropes are a solid springy wall in physics (user: men got stuck between and
+        // behind thin ropes): from the floor to above the top rope, nobody goes through.
+        for (const sgn of [-1, 1]) {
+          this.fixedBox(0, 1.0, sgn * (S + 0.05), S + 0.05, 1.0, 0.05, 0, 0.5, 0.3);
+          this.fixedBox(sgn * (S + 0.05), 1.0, 0, 0.05, 1.0, S + 0.05, 0, 0.5, 0.3);
         }
         for (const [x, z] of [[S, S], [S, -S], [-S, S], [-S, -S]]) this.fixedBox(x, 0.75, z, 0.09, 0.75, 0.09);
         break;

@@ -12,6 +12,8 @@ export interface CutLine {
   /** Who speaks (team), or null for a caption across the screen. */
   who: 0 | 1 | null;
   text: string;
+  /** A speaker who is not one of the two (the man behind, a voice on the TV): his name. */
+  name?: string;
 }
 
 export interface Cut {
@@ -22,6 +24,10 @@ export interface Cut {
   /** Distance they stand at when it starts. */
   dist: number;
   drunk?: [boolean, boolean];
+  /** Men not shown (a scene with one man in it). */
+  hide?: [boolean, boolean];
+  /** A third man standing by (Кирпич behind Гусь): where he stands, given the two. */
+  extra?: { p: FighterParams; place: (s: Sim) => { at: THREE.Vector3; facing: number } };
   /** Once the scene is built (knock one down, put on a belt...). */
   start?: (s: Sim) => void;
   beats: { at: number; run: (s: Sim, fx: CutFx) => void }[];
@@ -214,6 +220,137 @@ export function talkCut(a: FighterParams, b: FighterParams, map: MapDef, title: 
         cam.position.copy(mid).addScaledVector(side, THREE.MathUtils.lerp(3.6, 2.6, k));
         cam.position.y = 1.5 * A.scale;
         cam.lookAt(mid.x, 1.35 * A.scale, mid.z);
+      }
+    },
+  };
+}
+
+// ---------- Story scenes (act 1) ----------
+
+/** How a line of a story scene is shot. */
+export type Shot =
+  | 'wide' // from the side, both in frame, pushing in a little
+  | 'tv' // in on the old TV's screen
+  | 'over0' // over his (team 1's) shoulder on ours
+  | 'over1' // over ours' shoulder on him
+  | 'group' // over ours' shoulder, wider: him and the man behind him
+  | 'close0' // ours alone, close
+  | 'close1' // him alone, close
+  | 'low' // low on the floor, looking up at both
+  | 'top' // from above, coming down
+  | 'orbit0'; // round ours, slowly
+
+export interface SceneLine {
+  /** 0 ours, 1 him, 2 the man behind, 'tv' the voice on the tape, null a caption. */
+  who: 0 | 1 | 2 | 'tv' | null;
+  text: string;
+  shot: Shot;
+  /** Seconds on screen (by its length if not given). */
+  dur?: number;
+  /** Something done as the line starts (a shove, a gesture, the TV comes on). */
+  act?: (s: Sim, fx: CutFx) => void;
+}
+
+export interface SceneSpec {
+  map: MapDef;
+  a: FighterParams;
+  b: FighterParams;
+  dist: number;
+  hide?: [boolean, boolean];
+  extra?: { p: FighterParams; side?: number };
+  /** Names for 2 and 'tv'. */
+  names?: { extra?: string; tv?: string };
+  start?: (s: Sim) => void;
+  lines: SceneLine[];
+}
+
+const lineDur = (l: SceneLine) => l.dur ?? THREE.MathUtils.clamp(1.3 + l.text.length * 0.05, 2.2, 5.5);
+
+/** A scripted scene of the story: each line has its speaker and its shot. */
+export function storyCut(spec: SceneSpec, tv: { pos: THREE.Vector3; facing: THREE.Vector3 }): Cut {
+  const lines: CutLine[] = [];
+  const beats: Cut['beats'] = [];
+  const spans: { t0: number; t1: number; shot: Shot }[] = [];
+  let t = 0.1;
+  for (const l of spec.lines) {
+    const d = lineDur(l);
+    const who = l.who === 0 || l.who === 1 ? l.who : l.who === null ? null : 1;
+    const name = l.who === 2 ? spec.names?.extra : l.who === 'tv' ? spec.names?.tv : undefined;
+    lines.push({ at: t, who: l.who === null ? null : who, text: l.text, name });
+    if (l.act) beats.push({ at: t, run: l.act });
+    spans.push({ t0: t, t1: t + d, shot: l.shot });
+    t += d;
+  }
+  const behind = (s: Sim) => {
+    const { a, b, side } = frame(s);
+    const away = b.pos.clone().sub(a.pos).setY(0).normalize();
+    const at = b.pos.clone().addScaledVector(away, 0.95 * b.scale).addScaledVector(side, (spec.extra?.side ?? 0.6) * b.scale);
+    return { at, facing: Math.atan2(-away.x, -away.z) };
+  };
+  return {
+    map: spec.map, a: spec.a, b: spec.b, dur: t + 0.3, dist: spec.dist, lines, beats, hide: spec.hide, start: spec.start,
+    extra: spec.extra ? { p: spec.extra.p, place: behind } : undefined,
+    cam: (time, cam, s) => {
+      const sp = spans.find((x) => time >= x.t0 && time < x.t1) ?? spans[spans.length - 1];
+      const k = sm((time - sp.t0) / Math.max(0.1, sp.t1 - sp.t0));
+      const { a: A, b: B, mid, side } = frame(s);
+      switch (sp.shot) {
+        case 'tv': {
+          const d = THREE.MathUtils.lerp(1.6, 0.95, k);
+          cam.position.copy(tv.pos).addScaledVector(tv.facing, d);
+          cam.position.y += 0.08 * (1 - k);
+          cam.lookAt(tv.pos);
+          break;
+        }
+        case 'over0':
+          overShoulder(cam, B, A, 1, side);
+          break;
+        case 'over1':
+          overShoulder(cam, A, B, -1, side);
+          break;
+        case 'group': {
+          head(A, v);
+          head(B, tgt);
+          const back = tgt.clone().sub(v).setY(0).normalize();
+          cam.position.copy(v).addScaledVector(back, -1.0 * A.scale).addScaledVector(side, -0.55 * A.scale);
+          cam.position.y += 0.15;
+          const look = tgt.clone().addScaledVector(back, 0.45).addScaledVector(side, 0.25);
+          cam.lookAt(look.x, look.y - 0.1, look.z);
+          break;
+        }
+        case 'close0':
+          closeUp(cam, A, side, -1);
+          break;
+        case 'close1':
+          closeUp(cam, B, side, 1);
+          break;
+        case 'low':
+          cam.position.copy(mid).addScaledVector(side, 2.6);
+          cam.position.y = 0.35;
+          cam.lookAt(mid.x, 1.2 * A.scale, mid.z);
+          break;
+        case 'top': {
+          const h = THREE.MathUtils.lerp(3.4, 2.2, k);
+          cam.position.copy(mid).addScaledVector(side, 1.2);
+          cam.position.y = h;
+          cam.lookAt(mid.x, 0.3, mid.z);
+          break;
+        }
+        case 'orbit0': {
+          const ang = 0.4 + time * 0.3;
+          cam.position.set(A.pos.x + Math.sin(A.facing + ang) * 2.3, 1.3, A.pos.z + Math.cos(A.facing + ang) * 2.3);
+          head(A, tgt);
+          cam.lookAt(A.pos.x, tgt.y - 0.3, A.pos.z);
+          break;
+        }
+        default: {
+          const hidden = spec.hide?.[1];
+          const c = hidden ? A.pos.clone() : mid;
+          const r = THREE.MathUtils.lerp(hidden ? 3.0 : 3.8, hidden ? 2.2 : 2.8, k);
+          cam.position.copy(c).addScaledVector(side, r);
+          cam.position.y = 1.55 * A.scale;
+          cam.lookAt(c.x, 1.25 * A.scale, c.z);
+        }
       }
     },
   };

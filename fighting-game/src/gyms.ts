@@ -32,7 +32,8 @@ export const GYM_BY_ID = Object.fromEntries(GYMS.map((g) => [g.id, g])) as Recor
 export const gymOf = (c: Career): Gym => GYM_BY_ID[c.gym ?? 'basement'] ?? GYMS[0];
 
 /** How much more a session of this kind gives in the team's gym. */
-export const gymK = (c: Career | undefined, k: GymKey): number => (c ? gymOf(c).bonus[k] ?? 1 : 1);
+export const gymK = (c: Career | undefined, k: GymKey): number =>
+  c ? (gymOf(c).bonus[k] ?? 1) * (gymOf(c).id === 'basement' && c.act1?.flags.lost ? 0.8 : 1) : 1;
 
 /** Whether this gym can be chosen now (and why not). */
 export function gymOpen(c: Career, g: Gym): string | null {

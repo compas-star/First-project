@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Sound } from './sound';
 
 /** How loud the crowd is on each map. */
-const CROWD: Record<string, number> = { ring: 1, cage: 1, dojo: 0.35, roof: 0.5, alley: 0.45, void: 0 };
+const CROWD: Record<string, number> = { ring: 1, cage: 1, dojo: 0.35, roof: 0.5, alley: 0.45, void: 0, basement: 0 };
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js';
 import { buildRig, rigNodes, type Rig } from './rig';
@@ -444,6 +444,11 @@ export class View {
   hitStop = 0;
   private hitStopCool = 0;
   private sim: Sim | null = null;
+  /** Extra people in a cutscene (Кирпич behind Гусь): a fighter of a side sim, shown here
+   *  through a group that puts him where the scene wants him. */
+  private extras: { fv: FighterView; group: THREE.Group; place: () => { at: THREE.Vector3; facing: number } }[] = [];
+  /** Cutscene: fighters not to be shown (a scene with one man in it). */
+  hidden: [boolean, boolean] = [false, false];
   private tmp = new THREE.Vector3();
   private tmp2 = new THREE.Vector3();
   private follow = new THREE.Vector3();
@@ -618,7 +623,7 @@ export class View {
       this.post = { scene, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mat };
     }
     // Fighters live on layer 1: left out of the world pass, but still casting their shadows there.
-    for (const fv of this.fighters) {
+    for (const fv of [...this.fighters, ...this.extras.map((e) => e.fv)]) {
       fv.rig.root.traverse((o) => o.layers.set(1));
       for (const g of fv.ghosts) g.root.traverse((o) => o.layers.set(1));
     }
@@ -721,7 +726,37 @@ export class View {
     return t;
   }
 
+  /** Shows a fighter of another (side) sim at `at`, facing `facing`; his sim stands him at
+   *  (0, 0, z0) facing +z. */
+  addExtra(f: Fighter, place: () => { at: THREE.Vector3; facing: number }): void {
+    const group = new THREE.Group();
+    this.scene.add(group);
+    const fv = new FighterView(f, group as unknown as THREE.Scene, this.labels, this.figure);
+    fv.setFigure(this.figure);
+    fv.bubble.hidden = true;
+    this.extras.push({ fv, group, place });
+    this.placeExtra(this.extras[this.extras.length - 1]);
+    if (this.pixel) queueMicrotask(() => this.toonAll());
+  }
+
+  private placeExtra(e: { fv: FighterView; group: THREE.Group; place: () => { at: THREE.Vector3; facing: number } }): void {
+    const { at, facing } = e.place();
+    const z0 = e.fv.f.pos.z;
+    e.group.rotation.y = facing;
+    e.group.position.set(at.x - Math.sin(facing) * z0, 0, at.z - Math.cos(facing) * z0);
+  }
+
+  clearExtras(): void {
+    for (const e of this.extras) {
+      e.fv.dispose(e.group as unknown as THREE.Scene);
+      this.scene.remove(e.group);
+    }
+    this.extras = [];
+  }
+
   setSim(sim: Sim): void {
+    this.clearExtras();
+    this.hidden = [false, false];
     for (const fv of this.fighters) fv.dispose(this.scene);
     for (const m of this.crateMeshes) this.scene.remove(m);
     for (const p of this.pops) p.el.remove();
@@ -903,6 +938,18 @@ export class View {
     this.arena?.update(this.clockT, this.excite);
 
     for (const fv of this.fighters) fv.update(realDt, fv.f.body * viewScale);
+    this.fighters.forEach((fv, i) => {
+      if (!this.hidden[i]) return;
+      fv.rig.root.visible = false;
+      fv.ring.visible = fv.mark.visible = false;
+      fv.bubble.hidden = true;
+    });
+    for (const e of this.extras) {
+      this.placeExtra(e);
+      e.fv.update(realDt, 1);
+      e.fv.ring.visible = false;
+      e.fv.bubble.hidden = true;
+    }
     sim.crates.forEach((c, i) => {
       const m = this.crateMeshes[i];
       m.visible = !c.gone;

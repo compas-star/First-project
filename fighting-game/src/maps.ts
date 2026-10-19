@@ -3,7 +3,7 @@
 // view. `room()` tells the AI how far a point is from the nearest boundary, so
 // fighters stay off the ropes unless they are driven there.
 
-export type MapId = 'ring' | 'cage' | 'alley' | 'dojo' | 'roof' | 'void' | 'bar';
+export type MapId = 'ring' | 'cage' | 'alley' | 'dojo' | 'roof' | 'void' | 'bar' | 'basement';
 
 export interface MapDef {
   id: MapId;
@@ -30,6 +30,7 @@ export const MAPS: MapDef[] = [
   { id: 'dojo', name: 'Додзё', desc: 'Деревянный пол, татами, бумажные стены и фонари.', shape: 'square', size: 4.5, edge: 'walls', floorY: 0, outside: 'none', crates: false, start: 2.6 },
   { id: 'roof', name: 'Крыша', desc: 'Ночная крыша над городом. Бортик низкий, упасть можно.', shape: 'square', size: 6, edge: 'parapet', floorY: 0, outside: 'none', crates: true, start: 2.8 },
   { id: 'bar', name: 'Бар', desc: 'Тесный бар: стойка, табуреты, ящики с бутылками, неон. Драка без правил.', shape: 'square', size: 3.8, edge: 'walls', floorY: 0, outside: 'none', crates: true, start: 2.2 },
+  { id: 'basement', name: 'Подвал', desc: 'Подвал под прачечной: трубы, мешок на цепи, старый телевизор и пояс на стене.', shape: 'square', size: 3.4, edge: 'walls', floorY: 0, outside: 'none', crates: false, start: 2.4 },
   { id: 'void', name: 'Пустота', desc: 'Огромная площадка с ящиками, место для полубогов.', shape: 'circle', size: 13.5, edge: 'none', floorY: 0, outside: 'none', crates: true, start: 0 },
 ];
 

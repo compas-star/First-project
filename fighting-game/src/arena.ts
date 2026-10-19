@@ -1250,6 +1250,246 @@ function bar(map: MapDef): Arena {
   };
 }
 
+
+// ---------- The basement (act 1): Михалыч's old gym under the laundry ----------
+
+/** The old TV in the basement: a cutscene turns it on and makes Михалыч talk. */
+export const TV = { on: false, talk: false, tape: 1 };
+/** Where its screen is (centre) and which way it faces. */
+export const TV_POS = new THREE.Vector3(1.9, 1.02, 3.2);
+export const TV_FACING = new THREE.Vector3(0, 0, -1);
+
+/** Михалыч on an old tape: a pixel portrait with noise, rolling lines and a moving mouth. */
+function drawTape(g: CanvasRenderingContext2D, t: number): void {
+  const W = 64, H = 48;
+  if (!TV.on) {
+    g.fillStyle = '#07090a';
+    g.fillRect(0, 0, W, H);
+    g.fillStyle = 'rgba(120,140,140,0.25)';
+    g.fillRect(28, 22, 8, 1);
+    return;
+  }
+  // The basement behind him: wall, the bag on its chain.
+  g.fillStyle = '#3a3e3a';
+  g.fillRect(0, 0, W, H);
+  g.fillStyle = '#2a2c28';
+  for (let y = 4; y < H; y += 6) g.fillRect(0, y, W, 1);
+  g.fillStyle = '#555';
+  g.fillRect(53, 0, 1, 12);
+  g.fillStyle = '#6a2a1a';
+  g.fillRect(49, 12, 9, 20);
+  // Him: olympic jacket (blue, white stripes), grey hair, a lined face.
+  const bob = Math.round(Math.sin(t * 1.3));
+  g.fillStyle = '#1f3f8a';
+  g.fillRect(14, 34 + bob, 36, 14);
+  g.fillStyle = '#e8e8e8';
+  g.fillRect(18, 34 + bob, 2, 14);
+  g.fillRect(44, 34 + bob, 2, 14);
+  g.fillRect(29, 34 + bob, 6, 3);
+  g.fillStyle = '#c99a7a';
+  g.fillRect(27, 30 + bob, 10, 5);
+  g.fillRect(22, 12 + bob, 20, 20);
+  g.fillStyle = '#b0b4b8';
+  g.fillRect(21, 9 + bob, 22, 5);
+  g.fillRect(20, 12 + bob, 3, 8);
+  g.fillRect(41, 12 + bob, 3, 8);
+  // Eyebrows, eyes (a blink now and then), nose, moustache, the mouth that talks.
+  g.fillStyle = '#d8d8d8';
+  g.fillRect(25, 17 + bob, 5, 1);
+  g.fillRect(34, 17 + bob, 5, 1);
+  const blink = Math.sin(t * 0.9) > 0.97;
+  g.fillStyle = '#1a1a1a';
+  g.fillRect(26, 19 + bob, 3, blink ? 1 : 2);
+  g.fillRect(35, 19 + bob, 3, blink ? 1 : 2);
+  g.fillStyle = '#a87a5a';
+  g.fillRect(31, 20 + bob, 2, 5);
+  g.fillStyle = '#9a9a9a';
+  g.fillRect(27, 26 + bob, 10, 2);
+  const open = TV.talk ? Math.max(0, Math.round(1.6 + 1.6 * Math.sin(t * 17) * Math.sin(t * 5.3))) : 0;
+  g.fillStyle = '#3a1a1a';
+  g.fillRect(29, 28 + bob, 6, 1 + open);
+  g.fillStyle = 'rgba(0,0,0,0.25)';
+  g.fillRect(24, 22 + bob, 2, 6);
+  g.fillRect(38, 22 + bob, 2, 6);
+  // The tape: snow, a rolling bar, lines, a jolt sideways now and then.
+  const img = g.getImageData(0, 0, W, H);
+  const d = img.data;
+  const roll = (t * 18) % (H + 10) - 5;
+  const jolt = Math.sin(t * 2.1) > 0.93 ? 3 : 0;
+  for (let y = 0; y < H; y++) {
+    const shift = Math.abs(y - roll) < 3 ? 2 + jolt : jolt * (y % 2);
+    for (let x = W - 1; x >= 0; x--) {
+      const i = (y * W + x) * 4;
+      const sx = Math.max(0, x - shift);
+      const j = (y * W + sx) * 4;
+      const n = (Math.random() - 0.5) * 60;
+      const band = Math.abs(y - roll) < 3 ? 40 : 0;
+      const dark = y % 2 ? 0.82 : 1;
+      d[i] = Math.min(255, (d[j] + n + band) * dark);
+      d[i + 1] = Math.min(255, (d[j + 1] + n + band) * dark);
+      d[i + 2] = Math.min(255, (d[j + 2] + n + band) * dark * 1.05);
+    }
+  }
+  g.putImageData(img, 0, 0);
+}
+
+function basement(map: MapDef): Arena {
+  const group = new THREE.Group();
+  const S = map.size;
+  // Cracked concrete with a worn rubber mat in the middle.
+  const concrete = canvas(512, 512, (g) => {
+    g.fillStyle = '#4a4a46';
+    g.fillRect(0, 0, 512, 512);
+    noise(g, 512, 512, 9000, 'rgba(0,0,0,0.16)', 3);
+    noise(g, 512, 512, 3000, 'rgba(255,255,255,0.05)', 2);
+    g.strokeStyle = 'rgba(0,0,0,0.4)';
+    g.lineWidth = 2;
+    for (let i = 0; i < 7; i++) {
+      g.beginPath();
+      let x = Math.random() * 512, y = Math.random() * 512;
+      g.moveTo(x, y);
+      for (let k = 0; k < 5; k++) g.lineTo((x += (Math.random() - 0.5) * 90), (y += (Math.random() - 0.5) * 90));
+      g.stroke();
+    }
+    for (let i = 0; i < 5; i++) {
+      g.fillStyle = 'rgba(20,30,30,0.25)';
+      g.beginPath();
+      g.ellipse(Math.random() * 512, Math.random() * 512, 40 + Math.random() * 50, 20 + Math.random() * 30, Math.random() * 3, 0, Math.PI * 2);
+      g.fill();
+    }
+  }, [2, 2]);
+  const floor = mesh(new THREE.PlaneGeometry(S * 2 + 0.4, S * 2 + 0.4), std(0xffffff, 0.9, 0, { map: concrete }), false);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  const mat = mesh(new THREE.PlaneGeometry(S * 1.3, S * 1.3), std(0x2a3a4a, 0.95), false);
+  mat.rotation.x = -Math.PI / 2;
+  mat.position.y = 0.005;
+  mat.receiveShadow = true;
+  group.add(floor, mat);
+  // Old brick, peeling paint, damp stains low down.
+  const brick = canvas(512, 256, (g) => {
+    g.fillStyle = '#5a3a30';
+    g.fillRect(0, 0, 512, 256);
+    for (let y = 0; y < 256; y += 16) {
+      for (let x = (y / 16) % 2 ? -16 : 0; x < 512; x += 32) {
+        g.fillStyle = `hsl(${10 + Math.random() * 10}, ${25 + Math.random() * 15}%, ${22 + Math.random() * 8}%)`;
+        g.fillRect(x + 1, y + 1, 30, 14);
+      }
+    }
+    g.fillStyle = 'rgba(200,200,180,0.35)';
+    g.fillRect(0, 0, 512, 90);
+    noise(g, 512, 90, 1500, 'rgba(90,60,50,0.6)', 5);
+    const damp = g.createLinearGradient(0, 160, 0, 256);
+    damp.addColorStop(0, 'rgba(0,0,0,0)');
+    damp.addColorStop(1, 'rgba(10,25,20,0.55)');
+    g.fillStyle = damp;
+    g.fillRect(0, 160, 512, 96);
+  }, [S / 1.5, 1]);
+  const wallMat = std(0xffffff, 0.95, 0, { map: brick });
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const w = new THREE.Mesh(new THREE.PlaneGeometry(S * 2 + 0.4, 3), wallMat);
+    w.position.set(Math.sin(a) * (S + 0.2), 1.5, Math.cos(a) * (S + 0.2));
+    w.rotation.y = a + Math.PI;
+    w.receiveShadow = true;
+    group.add(w);
+  }
+  // Pipes along the ceiling and down one wall.
+  const pipeM = std(0x6a6a6a, 0.45, 0.7);
+  for (const [x, y] of [[-S + 0.25, 2.7], [-S + 0.45, 2.55], [S - 0.3, 2.65]]) {
+    const pipe = mesh(new THREE.CylinderGeometry(0.06, 0.06, S * 2, 8), pipeM, false);
+    pipe.rotation.x = Math.PI / 2;
+    pipe.position.set(x, y, 0);
+    group.add(pipe);
+  }
+  const riser = mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.7, 8), pipeM, false);
+  riser.position.set(-S + 0.25, 1.35, -S + 0.2);
+  group.add(riser);
+  // The heavy bag on its chain in the corner.
+  const chain = mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.9, 4), std(0x888888, 0.4, 0.8), false);
+  chain.position.set(-S + 0.7, 2.55, S - 0.8);
+  const bagM = std(0x6a2a1a, 0.7);
+  const bag = mesh(new THREE.CylinderGeometry(0.2, 0.2, 1.05, 14), bagM);
+  bag.position.set(-S + 0.7, 1.6, S - 0.8);
+  const tape = mesh(new THREE.CylinderGeometry(0.205, 0.205, 0.08, 14), std(0x9a9a8a, 0.8), false);
+  tape.position.set(-S + 0.7, 1.75, S - 0.8);
+  group.add(chain, bag, tape);
+  // Михалыч's corner: the old TV with a video player on a wooden stand.
+  const standM = std(0x4a3020, 0.8);
+  const stand = mesh(new THREE.BoxGeometry(0.9, 0.62, 0.5), standM);
+  stand.position.set(TV_POS.x, 0.31, TV_POS.z + 0.08);
+  const vcr = mesh(new THREE.BoxGeometry(0.62, 0.1, 0.4), std(0x1a1a1c, 0.5, 0.3));
+  vcr.position.set(TV_POS.x, 0.67, TV_POS.z + 0.08);
+  const vcrLed = mesh(new THREE.BoxGeometry(0.06, 0.02, 0.01), std(0x40ff60, 0.5, 0, { emissive: 0x40ff60, emissiveIntensity: 1.5 }), false);
+  vcrLed.position.set(TV_POS.x + 0.2, 0.68, TV_POS.z - 0.125);
+  const body = mesh(new THREE.BoxGeometry(0.74, 0.58, 0.55), std(0x2a2620, 0.6, 0.1));
+  body.position.set(TV_POS.x, TV_POS.y, TV_POS.z + 0.2);
+  const tvCanvas = document.createElement('canvas');
+  tvCanvas.width = 64;
+  tvCanvas.height = 48;
+  const tvG = tvCanvas.getContext('2d', { willReadFrequently: true })!;
+  const tvTex = new THREE.CanvasTexture(tvCanvas);
+  tvTex.colorSpace = THREE.SRGBColorSpace;
+  tvTex.magFilter = THREE.NearestFilter;
+  tvTex.minFilter = THREE.NearestFilter;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.42), new THREE.MeshBasicMaterial({ map: tvTex }));
+  screen.position.copy(TV_POS).add(new THREE.Vector3(0, 0, -0.08));
+  screen.rotation.y = Math.PI;
+  const glow = new THREE.PointLight(0x9ab8ff, 0, 3, 1.6);
+  glow.position.copy(TV_POS).add(new THREE.Vector3(0, 0, -0.6));
+  group.add(stand, vcr, vcrLed, body, screen, glow);
+  // His old belt on the wall, and a faded photo of him with a young fighter.
+  const belt = mesh(new THREE.BoxGeometry(0.9, 0.16, 0.03), std(0x2a1a10, 0.5));
+  belt.position.set(-0.6, 1.9, S + 0.17);
+  const plate = mesh(new THREE.BoxGeometry(0.26, 0.22, 0.04), std(0x8a7a40, 0.3, 0.8));
+  plate.position.set(-0.6, 1.9, S + 0.15);
+  const photo = canvas(64, 80, (g) => {
+    g.fillStyle = '#d8c8a0';
+    g.fillRect(0, 0, 64, 80);
+    g.fillStyle = '#8a7a5a';
+    g.fillRect(6, 6, 52, 60);
+    g.fillStyle = '#4a3a2a';
+    g.fillRect(14, 22, 14, 40);
+    g.fillRect(36, 26, 14, 36);
+    g.fillRect(16, 12, 10, 10);
+    g.fillRect(38, 16, 10, 10);
+  });
+  const pic = mesh(new THREE.PlaneGeometry(0.32, 0.4), std(0xffffff, 0.9, 0, { map: photo }), false);
+  pic.position.set(0.5, 1.85, S + 0.18);
+  pic.rotation.y = Math.PI;
+  group.add(belt, plate, pic);
+  // One bare bulb on a cord, swinging a little; a dim window up high.
+  const cord = mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.6, 4), std(0x111111), false);
+  cord.position.set(0, 2.75, 0);
+  const bulbM = std(0xffe0a0, 0.3, 0, { emissive: 0xffc070, emissiveIntensity: 2.5 });
+  const bulb = mesh(new THREE.SphereGeometry(0.07, 8, 6), bulbM, false);
+  bulb.position.set(0, 2.42, 0);
+  const lamp = new THREE.PointLight(0xffc27a, 14, 9, 1.4);
+  lamp.position.set(0, 2.35, 0);
+  group.add(cord, bulb, lamp);
+  const win = mesh(new THREE.PlaneGeometry(0.9, 0.35), std(0x8aa0b0, 0.3, 0, { emissive: 0x2a3a50, emissiveIntensity: 1 }), false);
+  win.position.set(0, 2.55, -S - 0.18);
+  group.add(win);
+  group.add(skyDome([[0, '#0a0a0c'], [1, '#121010']], undefined, 30));
+  let last = -1;
+  return {
+    group, background: 0x0a0a0c, fog: [0x14120f, 9, 22], sun: 0.3, hemi: 0.45,
+    crate: std(0x5a3a1c, 0.8),
+    update: (t) => {
+      bulb.position.x = Math.sin(t * 0.9) * 0.05;
+      lamp.position.x = bulb.position.x;
+      lamp.intensity = 14 * (Math.sin(t * 23) > 0.992 ? 0.4 : 1);
+      // The tape plays at its own low frame rate.
+      if (t - last > 1 / 15) {
+        last = t;
+        drawTape(tvG, t);
+        tvTex.needsUpdate = true;
+        glow.intensity = TV.on ? 2.2 + Math.random() * 0.6 : 0;
+      }
+    },
+  };
+}
+
 function voidArena(map: MapDef, floorTex: THREE.Texture): Arena {
   const group = new THREE.Group();
   const floor = mesh(new THREE.CircleGeometry(map.size, 96), std(0xffffff, 0.9, 0, { map: floorTex }), false);
@@ -1293,6 +1533,8 @@ export function buildArena(map: MapDef, voidFloor: () => THREE.Texture): Arena {
       return roof(map);
     case 'bar':
       return bar(map);
+    case 'basement':
+      return basement(map);
     default:
       return voidArena(map, voidFloor());
   }

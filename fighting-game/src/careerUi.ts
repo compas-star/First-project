@@ -33,7 +33,7 @@ import {
   ladder, cup, cupCanJoin, cupJoin, cupMyMatch, cupAdvance, cupFought, ambushFight, ambushDone, clubOf, ranked, nextStageNeeds,
   CUP_TIER, STREET_TIER, CUP_PRIZE, CUP_FEE, STAGE_NAME, type Club, type CupMatch,
 } from './clubs';
-import { ensureAct1, act1Check, act1Card, act1Film, act1Seen, act1Choose, act1FightDone, act1Pay, act1Goal, watchLesson, basementLost, act, type A1Fight } from './act1';
+import { callDue, callScene, callDone, ensureAct1, act1Check, act1Card, act1Film, act1Seen, act1Choose, act1FightDone, act1Pay, act1Goal, watchLesson, basementLost, act, type A1Fight } from './act1';
 
 export interface CareerHooks {
   /** Show this fight in the arena; `done` gets the result when it is over. */
@@ -126,8 +126,21 @@ export class CareerUi {
     // The very first scene plays by itself.
     const card = act1Card(this.c);
     if (card?.id === 's1' && !card.watched) this.playFilm();
+    else if (callDue(this.c)) this.playCall();
     clearInterval(this.timer);
     this.timer = window.setInterval(() => this.everySecond(), 1000);
+  }
+
+  /** The fight club's call: a short film with voices in the phone; the cup opens after it. */
+  private playCall(): void {
+    $('career').hidden = true;
+    clearInterval(this.timer);
+    this.hooks.scene(callScene(this.c), () => {
+      callDone(this.c);
+      this.toast = 'Турнир открыт: Город → Арена → «Турнир недели»';
+      this.screen = 'home';
+      this.show();
+    });
   }
 
   /** Plays the open act 1 card's film, then back here with its choices. */
@@ -267,7 +280,7 @@ export class CareerUi {
           <button type="button" data-act="help">Понятно</button>
         </div>`;
     const a = act(c);
-    const calls = (c.incidents?.length ?? 0) + (pendingChapter(c) ? 1 : 0) + (this.clubCall() ? 1 : 0);
+    const calls = (c.incidents?.length ?? 0) + (pendingChapter(c) ? 1 : 0);
     const card = act1Card(c);
     cupAdvance(c);
     const amb = ambushFight(c);
@@ -327,7 +340,7 @@ export class CareerUi {
           <div class="newsbox"><div class="h2">Новости боёв</div>${(c.news ?? []).slice(0, 4).map((x) => `<div>${esc(x)}</div>`).join('')}</div>`;
       }
       case 'phone': {
-        const list = this.clubCallHtml() + this.storyCard() + this.incidents();
+        const list = this.storyCard() + this.incidents();
         return `${head('Телефон')}${list || '<div class="fnote">Тишина. Никто не звонит.</div>'}`;
       }
       case 'door':
@@ -340,25 +353,6 @@ export class CareerUi {
       default:
         return `${head(esc(short(f)))}${this.hero(f)}`;
     }
-  }
-
-  /** After act 1, if nobody told him about the cup: a call from a strange number. */
-  private clubCall(): boolean {
-    const c = this.c;
-    const a = c.act1;
-    return !!a && !ladder(c).open && (!!a.ending || c.day - a.start >= 19);
-  }
-
-  private clubCallHtml(): string {
-    if (!this.clubCall()) return '';
-    return `<div class="incident story call">
-      <div class="h2">📞 Незнакомый номер</div>
-      <div class="who">Голос в трубке, сзади шум и музыка</div>
-      <div>— Алло! Бойцовский клуб в подвале «Подковы»! Каждую субботу турнир, призы до трёхсот, взнос тридцать, клубы, байкеры, заводские…</div>
-      <div><i>Второй голос, издалека:</i> — Первое правило бойцовского клуба: никому не говорить о бойцовском клубе! Тайлер!</div>
-      <div>— Ооой… Я забыл. Слушай. Ты ничего не слышал. Суббота, подвал «Подковы». Записывайся на арене.</div>
-      <div class="incopts"><button type="button" class="primary" data-act="clubcall">«Я ничего не слышал»</button></div>
-    </div>`;
   }
 
   /** The district map, opened by its own button. */
@@ -1283,11 +1277,6 @@ export class CareerUi {
         }
         return say(r.lines.join(' · ') || null);
       }
-      case 'clubcall':
-        ladder(c).open = true;
-        save(c);
-        this.sheet = null;
-        return say('Турнир открыт: Город → Арена → «Турнир недели». Первая суббота — скоро');
       case 'cupjoin':
         return say(cupJoin(c, me));
       case 'club':
@@ -1370,6 +1359,7 @@ export class CareerUi {
           if (err) return say(err);
           this.calDay = c.day;
           this.toast = `Новый день: ${dayName(c.day)}, ${weekday(c.day)}`;
+          if (callDue(c)) return this.playCall();
           return this.go(this.screen === 'cal' || this.screen === 'gym' ? this.screen : 'home');
         };
         const err = nextDay(c);

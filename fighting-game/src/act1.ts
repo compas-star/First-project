@@ -619,6 +619,9 @@ export function act1Check(c: Career): string[] {
 /** Midnight: Monday payments, the 20th. Runs after the date moved on. */
 export function act1Day(c: Career): string[] {
   const a = act(c);
+  // The morning after the act ends with no basement (or nobody told him about the cup): the
+  // fight club calls. Played by the career screen (`callDue`).
+  if (a?.ending && !a.flags.called && (a.flags.lost || !ladder(c).open)) a.flags.callDue = 1;
   if (!a || a.ending) return act1Check(c);
   const out: string[] = [];
   if (a.plan === 'pay' && a.debt > 0 && (c.day - 1) % 7 === 0 && c.day > a.start) {
@@ -758,3 +761,30 @@ export function act1Goal(c: Career): { text: string; debt: number; left: number 
 
 /** Training in the yard once the basement is gone. */
 export const basementLost = (c: Career) => !!c.act1?.flags.lost;
+
+/** The fight club's call is waiting to be played. */
+export const callDue = (c: Career) => !!c.act1?.flags.callDue && !c.act1.flags.called;
+
+/** A call from a strange number: an ad for the fight club, cut off by the first rule. */
+export function callScene(c: Career): SceneSpec {
+  const f = main(c);
+  return {
+    map: c.act1?.flags.lost ? MAP_BY_ID.alley : B, a: P(f, 0), b: P(f, 1), dist: 2.4, hide: [false, true],
+    lines: [
+      { who: null, text: 'Утро. Звонит телефон. Номер незнакомый', shot: 'wide' },
+      { who: 2, name: '📞 Голос', text: 'Алло! Бойцовский клуб в подвале «Подковы»! Каждую субботу турнир, призы до трёхсот, взнос тридцать! Клубы, байкеры, заводские!', shot: 'close0' },
+      { who: 2, name: '📞 Голос сзади', text: 'Первое правило бойцовского клуба: никому не говорить о бойцовском клубе! Тайлер!', shot: 'close0' },
+      { who: 2, name: '📞 Голос', text: 'Ооой… Я забыл. Слушай. Ты ничего не слышал.', shot: 'close0' },
+      { who: 0, text: '…Суббота. Подвал «Подковы».', shot: 'wide', act: (s) => s.gesture(s.fighters[0], 'nod', 1) },
+    ],
+  };
+}
+
+/** After the call: the cup is open. */
+export function callDone(c: Career): void {
+  if (!c.act1) return;
+  c.act1.flags.called = 1;
+  c.act1.flags.callDue = 0;
+  ladder(c).open = true;
+  save(c);
+}

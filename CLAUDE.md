@@ -391,9 +391,12 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   leader); arena place, home banners (your fight today, the ambush). Tool `cuptest [weeks]`
   (env GROW). Unskippable story fights: act 1 s4 "Не идти" or ignoring it = Кирпич knocks on
   the door next morning (`s4h`, fight in our basement); a loss = more debt + the cup tip.
-  If act 1 ends (or day 20 of it passes) with the cup still closed, the phone rings
-  (`clubCall`/`clubCallHtml` in careerUi: a fight-club ad, a second voice "first rule…
-  Тайлер!", "you heard nothing"); "Я ничего не слышал" opens the cup (data-act clubcall).
+  The fight-club call (user: nobody called; mumble it; right after the first sleep): the
+  morning after act 1 ends with the basement lost (or the cup still closed) `act1Day` sets
+  `flags.callDue`; `CareerUi.playCall` plays `callScene` (fighter alone, alley if lost; voices
+  '📞 Голос' / '📞 Голос сзади' mumble through the phone filter: names starting with 📞 use
+  the tape band) right after "Спать" or on opening the career; `callDone` opens the cup.
+  `SceneLine.name` gives a line any speaker name.
 - Ring ropes are one solid springy wall per side in physics (user: men got stuck between /
   behind thin rope colliders); plus a referee rescue if a pelvis spends >1.2 s outside them.
 - Gyms (`gyms.ts`, user: different gyms): `Career.gym`/`gymUntil`, weekly price (`gymDay` at

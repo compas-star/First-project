@@ -249,6 +249,8 @@ export interface SceneLine {
   dur?: number;
   /** Something done as the line starts (a shove, a gesture, the TV comes on). */
   act?: (s: Sim, fx: CutFx) => void;
+  /** The speaker's name when it is not one of the scene's people (a voice on the phone). */
+  name?: string;
 }
 
 export interface SceneSpec {
@@ -275,7 +277,7 @@ export function storyCut(spec: SceneSpec, tv: { pos: THREE.Vector3; facing: THRE
   for (const l of spec.lines) {
     const d = lineDur(l);
     const who = l.who === 0 || l.who === 1 ? l.who : l.who === null ? null : 1;
-    const name = l.who === 2 ? spec.names?.extra : l.who === 'tv' ? spec.names?.tv : undefined;
+    const name = l.name ?? (l.who === 2 ? spec.names?.extra : l.who === 'tv' ? spec.names?.tv : undefined);
     lines.push({ at: t, who: l.who === null ? null : who, text: l.text, name });
     if (l.act) beats.push({ at: t, run: l.act });
     spans.push({ t0: t, t1: t + d, shot: l.shot });

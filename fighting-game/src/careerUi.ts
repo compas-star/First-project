@@ -27,6 +27,7 @@ import {
 } from './city';
 import { mapSvg, PLACE_BY_ID, type PlaceId } from './cityMap';
 import type { SceneSpec } from './cutscenes';
+import { homeSvg, APPARATUS, type HomeObj } from './homeArt';
 import { ensureAct1, act1Check, act1Card, act1Film, act1Seen, act1Choose, act1FightDone, act1Pay, act1Goal, watchLesson, basementLost, act, type A1Fight } from './act1';
 
 export interface CareerHooks {
@@ -43,7 +44,7 @@ export interface CareerHooks {
   close(): void;
 }
 
-type Screen = 'place' | 'save' | 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
+type Screen = 'map' | 'more' | 'place' | 'save' | 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -67,6 +68,10 @@ export class CareerUi {
   private profileId = '';
   /** The place on the map open now, and the last one visited (marked on the map). */
   private placeId: PlaceId = 'flat';
+  /** The panel open over the home screen (a thing tapped in the flat or the basement). */
+  private sheet: HomeObj | null = null;
+  /** Which of an apparatus's exercises is picked. */
+  private appSel = 0;
   private visited: PlaceId | null = null;
   /** What happened in the last fight (result screen). */
   private outcome: { won: boolean; title: string; lines: string[] } | null = null;
@@ -147,19 +152,22 @@ export class CareerUi {
   }
 
   /** Act 1: the goal and the open scene. */
-  private actCards(): string {
+  private goalCard(): string {
     const c = this.c;
     const g = act1Goal(c);
     const goal = g
-      ? `<div class="goal"><div class="h2">🎯 ${esc(g.text)}</div>
-          <div class="fmeta">${g.debt > 0 ? `Долг Гусю: <b>$${g.debt}</b> · ` : ''}${g.left > 0 ? `осталось дней: <b>${g.left}</b>` : '<b>сегодня двадцатое</b>'}</div>
-          ${g.debt > 0 ? `<div class="row">${[100, 300].map((n) => `<button type="button" data-act="a1pay" data-n="${n}" ${c.money >= n ? '' : 'disabled'}>Отдать $${n}</button>`).join('')}<button type="button" class="primary" data-act="a1pay" data-n="${g.debt}" ${c.money >= g.debt ? '' : 'disabled'}>Всё ($${g.debt})</button></div>` : ''}
+      ? `<div class="goal slim"><div>🎯 ${g.debt > 0 ? `Долг Гусю <b>$${g.debt}</b>` : esc(g.text)} · ${g.left > 0 ? `<b>${g.left}</b> дн.` : '<b>сегодня!</b>'}</div>
+          ${g.debt > 0 ? `<div class="row">${[100, 300].map((n) => `<button type="button" data-act="a1pay" data-n="${n}" ${c.money >= n ? '' : 'disabled'}>$${n}</button>`).join('')}<button type="button" data-act="a1pay" data-n="${g.debt}" ${c.money >= g.debt ? '' : 'disabled'}>Всё</button></div>` : ''}
         </div>`
       : '';
-    const card = act1Card(c);
-    if (!card) return goal;
+    return goal;
+  }
+
+  private act1CardHtml(): string {
+    const card = act1Card(this.c);
+    if (!card) return '';
     const showOpts = !card.film || card.watched;
-    return `${goal}<div class="incident story act1">
+    return `<div class="incident story act1">
       <div class="h2">🎬 ${esc(card.title)}</div>
       <div class="who">${esc(card.who)}</div>
       <div>${esc(card.text)}</div>
@@ -196,17 +204,10 @@ export class CareerUi {
 
   render(): void {
     const c = this.c;
+    const main = MAIN_SCREENS.includes(this.screen);
     const top = `<div class="ctop">
-      ${this.screen === 'home' ? '<button type="button" data-act="sandbox">← Песочница</button>' : '<button type="button" data-act="back">← Назад</button>'}
-      <div class="wallet"><span title="деньги">$<b>${c.money.toLocaleString('ru')}</b></span><span title="жетоны: ускоряют ожидание">◆ <b>${c.tokens}</b></span></div>
-    </div>
-    <div class="cheats">
-      <span>Тест:</span>
-      <button type="button" data-act="cheat" data-k="tokens" data-v="100">+100 ◆</button>
-      <button type="button" data-act="cheat" data-k="money" data-v="500">+$500</button>
-      <button type="button" data-act="cheat" data-k="money" data-v="-500">−$500</button>
-      <button type="button" data-act="peak">До пика</button>
-      <button type="button" data-act="testbar">🍺 Бар</button>
+      ${main ? '<button type="button" data-act="sandbox">← Арена</button>' : '<button type="button" data-act="back">← Назад</button>'}
+      <div class="wallet"><span title="деньги">$<b>${c.money.toLocaleString('ru')}</b></span><span title="жетоны">◆ <b>${c.tokens}</b></span></div>
     </div>`;
     const body =
       this.screen === 'home' ? this.home()
@@ -221,12 +222,21 @@ export class CareerUi {
       : this.screen === 'market' ? this.market()
       : this.screen === 'save' ? this.saveView()
       : this.screen === 'place' ? this.place()
+      : this.screen === 'map' ? this.mapView()
+      : this.screen === 'more' ? this.moreView()
       : this.logView();
     const ask = this.asking
       ? `<div class="askbox"><div>${esc(this.asking.text)}</div><div class="row"><button type="button" class="primary" data-act="yes">Да</button><button type="button" data-act="no">Нет</button></div></div>`
       : '';
     // The pixel font has no ◆: the token sign is drawn in another font.
-    $('career').innerHTML = (top + ask + (this.toast ? `<div class="toast">${esc(this.toast)}</div>` : '') + body).replace(/◆/g, '<i class="gem">◆</i>');
+    const nav = main
+      ? `<nav class="cnav">${([['home', '🏠', 'Дом'], ['map', '🗺', 'Город'], ['cal', '📅', 'Бои'], ['team', '👥', 'Команда'], ['more', '☰', 'Ещё']] as const)
+          .map(([id, icon, name]) => `<button type="button" class="${this.screen === id ? 'on' : ''}" data-act="to" data-s="${id}"><span>${icon}</span>${name}</button>`).join('')}</nav>`
+      : '';
+    const inSheet = this.screen === 'home' && !!this.sheet;
+    const toast = this.toast ? `<div class="toast">${esc(this.toast)}</div>` : '';
+    const sheet = inSheet ? `<div class="sheetbg" data-act="sheetx"></div><div class="sheet">${toast}${this.sheetHtml(this.sheet!)}</div>` : '';
+    $('career').innerHTML = (top + ask + (inSheet ? '' : toast) + body + nav + sheet).replace(/◆/g, '<i class="gem">◆</i>');
     this.toast = '';
   }
 
@@ -240,25 +250,109 @@ export class CareerUi {
       : `<div class="help">
           <div class="h2">Как играть</div>
           <ol>
-            <li>День = <b>утро, день, вечер</b>. Каждая тренировка, смена или отдых занимает часть дня. Когда всё сделано — <b>«Спать»</b>, и наступает новый день. Сам по себе день не идёт.</li>
-            <li>Следи за <b>сытостью</b> и <b>энергией</b>. Голодный тренируется вполсилы, без сил тренироваться нельзя. Еда стоит денег, энергию даёт сон и отдых.</li>
-            <li>Деньги — <b>подработки</b> (стройка, рынок, бар) и <b>бои</b>. Раз в неделю квартплата $${RENT}.</li>
-            <li>В <b>календаре</b> — вечера боёв, турниры и бои за пояс. Запишись заранее; бой занимает вечер. Победы дают деньги и <b>известность</b>.</li>
+            <li>Это твой дом. <b>Тапай по вещам</b>: холодильник — еда, кровать — сон, телевизор — сюжет, дверь — город.</li>
+            <li>Листай вниз — <b>подвал</b>. Тап по тренажёру — тренировка.</li>
+            <li>День = утро, день, вечер. Каждое дело занимает часть дня. Следи за сытостью и энергией.</li>
           </ol>
           <button type="button" data-act="help">Понятно</button>
         </div>`;
-    const tour = this.tourBanner();
-    return `${help}${this.actCards()}${this.dayBar()}${this.storyCard()}${this.incidents()}${tour}${this.today()}
-      <div class="mapbox">${this.cityMap()}<div class="fnote">Тапни здание: тренировка, работа, еда, бои. Каждое дело занимает часть дня.</div></div>
-      ${this.hero(f, true)}
+    const a = act(c);
+    const calls = (c.incidents?.length ?? 0) + (pendingChapter(c) ? 1 : 0);
+    const card = act1Card(c);
+    const banners = [
+      card ? `<button type="button" class="banner hot" data-act="obj" data-o="tv">🎬 ${esc(card.title)} — ${card.film && !card.watched ? 'включи телевизор' : 'выбери, что делать'}</button>` : '',
+      calls ? `<button type="button" class="banner" data-act="obj" data-o="phone">📞 Звонков: ${calls}</button>` : '',
+    ].join('');
+    const look = HOME_LOOK[f.discipline] ?? HOME_LOOK.mma;
+    const art = homeSvg({
+      badges: { tv: card ? '!' : '', phone: calls ? String(calls) : '', calendar: c.events.some((e) => e.f && !e.done && e.day === c.day) ? '!' : '' },
+      tvOn: !!card, lost: !!a?.flags.lost, skin: SKIN_TONES[f.name.length % SKIN_TONES.length], shorts: look[0], hair: look[1],
+      part: partOf(f), sleepy: partsLeft(c, f) === 0 && !bookedOn(c, f, c.day),
+    });
+    const fights = c.events.some((e) => e.f && !e.done && e.day >= c.day) ? this.today() : '';
+    return `${help}${this.dayBar()}${this.goalCard()}${banners}${this.tourBanner()}${fights}
+      <div class="homebox">${art}</div>
+      <div class="fnote">Тапни по вещи. Ниже — подвал с тренажёрами.</div>`;
+  }
+
+  /** The panel for a thing in the flat or the basement. */
+  private sheetHtml(o: HomeObj): string {
+    const c = this.c;
+    const f = this.me();
+    const head = (t: string) => `<div class="sheethead"><b>${t}</b><button type="button" class="qx" data-act="sheetx">✕</button></div>`;
+    const ap = APPARATUS[o];
+    if (ap) {
+      const opt = ap.what[Math.min(this.appSel, ap.what.length - 1)];
+      const tabs = ap.what.length > 1 ? `<div class="row gtabs">${ap.what.map((w, i) => `<button type="button" class="${w === opt ? 'primary' : ''}" data-act="appsel" data-i="${i}">${w.name}</button>`).join('')}</div>` : '';
+      const cur = opt.craft ? `${Math.round(craftOf(f, opt.craft) * 100)}%` : fmtStat(opt.k as StatKey, f.stats[opt.k as StatKey]);
+      const its = INTENSITY.map((it) => {
+        const g = opt.craft ? `+${(sessionCraft(f, opt.craft, it, c) * 100).toFixed(1)}%` : `+${fmtGain(opt.k as StatKey, sessionGain(f, opt.k as StatKey, it, c))}`;
+        const no = cannot(c, f, 1, Math.max(TRAIN_ENERGY[it.id], MIN_TRAIN_ENERGY));
+        return `<button type="button" class="ibtn" data-act="atrain" data-it="${it.id}" ${no ? 'disabled' : ''}><b>${it.name}</b><span class="gain">${g}</span><span>1 часть · −${TRAIN_ENERGY[it.id]}⚡</span><small>${no ?? (it.injury ? `травма ${Math.round(it.injury * 100)}%` : 'без риска')}</small></button>`;
+      }).join('');
+      const lost = act(c)?.flags.lost ? '<div class="fnote">Подвал закрыт — тренируешься во дворе, на 20% хуже.</div>' : '';
+      return `${head(ap.name)}${lost}${tabs}<div class="fmeta">${opt.name} сейчас: <b>${cur}</b>${satOf(f) < HUNGRY ? ' · <b>голодный — вполсилы</b>' : ''}</div><div class="ibtns">${its}</div>`;
+    }
+    switch (o) {
+      case 'bed':
+        return `${head('Кровать')}<button type="button" class="primary" data-act="nextday">🌙 Спать — новый день</button>
+          <button type="button" data-act="rest" ${partsLeft(c, f) ? '' : 'disabled'}>😌 Вздремнуть · 1 часть · +15⚡</button>
+          ${DOW(c.day) === 6 ? `<div class="fnote">Ночью квартплата $${RENT}.</div>` : ''}`;
+      case 'fridge': {
+        const x = FOODS[0];
+        return `${head('Холодильник')}<div class="fnote">На полке доширак. Нормальная еда и спортпит — в Пельменной (город).</div>
+          <div class="ibtns"><button type="button" class="ibtn" data-act="eat" data-f="${x.id}" ${c.money < x.price ? 'disabled' : ''}><b>${x.name}</b><span class="gain">+${x.sat}</span><span>$${x.price}</span><small>сытость ${Math.round(satOf(f))}</small></button></div>
+          <button type="button" data-act="to" data-s="map">🗺 В город, в Пельменную</button>`;
+      }
+      case 'tv': {
+        const tape = act(c)?.done.includes('s3') && !act(c)?.flags.tape2;
+        const card = this.act1CardHtml() || this.storyCard();
+        return `${head('Телевизор')}${card || '<div class="fnote">По телевизору ничего нового.</div>'}
+          ${tape ? '<button type="button" data-act="a1tape">📼 Кассета Михалыча «Урок 1» · часть дня</button>' : ''}
+          <div class="newsbox"><div class="h2">Новости боёв</div>${(c.news ?? []).slice(0, 4).map((x) => `<div>${esc(x)}</div>`).join('')}</div>`;
+      }
+      case 'phone': {
+        const list = this.storyCard() + this.incidents();
+        return `${head('Телефон')}${list || '<div class="fnote">Тишина. Никто не звонит.</div>'}`;
+      }
+      case 'door':
+        return `${head('На улицу')}<button type="button" class="primary" data-act="to" data-s="map">🗺 Карта района</button>
+          <div class="fnote">Работа, еда, чужие залы, бар, больница, арена.</div>`;
+      case 'calendar':
+        return `${head('Календарь')}${this.today()}<button type="button" class="primary" data-act="to" data-s="cal">📅 Бои и турниры</button>`;
+      case 'belt':
+        return `${head('Пояс Михалыча')}<div class="fnote">Старый тёмный пояс. Михалыч говорил: «не для красоты».</div>`;
+      default:
+        return `${head(esc(short(f)))}${this.hero(f)}`;
+    }
+  }
+
+  /** The district map, opened by its own button. */
+  private mapView(): string {
+    return `${this.dayBar()}<div class="mapbox">${this.cityMap()}</div><div class="fnote">Тапни здание: работа, еда, залы, бои.</div>`;
+  }
+
+  /** Everything that is not every day. */
+  private moreView(): string {
+    const c = this.c;
+    return `<div class="h1">Ещё</div>
       <div class="nav4">
-        <button type="button" data-act="to" data-s="rank">Рейтинг</button>
-        <button type="button" data-act="to" data-s="team">Команда <b>${c.roster.length}/${MAX_ROSTER}</b></button>
-        <button type="button" data-act="to" data-s="market">Рынок</button>
-        <button type="button" data-act="to" data-s="log">Журнал</button>
+        <button type="button" data-act="to" data-s="rank">🏆 Рейтинг</button>
+        <button type="button" data-act="to" data-s="market">🛒 Рынок бойцов</button>
+        <button type="button" data-act="to" data-s="log">📜 Журнал</button>
+        <button type="button" data-act="to" data-s="gym">🥊 Зал: стиль и залы</button>
       </div>
       <button type="button" data-act="to" data-s="save">💾 Сохранение и перенос</button>
-      <div class="newsbox"><div class="h2">Новости мира боёв</div>${(c.news ?? []).slice(0, 4).map((x) => `<div>${esc(x)}</div>`).join('')}<div class="fnote">Бойцы мира дерутся каждый день, даже когда игра закрыта.</div></div>`;
+      <button type="button" data-act="helpagain">❓ Как играть</button>
+      <div class="cheats">
+        <span>Тест:</span>
+        <button type="button" data-act="cheat" data-k="tokens" data-v="100">+100 ◆</button>
+        <button type="button" data-act="cheat" data-k="money" data-v="500">+$500</button>
+        <button type="button" data-act="cheat" data-k="money" data-v="-500">−$500</button>
+        <button type="button" data-act="peak">До пика</button>
+        <button type="button" data-act="testbar">🍺 Бар</button>
+      </div>
+      <div class="newsbox"><div class="h2">Новости мира боёв</div>${(c.news ?? []).slice(0, 6).map((x) => `<div>${esc(x)}</div>`).join('')}</div>`;
   }
 
   /** The open story chapter: who speaks, what happened, the choices. */
@@ -287,21 +381,17 @@ export class CareerUi {
       .join('');
   }
 
-  private dayBtn(): string {
-    return '🌙 Спать · новый день';
-  }
-
   /** Today's date, the part of the day the picked fighter is in, and the button that ends it. */
   private dayBar(): string {
     const c = this.c;
     const f = this.me();
     const p = partOf(f);
     const dots = [0, 1, 2].map((i) => `<span class="pdot${i < p ? ' used' : i === p ? ' now' : ''}">${PARTS[i]}</span>`).join('');
-    return `<div class="daybar">
-      <div class="dtop"><b>📅 ${dayName(c.day)}, ${weekday(c.day)}</b><span>день ${c.day} · <b class="money">$${c.money}</b></span></div>
-      <div class="parts">${dots}</div>
-      <div class="needs">${needBar('🍞 Сытость', satOf(f))}${needBar('⚡ Энергия', energyOf(f))}</div>
-      <button type="button" data-act="nextday" class="${partsLeft(c, f) ? '' : 'primary'}"><b>${this.dayBtn()}</b></button>
+    // One compact strip: date, parts of the day, needs, sleep.
+    return `<div class="daybar slim">
+      <div class="dtop"><b>${dayName(c.day)}, ${weekday(c.day)}</b><div class="parts">${dots}</div></div>
+      <div class="dline"><div class="needs">${needBar('🍞', satOf(f))}${needBar('⚡', energyOf(f))}</div>
+      <button type="button" data-act="nextday" class="sleep ${partsLeft(c, f) ? '' : 'primary'}" title="Спать — новый день">🌙</button></div>
     </div>`;
   }
 
@@ -963,8 +1053,31 @@ export class CareerUi {
       case 'sandbox':
         return this.hide();
       case 'back':
-        return this.go(this.screen === 'preview' ? (this.bill?.tour ? 'bracket' : 'cal') : this.screen === 'profile' ? 'rank' : 'home');
+        return this.go(this.screen === 'preview' ? (this.bill?.tour ? 'bracket' : 'cal') : this.screen === 'profile' ? 'rank' : this.screen === 'place' ? 'map' : this.screen === 'gym' && this.gymTab !== 'stats' ? 'more' : 'home');
+      case 'obj':
+        this.sheet = b.dataset.o as HomeObj;
+        this.appSel = 0;
+        if (this.screen !== 'home') return this.go('home');
+        return say(null);
+      case 'sheetx':
+        this.sheet = null;
+        return say(null);
+      case 'appsel':
+        this.appSel = Number(b.dataset.i);
+        return say(null);
+      case 'atrain': {
+        const ap = this.sheet ? APPARATUS[this.sheet] : undefined;
+        if (!ap) return say(null);
+        const w = ap.what[Math.min(this.appSel, ap.what.length - 1)];
+        const it = INTENSITY.find((x) => x.id === b.dataset.it)!;
+        const r = trainNow(c, me, w.k as StatKey, it, w.craft);
+        return say(r.ok ? `${short(me)}: ${r.text}` : r.text);
+      }
+      case 'helpagain':
+        c.seenHelp = false;
+        return this.go('home');
       case 'to':
+        this.sheet = null;
         return this.go(b.dataset.s as Screen);
       case 'story': {
         const out = storyChoose(c, b.dataset.o!);
@@ -1037,6 +1150,7 @@ export class CareerUi {
       case 'treat':
         return say(treat(c, me).text);
       case 'a1film':
+        this.sheet = null;
         return this.playFilm();
       case 'a1pay':
         return say(act1Pay(c, Number(b.dataset.n)));
@@ -1230,6 +1344,15 @@ export class CareerUi {
     }, undefined, { title: !!b.title, cls: classOf(me).name });
   }
 }
+
+const MAIN_SCREENS: Screen[] = ['home', 'map', 'cal', 'team', 'more'];
+const SKIN_TONES = ['#e0b090', '#c99a7a', '#a87a5a', '#8a5a3a', '#f0c8a0'];
+/** Shorts and hair colours of the little figure at home, by style. */
+const HOME_LOOK: Record<string, [string, string]> = {
+  mma: ['#2a2a2a', '#2a1a10'], boxing: ['#c43a3a', '#1a1a1a'], muaythai: ['#3a5ac8', '#1a1010'],
+  kickboxing: ['#d8a020', '#3a2010'], karate: ['#e8e8e8', '#1a1a1a'], street: ['#3a4a6a', '#5a3a20'],
+  wrestling: ['#6a2a8a', '#2a1a10'], bjj: ['#2a4a8a', '#1a1a1a'],
+};
 
 const GP_OPTS = ['auto', 'outbox', 'pressure', 'counter', 'legs', 'body'];
 const GP_LABEL: Record<string, string> = { auto: 'сам решает', ...PLAN_NAME };

@@ -169,6 +169,17 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   (bouncer, beer $8), Больница (`treat`: $40 per day left, recovery halved, once per injury),
   Арена (fights today, calendar, rankings), Спортквартал (gym / choose a gym); Подворотня
   and Крыши wait for underground fights.
+  Home screen (user: too complex; by default see your home in pixel art, map by a button):
+  `homeArt.ts` `homeSvg` = one tall SVG (160x234 on a pixel grid): the flat (bed = sleep /
+  nap, fridge = доширак, TV = the act/story card + tapes + news, phone = incidents and story
+  calls, calendar = fights, door = map, the fighter = his card) and below it the basement
+  (bag: hands/strength, rope: speed/cardio, dumbbells: strength, mirror: technique,
+  pendulum: evasion/reaction, tyres: legs; `APPARATUS`) — tap = a bottom sheet
+  (`CareerUi.sheet`, `sheetHtml`, data-act obj/sheetx/appsel/atrain) with `trainNow`.
+  Badges: '!' on the TV for a waiting scene, call count on the phone; banners above. Slim
+  day strip (date, parts, 🍞/⚡ bars, 🌙). Bottom nav `cnav` on main screens (Дом / Город
+  = 'map' screen / Бои / Команда / Ещё = 'more': rankings, market, log, gym tabs, save,
+  help, test buttons). Old big home cards are gone.
   Old: a fighter trained or fought per day; `busyUntil` = first free day; recovery
   after a fight in days. `Career.events` (`plan`, 5 weeks ahead): per league fight nights
   and tournaments on fixed cycles (`SCHEDULE`), title bout every 10 days. Ours signs up in

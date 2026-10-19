@@ -41,6 +41,36 @@ function section(y: number): [number, number, number, number] {
   return [z[1], z[2], z[3], z[4]];
 }
 
+/** One man's face: multipliers around 1 (wide face, long lower face, heavy jaw, big chin,
+ *  big or long nose, wide nostrils, heavy brow, high cheekbones). */
+export interface HeadVar {
+  wide: number;
+  long: number;
+  jaw: number;
+  chin: number;
+  nose: number;
+  noseW: number;
+  brow: number;
+  cheek: number;
+}
+const PLAIN: HeadVar = { wide: 1, long: 1, jaw: 1, chin: 1, nose: 1, noseW: 1, brow: 1, cheek: 1 };
+let V: HeadVar = PLAIN;
+/** Builds with this face (headPoint and everything that uses it). */
+export function withHead<T>(v: HeadVar | undefined, fn: () => T): T {
+  const was = V;
+  V = v ?? PLAIN;
+  try {
+    return fn();
+  } finally {
+    V = was;
+  }
+}
+/** A face from a seed: every man a little different. */
+export function headVarOf(r: (n: number) => number): HeadVar {
+  const k = (n: number, a: number, b: number) => a + (b - a) * r(n);
+  return { wide: k(31, 0.93, 1.08), long: k(32, 0.94, 1.08), jaw: k(33, 0.86, 1.16), chin: k(34, 0.4, 1.8), nose: k(35, 0.7, 1.35), noseW: k(36, 0.8, 1.45), brow: k(37, 0.5, 1.6), cheek: k(38, 0.4, 1.7) };
+}
+
 const gs = (x: number, y: number, x0: number, y0: number, wx: number, wy: number) =>
   Math.exp(-(((x - x0) / wx) ** 2) - ((y - y0) / wy) ** 2);
 const spow = (v: number, p: number) => Math.sign(v) * Math.abs(v) ** p;
@@ -54,33 +84,37 @@ export const HEAD_BOTTOM = -0.125;
  * height `y`. `sg` widens the head for heavier men; `sockets` false skips the eye hollows.
  */
 export function headPoint(az: number, y: number, sg = 1, sockets = true): [number, number, number] {
-  const [w, zf, zb, n] = section(y);
+  const yy = y < 0 ? y / V.long : y;
+  let [w, zf, zb, n] = section(yy);
+  y = yy < 0 ? yy * V.long : yy;
+  w *= V.wide * (yy < -0.05 ? 1 + (V.jaw - 1) * Math.min(1, (-0.05 - yy) / 0.04) : 1);
+  void zb;
   const A = (az * Math.PI) / 180;
   const s = Math.sin(A);
   const c = Math.cos(A);
   const e = 2 / n;
   let x = w * spow(s, e);
-  let z = (c >= 0 ? zf : zb) * spow(c, e);
+  let z = (c >= 0 ? zf : section(yy)[2]) * spow(c, e);
   const fr = Math.max(0, c) ** 1.5;
   // Features, by where they sit on the face (x across, y up), pushed out of the front.
   const fx = x;
   let d = 0;
-  d += 0.007 * gs(fx, y, 0, 0.034, 0.045, 0.007); // brow ridge
-  if (sockets) d -= 0.011 * (gs(fx, y, 0.031, 0.013, 0.016, 0.011) + gs(fx, y, -0.031, 0.013, 0.016, 0.011));
-  d += (y < 0.026 && y > -0.044 ? 0.004 + 0.018 * Math.min(1, (0.026 - y) / 0.062) : 0) * gs(fx, y, 0, -0.01, 0.0085, 0.1); // bridge
-  d += 0.012 * gs(fx, y, 0, -0.037, 0.011, 0.007); // tip
-  d += 0.007 * (gs(fx, y, 0.012, -0.042, 0.008, 0.006) + gs(fx, y, -0.012, -0.042, 0.008, 0.006)); // wings
-  d -= 0.004 * gs(fx, y, 0, -0.05, 0.016, 0.004); // under the nose
-  d += 0.005 * gs(fx, y, 0, -0.06, 0.021, 0.006); // upper lip
-  d -= 0.0035 * gs(fx, y, 0, -0.068, 0.022, 0.003); // the line of the mouth
-  d += 0.003 * gs(fx, y, 0, -0.075, 0.018, 0.005); // lower lip
-  d -= 0.002 * gs(fx, y, 0, -0.086, 0.02, 0.005); // under the lip
-  d += 0.006 * gs(fx, y, 0, -0.106, 0.022, 0.01); // chin
-  d += 0.005 * (gs(fx, y, 0.05, -0.012, 0.016, 0.014) + gs(fx, y, -0.05, -0.012, 0.016, 0.014)); // cheekbones
-  d -= 0.004 * (gs(fx, y, 0.045, -0.055, 0.014, 0.018) + gs(fx, y, -0.045, -0.055, 0.014, 0.018)); // cheek hollows
+  d += 0.007 * V.brow * gs(fx, yy, 0, 0.034, 0.045, 0.007); // brow ridge
+  if (sockets) d -= 0.011 * (gs(fx, yy, 0.031, 0.013, 0.016, 0.011) + gs(fx, yy, -0.031, 0.013, 0.016, 0.011));
+  d += (yy < 0.026 && yy > -0.044 ? V.nose * (0.004 + 0.018 * Math.min(1, (0.026 - yy) / 0.062)) : 0) * gs(fx, yy, 0, -0.01, 0.0085, 0.1); // bridge
+  d += 0.012 * V.nose * gs(fx, yy, 0, -0.037, 0.011 * V.noseW, 0.007); // tip
+  d += 0.007 * (gs(fx, yy, 0.012 * V.noseW, -0.042, 0.008, 0.006) + gs(fx, yy, -0.012 * V.noseW, -0.042, 0.008, 0.006)); // wings
+  d -= 0.004 * gs(fx, yy, 0, -0.05, 0.016, 0.004); // under the nose
+  d += 0.005 * gs(fx, yy, 0, -0.06, 0.021, 0.006); // upper lip
+  d -= 0.0035 * gs(fx, yy, 0, -0.068, 0.022, 0.003); // the line of the mouth
+  d += 0.003 * gs(fx, yy, 0, -0.075, 0.018, 0.005); // lower lip
+  d -= 0.002 * gs(fx, yy, 0, -0.086, 0.02, 0.005); // under the lip
+  d += 0.006 * V.chin * gs(fx, yy, 0, -0.106, 0.022, 0.01); // chin
+  d += 0.005 * V.cheek * (gs(fx, yy, 0.05, -0.012, 0.016, 0.014) + gs(fx, yy, -0.05, -0.012, 0.016, 0.014)); // cheekbones
+  d -= 0.004 * (gs(fx, yy, 0.045, -0.055, 0.014, 0.018) + gs(fx, yy, -0.045, -0.055, 0.014, 0.018)); // cheek hollows
   z += d * fr;
   // Cheekbones and jaw corners also stand out sideways.
-  x += Math.sign(s) * (0.004 * gs(Math.abs(fx), y, 0.06, -0.012, 0.014, 0.016) + 0.005 * gs(Math.abs(az), y, 75, -0.092, 22, 0.012));
+  x += Math.sign(s) * (0.004 * V.cheek * gs(Math.abs(fx), yy, 0.06, -0.012, 0.014, 0.016) + 0.005 * V.jaw * gs(Math.abs(az), yy, 75, -0.092, 22, 0.012));
   return [x * sg, y, z * sg];
 }
 
@@ -143,4 +177,45 @@ export function faceAz(x: number, y: number): number {
     else hi = mid;
   }
   return (lo + hi) / 2;
+}
+
+/** Where the hair grows down to, by angle round from the face. */
+export function hairLine(az: number, long = false): number {
+  const a = Math.abs(az);
+  const sm = (lo: number, hi: number, x: number) => {
+    const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo)));
+    return t * t * (3 - 2 * t);
+  };
+  const front = 0.072;
+  const side = long ? -0.06 : 0.018;
+  const back = long ? -0.11 : -0.068;
+  return a < 90 ? front + (side - front) * sm(40, 80, a) : side + (back - side) * sm(95, 140, a);
+}
+
+/** A shell of hair over the skull down to the hairline, `thick` out from the skin (more on top). */
+export function hairShell(sg: number, thick: number, long = false): { verts: number[]; idx: number[] } {
+  const azs: number[] = [];
+  for (let a = -180; a <= 180; a += 15) azs.push(a);
+  const ys = [HEAD_TOP, 0.116, 0.104, 0.09, 0.075, 0.06, 0.045, 0.03, 0.015, 0, -0.02, -0.04, -0.06, -0.08, -0.1, -0.12];
+  const verts: number[] = [];
+  for (const y0 of ys) for (const az of azs) {
+    const y = Math.max(y0, hairLine(az, long));
+    const [x, py, z] = headPoint(az, y, sg, false);
+    const nx = x;
+    const ny = py - 0.01;
+    const nz = z;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    const t = thick * (0.6 + 0.8 * Math.max(0, (py + 0.02) / 0.14));
+    verts.push(x + (nx / l) * t, py + (ny / l) * t, z + (nz / l) * t);
+  }
+  const n = azs.length;
+  const idx: number[] = [];
+  for (let r = 0; r < ys.length - 1; r++) for (let c = 0; c < n - 1; c++) {
+    const a = r * n + c;
+    idx.push(a, a + n, a + 1, a + 1, a + n, a + n + 1);
+  }
+  const top = verts.length / 3;
+  verts.push(0, HEAD_TOP + thick * 1.4, 0);
+  for (let c = 0; c < n - 1; c++) idx.push(top, c, c + 1);
+  return { verts, idx };
 }

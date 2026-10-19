@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { headGrid, headPoint, faceSpot, faceAz, HEAD_TOP, HEAD_BOTTOM } from './headShape';
+import { headGrid, headPoint, faceSpot, faceAz, hairShell, withHead, HEAD_TOP, HEAD_BOTTOM, type HeadVar } from './headShape';
 import type { Rig } from './rig';
 
 // Fighters drawn like people in a comic: one continuous skinned body over the rig's joints
@@ -21,6 +21,8 @@ export type TopKind = 'none' | 'vest' | 'tee' | 'long' | 'jacket' | 'gi';
 export type BottomKind = 'trunks' | 'shorts' | 'long' | 'torn' | 'singlet' | 'mawashi';
 
 export interface ComicLook {
+  /** The low look's face shape (headShape.ts); missing = a plain one. */
+  face?: HeadVar;
   skin: number;
   /** Body: 0.8 wiry .. 1.6 a slab of muscle (shoulders, chest, arms). */
   bulk: number;
@@ -642,6 +644,10 @@ function faceMat(L: ComicLook): THREE.MeshStandardMaterial {
 }
 
 function maskHead(G: number, L: ComicLook): THREE.Group {
+  return withHead(L.face, () => maskHeadOf(G, L));
+}
+
+function maskHeadOf(G: number, L: ComicLook): THREE.Group {
   const h = new THREE.Group();
   const sg = Math.sqrt(G);
   const skinM = toon(L.skin);
@@ -682,9 +688,9 @@ function maskHead(G: number, L: ComicLook): THREE.Group {
     const iris = toon(0x2a1c14);
     for (const sd of [1, -1]) {
       const [x, y, z] = faceSpot(sd * 0.031, 0.012, sg);
-      const zc = z - 0.012;
-      mesh(h, new THREE.IcosahedronGeometry(0.0085, 1), eyeW, [x, CY + y, zc], [1.25, 0.62, 0.9]);
-      mesh(h, new THREE.IcosahedronGeometry(0.0036, 0), iris, [x - sd * 0.0008, CY + y + 0.0004, zc + 0.0072], [1, 1, 0.6]);
+      const zc = z - 0.011;
+      mesh(h, new THREE.IcosahedronGeometry(0.0082, 1), eyeW, [x, CY + y - 0.0006, zc], [1.25, 0.62, 0.85]);
+      mesh(h, new THREE.IcosahedronGeometry(0.0034, 0), iris, [x - sd * 0.0008, CY + y - 0.0004, zc + 0.0062], [1, 1, 0.55]);
     }
     // Ears.
     for (const sd of [1, -1]) {
@@ -700,8 +706,17 @@ function maskHead(G: number, L: ComicLook): THREE.Group {
       mesh(h, new THREE.BoxGeometry(0.12, 0.005, 0.005), dark, [0, CY + y, z + 0.006], [sg, 1, 1]);
     }
   }
-  // Hair, hood or headgear, all in facets.
-  const cap = (c: THREE.Material, top = 0.92) => mesh(h, new THREE.IcosahedronGeometry(0.1, 1), c, [0, 0.175, -0.025], [0.96 * sg, top, 1.0 * sg]);
+  // Hair, hood or headgear, all in facets. A modelled face gets hair grown to its own skull.
+  const faceHead = L.head !== 'mask';
+  const cap = (c: THREE.Material, top = 0.92, long = false) => {
+    if (!faceHead) return mesh(h, new THREE.IcosahedronGeometry(0.1, 1), c, [0, 0.175, -0.025], [0.96 * sg, top, 1.0 * sg]);
+    const sh = hairShell(sg, top >= 1 ? 0.011 : 0.007, long);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(sh.verts, 3));
+    geo.setIndex(sh.idx);
+    geo.computeVertexNormals();
+    return mesh(h, geo, c, [0, 0.145, 0]);
+  };
   switch (L.hair) {
     case 'hood': {
       // Open in front so the mask shows.
@@ -718,8 +733,9 @@ function maskHead(G: number, L: ComicLook): THREE.Group {
       if (L.hair === 'ponytail') mesh(h, new THREE.CylinderGeometry(0.025, 0.008, 0.2, 5), hairM, [0, 0.14, -0.13], [1, 1, 1], [0.4, 0, 0]);
       break;
     case 'long':
-      cap(hairM, 1.0);
-      mesh(h, new THREE.BoxGeometry(0.19, 0.2, 0.05, 1, 2, 1), hairM, [0, 0.1, -0.075], [sg, 1, 1]);
+      cap(hairM, 1.0, true);
+      if (!faceHead) mesh(h, new THREE.BoxGeometry(0.19, 0.2, 0.05, 1, 2, 1), hairM, [0, 0.1, -0.075], [sg, 1, 1]);
+      else mesh(h, new THREE.BoxGeometry(0.15, 0.12, 0.04, 1, 2, 1), hairM, [0, 0.06, -0.09], [sg, 1, 1], [0.15, 0, 0]);
       break;
     case 'mohawk':
       for (let i = 0; i < 6; i++) mesh(h, new THREE.ConeGeometry(0.022, 0.08, 3), hairM, [0, 0.25 - Math.abs(i - 2) * 0.012, 0.06 - i * 0.03], [1, 1, 1], [-0.3 - i * 0.2, 0, 0]);
@@ -737,7 +753,13 @@ function maskHead(G: number, L: ComicLook): THREE.Group {
       break;
     case 'headband':
       cap(hairM);
-      mesh(h, new THREE.TorusGeometry(0.1, 0.014, 4, 9), toon(L.capColor ?? 0xd02020), [0, 0.2, 0.005], [sg, sg, 1], [Math.PI / 2 - 0.2, 0, 0]);
+      if (faceHead) {
+        // A band round the forehead, fitted to the skull.
+        const [, , zf] = headPoint(0, 0.06, sg, false);
+        const [xs] = headPoint(90, 0.06, sg, false);
+        const [, , zb] = headPoint(180, 0.06, sg, false);
+        mesh(h, new THREE.TorusGeometry(1, 0.012, 4, 12), toon(L.capColor ?? 0xd02020), [0, 0.145 + 0.06, (zf + zb) / 2], [xs + 0.01, (zf - zb) / 2 + 0.01, 1], [Math.PI / 2 - 0.12, 0, 0]);
+      } else mesh(h, new THREE.TorusGeometry(0.1, 0.014, 4, 9), toon(L.capColor ?? 0xd02020), [0, 0.2, 0.005], [sg, sg, 1], [Math.PI / 2 - 0.2, 0, 0]);
       break;
     case 'bald':
       break;

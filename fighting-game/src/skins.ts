@@ -1,3 +1,4 @@
+import { headVarOf } from './headShape';
 import * as THREE from 'three';
 import type { Rig } from './rig';
 import type { ComicLook } from './body';
@@ -470,6 +471,7 @@ export function absolverLook(id: SkinId, team: number, seed: number, strength: n
     arms: Math.min(1.15, base.arms),
     // Faces in facets; only the luchador and the ninja keep their masks.
     head: id === 'luchador' || id === 'ninja' ? 'mask' : 'face',
+    face: headVarOf(r),
     hair: HAIR[id] ?? base.hair,
     capColor: id === 'ninja' ? 0x15151b : base.maskColor ?? team,
     maskKind: id === 'luchador' ? 3 : id === 'ninja' ? 0 : Math.floor(r(5) * 4),

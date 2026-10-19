@@ -291,7 +291,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   nose bridge/tip/wings, cheekbones, lips, chin, jaw corners); `headGrid` (finer over the
   face, crown and chin closed, UV u = 0.25 + az/360, v by height), `faceSpot`, `faceAz`.
   `maskHead` face branch: that mesh + eyeballs with irises in the sockets, ears, shades;
-  `faceMat` paints hairline, brows, lips, beard, scar (pixel canvas, nearest). Tools:
+  `faceMat` paints hairline, brows, lips, beard, scar (pixel canvas, nearest). Every man's face
+  differs: `HeadVar` (wide, long, jaw, chin, nose, noseW, brow, cheek) from the look's seed
+  (`headVarOf` in `absolverLook`, `ComicLook.face`, applied via `withHead`). Hair on modelled
+  faces is a shell grown over the skull down to `hairLine` (`hairShell`, thicker on top; long
+  hair lower), the headband fitted to the skull; mask heads keep the old caps. Tools:
   `run.sh head > h.json; python3 tools/head.py h.json h.png` (front, 3/4, side, headless).
   Head marks: raycast to the head
   meshes (`ray.layers.enableAll()`: fighters are on layer 1), flat decals (MeshBasic,

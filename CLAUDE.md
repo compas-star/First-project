@@ -313,7 +313,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   tier with map/rounds, talk lines, official = afterFight purse/record, titleFight, after);
   the career fight hook plays `talkCut` (cutscenes.ts: wide, then over the listener's
   shoulder on each speaker) for `opts.intro 'story'`; `storyFightDone` after. Tool:
-  `storytest [days]` (random choices, fights by rating coin).
+  `storytest [days]` (random choices, fights by rating coin). Opponent strength (user: Гусь was
+  world-champion level): `levelOf` inverts makeFighter's scale (rating ≈ 17 + 67 × level; was
+  rating/100, far too high); `heavy(f, d, ..., cap)` = ours + d (0.05 ≈ 3 rating points);
+  Кирпич capped at level 0.15, Гусь 0.25 (a street collector); `npc()` remakes a cached man
+  more than 10 rating points above ours. Tool `storylv` (story opponents' ratings vs ours).
 - Gyms (`gyms.ts`, user: different gyms): `Career.gym`/`gymUntil`, weekly price (`gymDay` at
   midnight, back to the basement when broke), fame needed; bonuses multiply `gainOf`,
   `craftGain` (hands/legs) and tonus gains (`gymK`). Gym screen tab "Залы" (`hallsTab`,

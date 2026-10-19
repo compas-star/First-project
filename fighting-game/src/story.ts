@@ -74,7 +74,8 @@ export function story(c: Career): StoryState {
 }
 
 const main = (c: Career) => c.roster.find((x) => x.id === c.pick) ?? c.roster[0];
-const levelOf = (f: CareerFighter) => clamp(rating(f) / 100, 0, 1);
+/** The makeFighter level that gives about his rating (rating ≈ 17 + 67 × level). */
+const levelOf = (f: CareerFighter) => clamp((rating(f) - 17) / 67, 0, 1);
 const since = (c: Career, s: StoryState, id: string) => (s.at[id] === undefined ? -1 : c.day - s.at[id]);
 const did = (s: StoryState, id: string) => s.done.includes(id);
 
@@ -88,12 +89,16 @@ function place(map: MapId, rounds: number, purse: [number, number] = [0, 0]): Ti
 }
 
 /** A man of the story, made once and kept. */
-function npc(c: Career, s: StoryState, key: string, make: () => CareerFighter): CareerFighter {
+function npc(c: Career, s: StoryState, key: string, make: () => CareerFighter, f?: CareerFighter): CareerFighter {
+  // One made too strong (before the level fix) is made again.
+  const old = s.npc[key];
+  if (old && f && rating(old) > rating(f) + 10) delete s.npc[key];
   return (s.npc[key] ??= make());
 }
 
-function heavy(f: CareerFighter, d: number, name: string, disc: CareerFighter['discipline'], skin?: CareerFighter['skin']): CareerFighter {
-  const m = makeFighter(clamp(levelOf(f) + d, 0.02, 1), 0.5, classOf(f));
+/** A story opponent about as good as ours, `d` levels better (0.05 ≈ 3 rating points), never above `cap`. */
+function heavy(f: CareerFighter, d: number, name: string, disc: CareerFighter['discipline'], skin?: CareerFighter['skin'], cap = 1): CareerFighter {
+  const m = makeFighter(clamp(Math.min(levelOf(f) + d, cap), 0.02, 1), 0.5, classOf(f));
   m.name = name;
   m.discipline = disc;
   if (skin) m.skin = skin;
@@ -144,7 +149,7 @@ const CHAPTERS: Chapter[] = [
     text: (c, s, f) => `Гусь снова здесь, с ним здоровяк по кличке Кирпич. «Долг $${s.flags.debt}. Давай по-спортивному: Кирпич и твой ${short(f)}, один на один. Твой победит — спишу половину. Проиграет — долг плюс пятьсот.»`,
     opts: [
       { id: 'fight', label: 'Принять бой в подворотне', no: (c, f) => (f.busyUntil > c.day ? `${short(f)} сегодня занят` : null), run: (c, s, f) => {
-        const opp = npc(c, s, 'brick', () => heavy(f, 0.06, 'Кирпич «Бетон» Громов', 'street', 'robot'));
+        const opp = npc(c, s, 'brick', () => heavy(f, 0.02, 'Кирпич «Бетон» Громов', 'street', 'robot', 0.15), f);
         return { lines: [], fight: {
           opp, tier: place('alley', 0), title: `Долг Гусю: ${short(f)} против Кирпича`,
           talk: [{ who: null, text: 'Подворотня за баром, полночь' }, { who: 1, text: 'Гусь сказал — не убивать. Сильно.' }, { who: 0, text: 'Посмотрим, кто кого.' }],
@@ -174,7 +179,7 @@ const CHAPTERS: Chapter[] = [
     text: (c, s, f) => `Гусь приходит один, снимает кожанку. «Надоело. Я сам когда-то дрался. Выйдет ${short(f)} против меня в баре «Подкова». Победит — долга нет, и ещё штука сверху. Нет — отдашь всё, что должен, до копейки.»`,
     opts: [
       { id: 'fight', label: 'Бой в «Подкове»', no: (c, f) => (f.busyUntil > c.day ? `${short(f)} сегодня занят` : null), run: (c, s, f) => {
-        const opp = npc(c, s, 'goose', () => heavy(f, 0.1, 'Гусь «Кожанка» Бугров', 'boxing', 'biker'));
+        const opp = npc(c, s, 'goose', () => heavy(f, 0.05, 'Гусь «Кожанка» Бугров', 'boxing', 'biker', 0.25), f);
         return { lines: [], fight: {
           opp, tier: place('bar', 0), title: `${short(f)} против Гуся`,
           talk: [{ who: null, text: 'Бар «Подкова». Столы сдвинуты к стенам' }, { who: 1, text: 'Я двадцать лет выбиваю долги. Знаешь, почему меня зовут Гусь?' }, { who: 0, text: 'Потому что шипишь?' }, { who: 1, text: 'Потому что щиплю до крови.' }],
@@ -303,7 +308,7 @@ const CHAPTERS: Chapter[] = [
       : `Лис нашёл способ: он заплатил организаторам, и следующий соперник ${short(f)} — «случайный» парень, который на голову сильнее. Бой уже стоит в афише.`,
     opts: [
       { id: 'fight', label: 'Выйти на бой', no: (c, f) => (f.busyUntil > c.day ? `${short(f)} сегодня занят` : null), run: (c, s, f) => {
-        const opp = heavy(f, 0.12, 'Тихон «Подстава» Лисин', pick(['kickboxing', 'muaythai', 'mma']));
+        const opp = heavy(f, 0.08, 'Тихон «Подстава» Лисин', pick(['kickboxing', 'muaythai', 'mma']));
         return { lines: [], fight: {
           opp, tier: place('ring', 3, [600, 150]), title: `Подстава Лиса: ${short(f)} против ${short(opp)}`, official: true,
           talk: [{ who: null, text: 'Ринг. Лис в первом ряду' }, { who: 1, text: 'Ничего личного. Мне просто хорошо заплатили.' }, { who: 0, text: 'Мне тоже. За то, чтобы ты лёг.' }],
@@ -414,7 +419,7 @@ const CHAPTERS: Chapter[] = [
     text: (_c, _s, f) => `Боец «Железного кулака» публично вызывает нашего — ${short(f)}: «Подвальные крысы. Один бой — и все узнают, чего вы стоите.» Ставка $500.`,
     opts: [
       { id: 'fight', label: 'Принять вызов', no: (c, f) => (f.busyUntil > c.day ? `${short(f)} сегодня занят` : null), run: (c, s, f) => {
-        const opp = npc(c, s, 'iron1', () => heavy(f, 0.06, 'Борис «Кувалда» Железнов', 'mma'));
+        const opp = npc(c, s, 'iron1', () => heavy(f, 0.04, 'Борис «Кувалда» Железнов', 'mma'), f);
         return { lines: [], fight: {
           opp, tier: place('dojo', 3, [500, 0]), title: `Война залов: ${short(f)} против ${short(opp)}`, official: true,
           talk: [{ who: null, text: 'Зал «Железного кулака». Обе команды у ринга' }, { who: 1, text: 'Из подвала — в подвал.' }, { who: 0, text: 'Посмотрим, кто будет мыть пол.' }],
@@ -469,7 +474,7 @@ const CHAPTERS: Chapter[] = [
     text: (_c, _s, f) => `Шрам ставит всё: «Мой лучший против твоего лучшего. Проиграю — закрываю зал, тренажёры твои. Проиграешь — уберёшься из района.» ${short(f)} готов.`,
     opts: [
       { id: 'fight', label: 'Финальный бой', no: (c, f) => (f.busyUntil > c.day ? `${short(f)} ещё не готов` : null), run: (c, s, f) => {
-        const opp = npc(c, s, 'iron2', () => heavy(f, 0.1, 'Шрам-младший «Сталь» Железнов', 'muaythai'));
+        const opp = npc(c, s, 'iron2', () => heavy(f, 0.07, 'Шрам-младший «Сталь» Железнов', 'muaythai'), f);
         return { lines: [], fight: {
           opp, tier: place('cage', 3, [800, 0]), title: `Последний бой за район: ${short(f)} против ${short(opp)}`, official: true,
           talk: [{ who: null, text: 'Клетка. Весь район пришёл смотреть' }, { who: 1, text: 'Отец сказал: после боя ваш подвал станет складом.' }, { who: 0, text: 'Твой отец много говорит.' }],

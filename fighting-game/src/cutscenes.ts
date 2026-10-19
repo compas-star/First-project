@@ -192,3 +192,29 @@ export function beltCut(champ: FighterParams, loser: FighterParams, map: MapDef,
     },
   };
 }
+
+// ---------- Story talk ----------
+
+/** Two men talk (story chapters): a wide shot, then over the listener's shoulder on whoever speaks. */
+export function talkCut(a: FighterParams, b: FighterParams, map: MapDef, title: string, said: { who: 0 | 1 | null; text: string }[], dist = 1.5): Cut {
+  const per = 2.5;
+  const lines: CutLine[] = [{ at: 0.2, who: null, text: title }];
+  said.forEach((l, i) => lines.push({ at: 1.4 + i * per, who: l.who, text: l.text }));
+  const dur = 1.4 + said.length * per + 0.4;
+  return {
+    map, a, b, dur, dist, lines, beats: [],
+    cam: (t, cam, s) => {
+      const { a: A, b: B, mid, side } = frame(s);
+      const i = Math.floor((t - 1.4) / per);
+      const who = i >= 0 && i < said.length ? said[i].who : null;
+      if (who === 0) overShoulder(cam, B, A, -1, side);
+      else if (who === 1) overShoulder(cam, A, B, 1, side);
+      else {
+        const k = sm(t / 1.4);
+        cam.position.copy(mid).addScaledVector(side, THREE.MathUtils.lerp(3.6, 2.6, k));
+        cam.position.y = 1.5 * A.scale;
+        cam.lookAt(mid.x, 1.35 * A.scale, mid.z);
+      }
+    },
+  };
+}

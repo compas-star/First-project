@@ -7,6 +7,8 @@ import type { MapId } from './maps';
 import type { Rules } from './sim';
 import type { SkinId } from './skins';
 import { MOVES } from './moves';
+import { storyDay, storyAfterFight, type StoryState } from './story';
+import { gymDay, gymK, type GymId } from './gyms';
 import { DISCIPLINE_BY_ID } from './disciplines';
 import { rollTraits, ensureLife, dailyLife, trainK, lifeParams, moodAfterFight, type TraitId, type Incident } from './life';
 
@@ -148,6 +150,11 @@ export interface Career {
   /** Things that happened to ours and wait for the manager's word (life.ts). */
   incidents?: Incident[];
   nextInc?: number;
+  /** Story lines (story.ts). */
+  story?: StoryState;
+  /** The gym the team trains in (gyms.ts), paid until this day. */
+  gym?: GymId;
+  gymUntil?: number;
 }
 
 export type EvKind = 'night' | 'tour' | 'title';
@@ -387,8 +394,8 @@ export function craftMoves(f: CareerFighter): Record<string, number> {
   return out;
 }
 /** What a day on hands or legs adds: less as he masters them, more with good technique. */
-export function craftGain(f: CareerFighter, k: Craft, it: Intensity): number {
-  return 0.05 * it.k * trainK(f) * (0.55 + 0.6 * f.stats.skill) * (1 - 0.6 * craftOf(f, k));
+export function craftGain(f: CareerFighter, k: Craft, it: Intensity, c?: Career): number {
+  return 0.05 * gymK(c, k) * it.k * trainK(f) * (0.55 + 0.6 * f.stats.skill) * (1 - 0.6 * craftOf(f, k));
 }
 export const styleCost = (f: CareerFighter) => 150 + Math.round(f.fame * 3);
 /** A new school: 3 days of learning; his hands and legs stay what they are. */
@@ -427,10 +434,10 @@ export const INTENSITY: Intensity[] = [
 ];
 
 /** What a session would add: small, and less the closer he is to his ceiling. */
-export function gainOf(f: CareerFighter, k: StatKey, it: Intensity): number {
+export function gainOf(f: CareerFighter, k: StatKey, it: Intensity, c?: Career): number {
   const info = STAT_INFO[k];
   const room = (f.caps[k] - f.stats[k]) / Math.max(0.05, f.caps[k] - info.lo);
-  return Math.max(0, info.base * it.k * trainK(f) * Math.min(1, 0.15 + 1.6 * room) * (room > 0 ? 1 : 0));
+  return Math.max(0, info.base * it.k * trainK(f) * gymK(c, k) * Math.min(1, 0.15 + 1.6 * room) * (room > 0 ? 1 : 0));
 }
 
 /** Busy today (training, getting over a fight); `busyUntil` is the first day he is free. */
@@ -449,8 +456,8 @@ export function startTraining(c: Career, f: CareerFighter, k: StatKey, it: Inten
   const hurt = Math.random() < it.injury ? 1 : 0;
   const luck = 0.75 + 0.5 * Math.random();
   f.session = move
-    ? { stat: k, gain: craftGain(f, move as Craft, it) * luck, injury: hurt, move, tonus: TONUS_GAIN[it.id] }
-    : { stat: k, gain: gainOf(f, k, it) * luck, injury: hurt, tonus: TONUS_GAIN[it.id] };
+    ? { stat: k, gain: craftGain(f, move as Craft, it, c) * luck, injury: hurt, move, tonus: TONUS_GAIN[it.id] * gymK(c, 'tonus') }
+    : { stat: k, gain: gainOf(f, k, it, c) * luck, injury: hurt, tonus: TONUS_GAIN[it.id] * gymK(c, 'tonus') };
   f.busyFrom = c.day;
   f.busyUntil = c.day + it.days;
   f.busyWhat = move ? `${move === 'hands' ? 'работа рук' : 'работа ног'} (${it.name.toLowerCase()})` : `${STAT_INFO[k].drill} (${it.name.toLowerCase()})`;
@@ -656,6 +663,8 @@ function endDay(c: Career): string[] {
     if (why) out.push(`${short(f)}: план тренировок встал (${why.toLowerCase()})`);
   }
   out.push(...dailyLife(c));
+  out.push(...gymDay(c));
+  out.push(...storyDay(c));
   out.unshift(`— ${dayName(c.day)}, ${weekday(c.day)} —`);
   return out;
 }
@@ -828,6 +837,7 @@ export function afterFight(c: Career, f: CareerFighter, t: Tier, opp: CareerFigh
     f.stats[k] = Math.min(f.caps[k], f.stats[k] + Math.min(room, x * (0.3 + room)));
   };
   moodAfterFight(f, r.won, r.ko);
+  if (!title) out.push(...storyAfterFight(c, f, r.won));
   learn('skill', 0.012);
   learn('mindSpeed', 0.004);
   out.push(...recordBout(c, r.won ? f : opp, r.won ? opp : f, r.ko, title));

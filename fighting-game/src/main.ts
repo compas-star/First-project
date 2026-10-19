@@ -21,7 +21,7 @@ import { Recorder } from './recorder';
 import { toParams, relOf, load as loadCareer, saveHook, type FightResult } from './career';
 import { cloudStart, cloudDirty } from './cloud';
 import type { Rules } from './sim';
-import { barCut, faceoffCut, beltCut, type Cut } from './cutscenes';
+import { barCut, faceoffCut, beltCut, talkCut, type Cut } from './cutscenes';
 
 type Eyes = 'fastest' | 'red' | 'blue' | 'real';
 const EYES: Eyes[] = ['fastest', 'red', 'blue', 'real'];
@@ -964,6 +964,10 @@ const career = new CareerUi({
     };
     // A scene first: the bar, or face to face before a title fight or one with a sworn enemy.
     if (opts?.intro === 'bar') return playCut(barCut(mine, theirs, map, opts.barName ?? '«Подкова»'), go);
+    if (opts?.intro === 'story' && opts.talk?.length) {
+      const [first, ...rest] = opts.talk;
+      return playCut(talkCut(mine, theirs, map, first.who === null ? first.text : title, first.who === null ? rest : opts.talk), go);
+    }
     if (opts?.title || grudge) return playCut(faceoffCut(mine, theirs, map, { title: !!opts?.title, hate: grudge, recA: rec(me), recB: rec(opp) }), go);
     go();
   },

@@ -19,6 +19,8 @@ import { TRAITS, moodWord, resolve, afterBrawl, drunk, barIncident } from './lif
 import type { FighterParams } from './config';
 import { exportSave, importSave } from './saveCode';
 import { cloudFlush, cloudRestore, cloudAt, cloudState } from './cloud';
+import { pendingChapter, storyChoose, storyCheck, storyFightDone } from './story';
+import { GYMS, gymOf, gymOpen, moveGym, type GymId } from './gyms';
 
 export interface CareerHooks {
   /** Show this fight in the arena; `done` gets the result when it is over. */
@@ -26,7 +28,7 @@ export interface CareerHooks {
     me: CareerFighter, opp: CareerFighter, tier: Tier, title: string, done: (r: FightResult) => void,
     tweak?: (p: FighterParams) => void,
     /** Scenes: the bar before a bar brawl; a title fight gets face to face and the belt. */
-    opts?: { intro?: 'bar'; barName?: string; title?: boolean; cls?: string },
+    opts?: { intro?: 'bar' | 'story'; barName?: string; title?: boolean; cls?: string; talk?: { who: 0 | 1 | null; text: string }[] },
   ): void;
   /** Back to the sandbox. */
   close(): void;
@@ -40,7 +42,7 @@ export class CareerUi {
   c: Career;
   private screen: Screen = 'home';
   private stat: StatKey = 'bodySpeed';
-  private gymTab: 'stats' | 'moves' | 'style' = 'stats';
+  private gymTab: 'stats' | 'moves' | 'style' | 'halls' = 'stats';
   private move: Craft = 'hands';
   private toast = '';
   private timer = 0;
@@ -93,6 +95,7 @@ export class CareerUi {
   show(): void {
     $('career').hidden = false;
     tick(this.c);
+    if (storyCheck(this.c).length) save(this.c);
     this.render();
     clearInterval(this.timer);
     this.timer = window.setInterval(() => this.everySecond(), 1000);
@@ -187,7 +190,7 @@ export class CareerUi {
           <button type="button" data-act="help">Понятно</button>
         </div>`;
     const tour = this.tourBanner();
-    return `${help}${this.dayBar()}${this.incidents()}${tour}${this.today()}
+    return `${help}${this.dayBar()}${this.storyCard()}${this.incidents()}${tour}${this.today()}
       ${this.hero(f)}
       <div class="big2">
         <button type="button" class="bigbtn" data-act="to" data-s="gym"><b>Тренировать</b><span>${busy(c, f) ? 'сегодня занят' : 'занимает день'}</span></button>
@@ -201,6 +204,19 @@ export class CareerUi {
       </div>
       <button type="button" data-act="to" data-s="save">💾 Сохранение и перенос</button>
       <div class="newsbox"><div class="h2">Новости мира боёв</div>${(c.news ?? []).slice(0, 4).map((x) => `<div>${esc(x)}</div>`).join('')}<div class="fnote">Бойцы мира дерутся каждый день, даже когда игра закрыта.</div></div>`;
+  }
+
+  /** The open story chapter: who speaks, what happened, the choices. */
+  private storyCard(): string {
+    const ch = pendingChapter(this.c);
+    if (!ch) return '';
+    return `<div class="incident story">
+      <div class="h2">${esc(ch.lineName)} · ${esc(ch.title)}</div>
+      <div class="who">${esc(ch.who)}</div>
+      <div>${esc(ch.text)}</div>
+      ${ch.status ? `<div class="pill gold">${esc(ch.status)}</div>` : ''}
+      <div class="incopts">${ch.opts.map((o) => `<button type="button" data-act="story" data-o="${o.id}" ${o.no ? 'disabled' : ''}>${esc(o.label)}${o.no ? `<br><small>${esc(o.no)}</small>` : ''}</button>`).join('')}</div>
+    </div>`;
   }
 
   /** What happened to ours and waits for the manager's word. */
@@ -279,7 +295,7 @@ export class CareerUi {
   private gym(): string {
     const f = this.me();
     const tabs = `<div class="row gtabs">${(
-      [['stats', 'Качества'], ['moves', 'Приёмы'], ['style', 'Стиль']] as const
+      [['stats', 'Качества'], ['moves', 'Приёмы'], ['style', 'Стиль'], ['halls', 'Залы']] as const
     ).map(([id, name]) => `<button type="button" class="${this.gymTab === id ? 'primary' : ''}" data-act="gymtab" data-t="${id}">${name}</button>`).join('')}</div>`;
     const head = `<div class="h1">Зал · ${esc(short(f))}</div>
       ${this.dayBar()}
@@ -290,6 +306,7 @@ export class CareerUi {
       ${this.queueBox(f)}`;
     if (this.gymTab === 'moves') return head + this.movesTab(f);
     if (this.gymTab === 'style') return head + this.styleTab(f);
+    if (this.gymTab === 'halls') return head + this.hallsTab();
     return head + this.statsTab(f);
   }
 
@@ -298,7 +315,7 @@ export class CareerUi {
     const disc = DISCIPLINE_BY_ID[f.discipline];
     const sel: Craft = this.move === 'legs' ? 'legs' : 'hands';
     const its = INTENSITY.map((it) => {
-      const g = craftGain(f, sel, it);
+      const g = craftGain(f, sel, it, c);
       const no = c.money < it.cost ? 'мало денег' : '';
       return `<button type="button" class="ibtn" data-act="train" data-it="${it.id}" data-m="${sel}" ${no ? 'disabled' : ''}>
         <b>${it.name}</b><span class="gain">+${(g * 100).toFixed(1)}%</span><span>1 день · $${it.cost}</span>
@@ -323,6 +340,22 @@ export class CareerUi {
       <div class="trows">${rows}</div>
       <div class="h2">${CRAFT_NAME[sel]}: добавить тренировку</div>
       <div class="ibtns">${its}</div>`;
+  }
+
+  private hallsTab(): string {
+    const c = this.c;
+    const cur = gymOf(c);
+    const NAMES: Record<string, string> = { bodySpeed: 'скорость', strength: 'сила', mindSpeed: 'реакция', skill: 'техника', evasion: 'уклоны', cardio: 'выносливость', hands: 'руки', legs: 'ноги', tonus: 'тонус' };
+    const rows = GYMS.filter((g) => g.id !== 'iron' || c.story?.flags.iron).map((g) => {
+      const why = gymOpen(c, g);
+      const bonus = Object.entries(g.bonus).map(([k, v]) => `${NAMES[k]} +${Math.round(((v as number) - 1) * 100)}%`).join(', ') || 'без бонусов';
+      const mine = g.id === cur.id;
+      return `<div class="hero"><div class="fname">${esc(g.name)}${mine ? ' <span class="pill green">вы здесь</span>' : ''}</div>
+        <div class="fnote">${esc(g.desc)}</div>
+        <div class="fmeta"><b>${bonus}</b> · ${g.price ? `$${g.price}/неделю` : 'бесплатно'}</div>
+        ${mine ? (c.gymUntil && g.price ? `<div class="fnote">Оплачено до ${dayName(c.gymUntil)}</div>` : '') : `<button type="button" data-act="gymmove" data-g="${g.id}" ${why || c.money < g.price ? 'disabled' : ''}>Перейти${why ? ` · ${why}` : c.money < g.price ? ' · мало денег' : ''}</button>`}</div>`;
+    }).join('');
+    return `<div class="fnote">Вся команда тренируется в одном зале. Бонус зала умножает прирост от тренировок. Плата списывается раз в неделю; нет денег — команда вернётся в подвал.</div>${rows}`;
   }
 
   private styleTab(f: CareerFighter): string {
@@ -373,7 +406,7 @@ export class CareerUi {
       </button>`;
     }).join('');
     const its = INTENSITY.map((it) => {
-      const g = gainOf(f, this.stat, it);
+      const g = gainOf(f, this.stat, it, c);
       const no = c.money < it.cost ? 'мало денег' : '';
       return `<button type="button" class="ibtn" data-act="train" data-it="${it.id}" ${no ? 'disabled' : ''}>
         <b>${it.name}</b>
@@ -823,6 +856,27 @@ export class CareerUi {
         return this.go(this.screen === 'preview' ? (this.bill?.tour ? 'bracket' : 'cal') : this.screen === 'profile' ? 'rank' : 'home');
       case 'to':
         return this.go(b.dataset.s as Screen);
+      case 'story': {
+        const out = storyChoose(c, b.dataset.o!);
+        if (!out.fight) return say(out.lines.join(' · ') || null);
+        const sf = out.fight;
+        const f = c.roster.find((x) => x.id === c.pick) ?? c.roster[0];
+        $('career').hidden = true;
+        clearInterval(this.timer);
+        this.hooks.fight(f, sf.opp, sf.tier, sf.title, (r) => {
+          const lines = storyFightDone(c, f, sf, r);
+          this.outcome = { won: r.won, title: `${sf.title} · ${r.won ? 'победа' : 'поражение'}`, lines };
+          this.screen = 'result';
+          this.show();
+        }, undefined, { intro: 'story', talk: sf.talk, title: sf.titleFight, cls: classOf(f).name });
+        return;
+      }
+      case 'gymmove': {
+        const id = b.dataset.g as GymId;
+        const g = GYMS.find((x) => x.id === id)!;
+        return ask(`Перейти в «${g.name.replace(/[«»]/g, '')}»?${g.price ? ` $${g.price} за неделю, дальше списывается каждую неделю.` : ''}`, () =>
+          say(moveGym(c, id) ?? `Команда тренируется в зале «${g.name.replace(/[«»]/g, '')}»`));
+      }
       case 'inc': {
         const inc = (c.incidents ?? []).find((x) => x.id === Number(b.dataset.i));
         if (!inc) return say(null);
@@ -859,7 +913,7 @@ export class CareerUi {
         return say(err ?? `+ ${(m ? CRAFT_NAME[m as Craft] : STAT_INFO[this.stat].name).toLowerCase()} (${it.name.toLowerCase()}) в плане`);
       }
       case 'gymtab':
-        this.gymTab = b.dataset.t as 'stats' | 'moves' | 'style';
+        this.gymTab = b.dataset.t as 'stats' | 'moves' | 'style' | 'halls';
         return say(null);
       case 'move':
         this.move = b.dataset.m as Craft;

@@ -2145,7 +2145,14 @@ body.cutting #btnRec {
   color: var(--gold);
 }
 #career .gtabs {
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
+}
+#career .incident.story {
+  border-color: var(--gold);
+}
+#career .incident .who {
+  color: var(--gold);
+  font: 400 9px/1.6 var(--px);
 }
 #career .gtabs button {
   min-width: 0;

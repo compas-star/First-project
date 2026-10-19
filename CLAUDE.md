@@ -301,6 +301,24 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   meshes (`ray.layers.enableAll()`: fighters are on layer 1), flat decals (MeshBasic,
   polygonOffset, no outline): bruise = 7-gon disc deepening to purple, cut = thin dark line
   with a kink. `__cutAll` forces cuts in tests.
+- Story (`story.ts`, user: the campaign had no story; picked all five lines): `Career.story`
+  (done, at, flags, npc, pending, last). Lines: debt (Гусь, weekly $150 or a fight with
+  Кирпич, then Гусь himself in the bar), rival (the champion of his class: press conference,
+  ambush, a title fight), fix (Лис offers $1200 to lose the next fight; `storyAfterFight` in
+  `afterFight` settles it; a ringer or a journalist after), kid (Тимоха joins free, sparring),
+  gym war («Железный кулак», Шрам: buy offer, call-out, poaching, final bout; a win opens the
+  gym 'iron'). `storyCheck` opens one chapter at a time, >= 3 days apart, lines in turn
+  (midnight via `storyDay`, and on `CareerUi.show`); home card `storyCard` (data-act 'story',
+  options can be disabled with a reason). A fight option returns `StoryFight` (opp, `place()`
+  tier with map/rounds, talk lines, official = afterFight purse/record, titleFight, after);
+  the career fight hook plays `talkCut` (cutscenes.ts: wide, then over the listener's
+  shoulder on each speaker) for `opts.intro 'story'`; `storyFightDone` after. Tool:
+  `storytest [days]` (random choices, fights by rating coin).
+- Gyms (`gyms.ts`, user: different gyms): `Career.gym`/`gymUntil`, weekly price (`gymDay` at
+  midnight, back to the basement when broke), fame needed; bonuses multiply `gainOf`,
+  `craftGain` (hands/legs) and tonus gains (`gymK`). Gym screen tab "Залы" (`hallsTab`,
+  data-act 'gymmove'). Basement, «Перчатка», «Сиам», Атлетический центр, Академия реакции,
+  «Олимп», and «Железный кулак» after the gym-war story.
 - "Записать бой" (`recorder.ts`): the last 12 s at 15 fps (via `Sim.onStep`), body segments
   in cm as deltas + actions + hits, gzip+base64 code `БОЙ1:` (~16k chars). Button shows when
   paused (#btnRec) and on the KO card. Decode: `tools/run.sh replay code.txt out.json`, then

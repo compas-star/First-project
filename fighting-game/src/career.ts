@@ -13,6 +13,7 @@ import { DISCIPLINE_BY_ID } from './disciplines';
 import { rollTraits, ensureLife, dailyLife, trainK, lifeParams, moodAfterFight, type TraitId, type Incident } from './life';
 import { cityNight, needsK, fightToll } from './city';
 import { act1Day, type Act1 } from './act1';
+import { cupDay, ladderLock, type Ladder } from './clubs';
 
 export type StatKey = 'bodySpeed' | 'strength' | 'mindSpeed' | 'skill' | 'evasion' | 'cardio';
 export type Stats = Record<StatKey, number>;
@@ -168,6 +169,8 @@ export interface Career {
   gymUntil?: number;
   /** Act 1 of the main story (act1.ts). */
   act1?: Act1;
+  /** Clubs, the ladder of stages and the weekly tournament (clubs.ts). */
+  ladder?: Ladder;
 }
 
 export type EvKind = 'night' | 'tour' | 'title';
@@ -685,6 +688,7 @@ function endDay(c: Career): string[] {
   out.push(...gymDay(c));
   out.push(...storyDay(c));
   out.push(...act1Day(c));
+  out.push(...cupDay(c));
   out.unshift(`— ${dayName(c.day)}, ${weekday(c.day)} —`);
   return out;
 }
@@ -696,6 +700,8 @@ export function canBook(c: Career, f: CareerFighter, e: Ev): string | null {
   if (e.f) return e.f === f.id ? 'уже записан' : 'записан другой твой боец';
   if (bookedOn(c, f, e.day)) return 'в этот день у него уже бой';
   if (busy(c, f, e.day)) return e.day === c.day ? (f.session ? 'сегодня он в зале' : 'восстанавливается') : 'ещё не восстановится';
+  const lock = ladderLock(c, e.tier, e.kind === 'title');
+  if (lock) return lock;
   if (e.kind === 'title') return titleBout(c, f) ? null : 'нужно быть в тройке рейтинга';
   if (f.fame < t.fame) return `нужна известность ${t.fame}`;
   if (e.kind === 'tour' && c.money < t.fee) return 'мало денег на взнос';

@@ -12,6 +12,7 @@ import { story, main, heavy, npc, place, levelOf } from './story';
 import { MAP_BY_ID } from './maps';
 import { TV } from './arena';
 import { partsLeft, fightToll } from './city';
+import { ladder } from './clubs';
 import type { SceneSpec, SceneLine } from './cutscenes';
 import type { FighterParams } from './config';
 
@@ -36,6 +37,7 @@ export interface Act1 {
 }
 
 const DEBT = 1500;
+const CUP_TIP = 'Гусь: «Хочешь денег — по субботам турнир в подвале «Подковы». Записывайся на арене. Только подготовься как следует»';
 
 export const act = (c: Career): Act1 | null => c.act1 ?? null;
 /** The act's own day number (1..20). */
@@ -44,7 +46,10 @@ const did = (a: Act1, id: string) => a.done.includes(id);
 
 /** Begins the act for a career that has not had it (a new one, or an old save). */
 export function ensureAct1(c: Career): void {
-  if (c.act1) return;
+  if (c.act1) {
+    if (c.act1.done.includes('s2') || c.act1.ending) ladder(c).open = true;
+    return;
+  }
   const s = story(c);
   // The old debt, kid and gym-war lines are told by the act now.
   for (const id of ['debt1', 'debt2', 'debt3', 'kid1', 'kid2', 'gym1', 'gym2', 'gym3', 'gym4']) if (!s.done.includes(id)) s.done.push(id);
@@ -270,7 +275,9 @@ function kirpichFight(c: Career, a: Act1, f: CareerFighter): A1Fight {
   return {
     opp: kirpich(c, f), tier: place('alley', 0), title: `Подворотня: ${short(f)} против Кирпича`, pre: scene4(c, f),
     after: (c2, f2, r) => {
-      a.done.push('s4');
+      if (!a.done.includes('s4')) a.done.push('s4');
+      if (!a.done.includes('s4h') && a.flags.kirpichHome) a.done.push('s4h');
+      a.flags.kirpichHome = 0;
       if (r.won) {
         a.debt = Math.max(0, a.debt - 500);
         a.pending = 's4b';
@@ -278,8 +285,10 @@ function kirpichFight(c: Career, a: Act1, f: CareerFighter): A1Fight {
         return { lines: [`Кирпич на земле. Гусь списывает $500: долг $${a.debt}`], scene: scene4down(c2, f2) };
       }
       a.debt += 300;
-      out(c2, f2, 2, 'отходит после подворотни');
-      return { lines: [`Кирпич оказался сильнее. Долг +$300: теперь $${a.debt}. Гусь: «Ничего. Двадцатое всё равно наступит».`, `${short(f2)} 2 дня лечится`] };
+      a.flags.kirpichHome = 0;
+      out(c2, f2, 2, 'отходит после драки с Кирпичом');
+      ladder(c2).open = true;
+      return { lines: [`Кирпич оказался сильнее. Гусь: «Будешь должен больше: $${a.debt}. В субботу турнир в подвале «Подковы» — запишись. Только подготовься как следует»`, `${short(f2)} 2 дня лечится`] };
     },
   };
 }
@@ -382,19 +391,22 @@ const CARDS: Card[] = [
       { id: 'pay', label: '«Дай время, отдадим»', run: (c, a) => {
         a.plan = 'pay';
         a.flags.gusView = 1;
-        return { lines: ['Гусь: «Разумно. По понедельникам, сто пятьдесят. Остальное — двадцатого». Каждый понедельник $150'] };
+        ladder(c).open = true;
+        return { lines: ['Гусь: «Разумно. По понедельникам, сто пятьдесят. Остальное — двадцатого». Каждый понедельник $150', CUP_TIP] };
       } },
-      { id: 'bold', label: '«Михалыч тебе ничего не должен»', run: (_c, a) => {
+      { id: 'bold', label: '«Михалыч тебе ничего не должен»', run: (c, a) => {
         a.plan = 'bold';
         a.debt += 200;
         a.flags.gusView = 3;
-        return { lines: [`Гусь улыбается: «Тогда двадцатого — вся сумма. И процент за дерзость». Долг $${a.debt}`] };
+        ladder(c).open = true;
+        return { lines: [`Гусь улыбается: «Тогда двадцатого — вся сумма. И процент за дерзость». Долг $${a.debt}`, CUP_TIP] };
       } },
       { id: 'sport', label: '«Давай решим по-спортивному»', run: (c, a) => {
         a.plan = 'sport';
         a.flags.gusView = 2;
         a.kirpichDay = a.start + 4;
-        return { lines: ['Гусь оглядывается: «Кирпич, слышал? В пятницу, в подворотне». Бой с Кирпичом — на 5-й день'] };
+        ladder(c).open = true;
+        return { lines: ['Гусь оглядывается: «Кирпич, слышал? В пятницу, в подворотне». Бой с Кирпичом — на 5-й день', CUP_TIP] };
       } },
     ],
   },
@@ -414,12 +426,19 @@ const CARDS: Card[] = [
     text: (_c, a) => `Кирпич ждёт за баром «Подкова». Бой без раундов, до конца. Победа спишет $500 долга${a.plan === 'sport' ? ' — так договорились с Гусем' : ''}.`,
     opts: [
       { id: 'go', label: 'Идти', no: (c, _a, f) => (f.busyUntil > c.day ? `${short(f)} ещё не готов` : partsLeft(c, f) < 1 ? 'сегодня уже поздно — завтра' : null), run: (c, a, f) => ({ lines: [], fight: kirpichFight(c, a, f) }) },
-      { id: 'skip', label: 'Не идти', run: (_c, a) => {
-        a.debt += 200;
+      { id: 'skip', label: 'Не идти', run: (c, a) => {
+        a.flags.kirpichHome = 1;
+        a.kirpichDay = c.day + 1;
         a.done.push('s4');
-        return { lines: [`Гусь недоволен: «Неуважение стоит денег». Долг $${a.debt}`] };
+        return { lines: ['Не пошёл. Кирпич такого не прощает — жди гостей'] };
       } },
     ],
+  },
+  {
+    id: 's4h', title: 'Стук в дверь', who: 'Кирпич',
+    when: (c, a) => !!a.flags.kirpichHome && c.day >= a.kirpichDay,
+    text: () => 'Утро. В дверь колотят. На пороге Кирпич: «Не пришёл в подворотню — подворотня пришла к тебе». Драться придётся прямо в подвале.',
+    opts: [{ id: 'fight', label: 'Драться', run: (c, a, f) => ({ lines: [], fight: { ...kirpichFight(c, a, f), tier: place('basement', 0), title: `Подвал: ${short(f)} против Кирпича`, pre: undefined } }) }],
   },
   {
     id: 's4b', title: 'Кирпич на земле', who: 'Кирпич',
@@ -613,6 +632,14 @@ export function act1Day(c: Career): string[] {
       out.push(`Нечем платить Гусю: долг +$100 (теперь $${a.debt}). Кирпич придёт завтра`);
       if (!did(a, 's4')) a.kirpichDay = Math.min(a.kirpichDay, c.day + 1);
     }
+  }
+  // The alley was ignored: Кирпич comes to the door the next morning.
+  if (a.pending === 's4' && c.day > a.kirpichDay) {
+    a.pending = null;
+    a.done.push('s4');
+    a.flags.kirpichHome = 1;
+    a.kirpichDay = c.day;
+    out.push('Не пришёл в подворотню. Утром в дверь стучит Кирпич');
   }
   // The 20th has passed and nothing was settled: the basement goes.
   if (actDay(c, a) > 20 && !a.ending) {

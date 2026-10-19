@@ -375,6 +375,22 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   rising on '?'; tape = TV speaker band + hiss; `hush()` on the next line / end. Played in
   `stepCut` for every spoken line; `voiceOf` in main.ts: Кирпич 72 Hz, Гусь 96, Шрам 108,
   Михалыч 118 (tape), Тимоха 178, others by height. Offline RMS ~0.01-0.014 over a line.
+- **Clubs and the ladder** (`clubs.ts`, doc tab «Клубы и турниры», user: clubs with their own
+  looks, competitions open one by one through the story, a weekly tournament paid for 1-3,
+  over two days, a club man sent to beat you before the final): `Career.ladder` (stage 1..5,
+  open, clubs, cup, cupWins, beaten leaders, history). Stage 1 clubs «Железные кони» (bikers,
+  skin biker; Шатун leader) and «Цех №5» (factory, skin boxer for now; Палыч leader), 5 named
+  men each with story and stat tilts (`man`). Weekly cup (`Cup`): Saturday QF + SF, Sunday
+  3rd place + final, 8 men (2-3 per club + loners), fee $30, prizes $300/$150/$80
+  (`CUP_TIER`: bar map, 1 round); others' fights by `odds` (`cupAdvance`), unfought = forfeit
+  at midnight (`cupDay`), 40% a club man waits at the door before ours' final (`ambush`, fight
+  in the alley, loss = −45 energy). Stage 2 opens after a cup win + both leaders beaten
+  (`checkStage`); `ladderLock` in `canBook` closes calendar tiers above the stage (stage 1:
+  none; title bouts only at 5). Act 1 opens the cup at scene 2 (Гусь's tip, `CUP_TIP`).
+  Screens 'cup' (bracket by day, "⚔ На бой"), 'clubs', 'club' (members by strength, 👑
+  leader); arena place, home banners (your fight today, the ambush). Tool `cuptest [weeks]`
+  (env GROW). Unskippable story fights: act 1 s4 "Не идти" or ignoring it = Кирпич knocks on
+  the door next morning (`s4h`, fight in our basement); a loss = more debt + the cup tip.
 - Ring ropes are one solid springy wall per side in physics (user: men got stuck between /
   behind thin rope colliders); plus a referee rescue if a pelvis spends >1.2 s outside them.
 - Gyms (`gyms.ts`, user: different gyms): `Career.gym`/`gymUntil`, weekly price (`gymDay` at

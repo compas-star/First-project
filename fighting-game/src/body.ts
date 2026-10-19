@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { headGrid, headPoint, faceSpot, faceAz, HEAD_TOP, HEAD_BOTTOM } from './headShape';
 import type { Rig } from './rig';
 
 // Fighters drawn like people in a comic: one continuous skinned body over the rig's joints
@@ -583,7 +584,8 @@ function comicHead(G: number, L: ComicLook): THREE.Group {
  * The low look's head: a carved face in facets (or a mask for the luchador and the ninja),
  * with hair, a hood or headgear.
  */
-/** A painted face (pixel art) wrapped on the head sphere: the face is around u = 0.25 (+z). */
+/** A painted face (pixel art) wrapped on the sculpted head (`headGrid` UVs: u = 0.25 + az/360,
+ *  v by height): hairline, brows, lips, beard, scar. The shape itself is modelled. */
 function faceMat(L: ComicLook): THREE.MeshStandardMaterial {
   const W = 256;
   const H = 128;
@@ -594,52 +596,40 @@ function faceMat(L: ComicLook): THREE.MeshStandardMaterial {
   const css = (c: THREE.Color) => `#${c.getHexString()}`;
   const skin = C(L.skin);
   const hair = C(L.hairColor);
-  const dk = (k: number) => css(skin.clone().multiplyScalar(k));
   g.fillStyle = css(skin);
   g.fillRect(0, 0, W, H);
-  // Around the head: x from the front in degrees (+ toward +x), y down from the top in degrees.
-  const X = (deg: number) => Math.round(W * (0.25 + deg / 360));
-  const Y = (deg: number) => Math.round((H * deg) / 180);
-  const px = (a: number, b: number, w: number, h: number, c: string) => {
+  const X = (deg: number) => W * (0.25 + deg / 360);
+  const Y = (y: number) => (H * (HEAD_TOP - y)) / (HEAD_TOP - HEAD_BOTTOM);
+  /** A patch on the face, in metres across (x) and up (y). */
+  const face = (x0: number, x1: number, y0: number, y1: number, c: string) => {
+    const a0 = X(faceAz(x0, (y0 + y1) / 2));
+    const a1 = X(faceAz(x1, (y0 + y1) / 2));
     g.fillStyle = c;
-    g.fillRect(X(a), Y(b), Math.max(1, Math.round((w / 360) * W)), Math.max(1, Math.round((h / 180) * H)));
+    g.fillRect(Math.round(a0), Math.round(Y(y1)), Math.max(1, Math.round(a1 - a0)), Math.max(1, Math.round(Y(y0) - Y(y1))));
   };
   // Hairline, unless shaved or covered: low at the back and sides, higher over the forehead.
   if (L.hair !== 'bald' && L.hair !== 'hood') {
     g.fillStyle = css(hair);
-    g.fillRect(0, 0, W, Y(48));
-    g.fillRect(X(62), 0, W - X(62), Y(100));
-    g.fillRect(0, 0, X(-62), Y(100));
+    g.fillRect(0, 0, W, Y(0.075));
+    g.fillRect(X(55), 0, W - X(55), Y(0.0));
+    g.fillRect(0, 0, X(-55), Y(0.0));
+    g.fillRect(X(100), 0, X(260) - X(100), Y(-0.07));
   }
-  // Soft shading: eye sockets, cheek hollows, under the nose and the chin.
-  px(-28, 74, 22, 11, dk(0.9));
-  px(6, 74, 22, 11, dk(0.9));
-  px(-30, 100, 9, 16, dk(0.93));
-  px(21, 100, 9, 16, dk(0.93));
-  px(-12, 126, 24, 8, dk(0.88));
-  // Eyes: white, a dark iris, a dark upper lid; brows above.
+  // Brows over the sockets, a touch of colour on the lips.
   const brow = css(hair.clone().multiplyScalar(0.75));
-  for (const sd of [-1, 1]) {
-    const cx = sd * 14;
-    px(cx - 6, 80, 12, 5, '#e6e0d4');
-    px(cx - 2, 80, 4, 5, '#2a1c14');
-    px(cx - 7, 78, 14, 2.5, dk(0.42));
-    px(cx - 7, 70, 14, 3.5, brow);
-  }
-  // Nose: a shadow down one side, nostrils.
-  px(3, 84, 2.5, 13, dk(0.78));
-  px(-5, 99, 4, 2.5, dk(0.55));
-  px(2, 99, 4, 2.5, dk(0.55));
-  // Mouth.
-  px(-8, 111, 16, 2.5, dk(0.48));
-  px(-6, 113.5, 12, 1.5, dk(0.78));
+  face(0.014, 0.047, 0.026, 0.032, brow);
+  face(-0.047, -0.014, 0.026, 0.032, brow);
+  face(-0.017, 0.017, -0.066, -0.056, css(skin.clone().lerp(new THREE.Color(0x9a4a44), 0.3)));
+  face(-0.015, 0.015, -0.078, -0.07, css(skin.clone().lerp(new THREE.Color(0x9a4a44), 0.22)));
   if (L.beard) {
     g.fillStyle = css(hair);
-    g.fillRect(X(-36), Y(104), X(36) - X(-36), Y(152) - Y(104));
-    px(-12, 103, 24, 4, css(hair));
-    px(-8, 111, 16, 2.5, dk(0.4));
+    g.fillRect(X(-62), Y(-0.06), X(62) - X(-62), H - Y(-0.06));
+    g.fillRect(X(-62), Y(-0.02), X(-38) - X(-62), Y(-0.06) - Y(-0.02));
+    g.fillRect(X(38), Y(-0.02), X(62) - X(38), Y(-0.06) - Y(-0.02));
+    face(-0.02, 0.02, -0.058, -0.052, css(hair));
+    face(-0.016, 0.016, -0.071, -0.066, css(skin.clone().multiplyScalar(0.55)));
   }
-  if (L.extras.includes('scar')) for (let i = 0; i < 6; i++) px(17 + i * 1.5, 66 + i * 4, 2, 4, '#8a3030');
+  if (L.extras.includes('scar')) for (let i = 0; i < 6; i++) face(0.03 + i * 0.003, 0.033 + i * 0.003, 0.03 - i * 0.008, 0.038 - i * 0.008, '#8a3030');
   const tex = new THREE.CanvasTexture(cv);
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestFilter;
@@ -676,41 +666,38 @@ function maskHead(G: number, L: ComicLook): THREE.Group {
       for (const sd of [1, -1]) for (const dy of [0, 0.022]) mesh(h, new THREE.BoxGeometry(0.03, 0.007, 0.012), accent, [sd * 0.04 * sg, 0.128 - dy, 0.102 * sg], [1, 1, 1], [0, -sd * 0.4, sd * 0.35]);
     } else if (k === 3) mesh(h, new THREE.BoxGeometry(0.09, 0.016, 0.014), accent, [0, 0.19, 0.1 * sg], [sg, 1, 1], [-0.15, 0, 0]);
   } else {
-    // One carved head (user: the old faces were horrid): a faceted egg that narrows to the
-    // jaw and has a flatter face, with small features set into it, not stuck on.
+    // A sculpted low-poly head (user's references, `headShape.ts`): skull, brow, sockets,
+    // nose, cheekbones, lips, chin, jaw. Brows, lips, hair and beard are painted (`faceMat`).
     const shade = toon(C(L.skin).multiplyScalar(0.8).getHex());
-    const R = 0.1;
-    const CY = 0.15;
-    const geo = new THREE.SphereGeometry(R, 9, 7);
-    const pos = geo.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < pos.count; i++) {
-      let x = pos.getX(i);
-      let y = pos.getY(i);
-      let z = pos.getZ(i);
-      const low = Math.max(0, -y / R);
-      // Narrow jaw and chin, a flatter face, a slightly longer head.
-      x *= 1 - 0.28 * low * low;
-      if (z > 0) z *= 0.9 + 0.12 * low;
-      if (z < 0) z *= 1.05;
-      y *= 1.12;
-      pos.setXYZ(i, x * sg, y, z * sg);
-    }
+    const CY = 0.145;
+    const grid = headGrid(sg);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(grid.verts, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(grid.uvs, 2));
+    geo.setIndex(grid.idx);
     geo.computeVertexNormals();
     mesh(h, geo, faceMat(L), [0, CY, 0]);
-    // Where the face surface is at height y (the front of the head).
-    const front = (y: number, x = 0) => {
-      const v = (y - CY) / 1.12;
-      const low = Math.max(0, -v / R);
-      const zz = Math.sqrt(Math.max(0, R * R - v * v - (x / sg / (1 - 0.28 * low * low)) ** 2));
-      return zz * (0.9 + 0.12 * low) * sg;
-    };
-    // The face is painted, pixel style, onto the head (user: carved boxes for brows, eyes and
-    // nose looked horrid); only a small nose and the ears stand out.
-    for (const sd of [1, -1]) mesh(h, new THREE.BoxGeometry(0.012, 0.034, 0.024), shade, [sd * 0.094 * sg, 0.148, -0.004]);
-    mesh(h, new THREE.ConeGeometry(0.009, 0.022, 4), skinM, [0, 0.133, front(0.133) + 0.001], [1, 1, 0.55], [0.25, Math.PI / 4, 0]);
+    // Eyeballs set into the sockets, a dark iris on each.
+    const eyeW = toon(0xe4ded2);
+    const iris = toon(0x2a1c14);
+    for (const sd of [1, -1]) {
+      const [x, y, z] = faceSpot(sd * 0.031, 0.012, sg);
+      const zc = z - 0.012;
+      mesh(h, new THREE.IcosahedronGeometry(0.0085, 1), eyeW, [x, CY + y, zc], [1.25, 0.62, 0.9]);
+      mesh(h, new THREE.IcosahedronGeometry(0.0036, 0), iris, [x - sd * 0.0008, CY + y + 0.0004, zc + 0.0072], [1, 1, 0.6]);
+    }
+    // Ears.
+    for (const sd of [1, -1]) {
+      const [x, , z] = headPoint(sd * 90, 0.0, sg, false);
+      mesh(h, new THREE.DodecahedronGeometry(0.018, 0), shade, [x + sd * 0.003, CY - 0.006, z - 0.008], [0.45, 1.15, 0.8]);
+    }
     if (L.extras.includes('shades')) {
-      for (const sd of [1, -1]) mesh(h, new THREE.BoxGeometry(0.04, 0.02, 0.008), dark, [sd * 0.033 * sg, 0.158, front(0.158, sd * 0.033 * sg) + 0.004], [1, 1, 1], [0, -sd * 0.25, 0]);
-      mesh(h, new THREE.BoxGeometry(0.13, 0.006, 0.006), dark, [0, 0.165, front(0.165) + 0.004], [sg, 1, 1]);
+      for (const sd of [1, -1]) {
+        const [x, y, z] = faceSpot(sd * 0.031, 0.013, sg);
+        mesh(h, new THREE.BoxGeometry(0.036, 0.018, 0.006), dark, [x, CY + y, z + 0.004], [1, 1, 1], [0, sd * 0.25, 0]);
+      }
+      const [, y, z] = faceSpot(0, 0.02, sg);
+      mesh(h, new THREE.BoxGeometry(0.12, 0.005, 0.005), dark, [0, CY + y, z + 0.006], [sg, 1, 1]);
     }
   }
   // Hair, hood or headgear, all in facets.

@@ -285,12 +285,15 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   real twist over a strike). Hooks, haymakers, overhands asked for ~160°. `solveArmIK` now
   swings the elbow round the shoulder-fist line (steps of 0.5 rad) until the twist is within
   `ARM_TWIST` 100°: attack twist p2..p98 -120..155 -> -61..81.
-- Faces (user: horrid; then the carved boxes were even worse). `maskHead` face branch: one
-  faceted egg (SphereGeometry 9x7 deformed: narrow jaw, flatter face, longer) with a PAINTED
-  pixel-art face (`faceMat`: 256x128 canvas wrapped on the sphere, face at u 0.25, nearest
-  filter, PS1 look): hairline, eye sockets, white eyes with dark irises and lids, brows, nose
-  shadow and nostrils, mouth, beard, scar. 3D only: a tiny 4-sided nose, ears, shades. Tool:
-  /tmp script faces3.cjs pattern (set `__cut.params[i].skin`, restart, camera on `rig.head`). Head marks: raycast to the head
+- Faces (user: horrid; carved boxes worse; then sent low-poly head references). `headShape.ts`:
+  a modelled head — per height a rounded-box section (`PROFILE`: half width, front and back
+  reach, squareness), features pushed out of the front by gaussians (brow ridge, eye sockets,
+  nose bridge/tip/wings, cheekbones, lips, chin, jaw corners); `headGrid` (finer over the
+  face, crown and chin closed, UV u = 0.25 + az/360, v by height), `faceSpot`, `faceAz`.
+  `maskHead` face branch: that mesh + eyeballs with irises in the sockets, ears, shades;
+  `faceMat` paints hairline, brows, lips, beard, scar (pixel canvas, nearest). Tools:
+  `run.sh head > h.json; python3 tools/head.py h.json h.png` (front, 3/4, side, headless).
+  Head marks: raycast to the head
   meshes (`ray.layers.enableAll()`: fighters are on layer 1), flat decals (MeshBasic,
   polygonOffset, no outline): bruise = 7-gon disc deepening to purple, cut = thin dark line
   with a kink. `__cutAll` forces cuts in tests.

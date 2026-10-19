@@ -187,7 +187,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   `data/users/<id>/save` = {code: СЕЙВ1 code, at}. `career.save()` calls `saveHook.after`
   (= `cloudDirty`); a write at most every 20 s, and on pagehide/hidden. A browser without a
   local career (cleared, other device) restores the cloud copy at startup (`cloudStart`).
-  Save screen: cloud status, "Сохранить сейчас", "Загрузить из облака". Outside claude.ai
+  Save screen: cloud status, "Сохранить сейчас", "Загрузить из облака"; a save FILE (user: the
+  17k code is unusable on a phone): "Скачать файл" (`saveFile`: the `downloads` capability,
+  `arena-save-<date>.txt`, fallback a blob link) and "Загрузить файл" (hidden `#saveFile` input,
+  'change' listener in the CareerUi constructor, Да/Нет, `importSave`); the code is in a
+  `<details>` below. Capabilities now {db, user, downloads}. Outside claude.ai
   or signed out: `claude.use` absent/null -> quiet no-op. Tested with a mock runtime.
   Weight classes (user: two-metre bikers beat everyone): `WCLASSES` light <=70, middle 71-85,
   heavy 86+ kg, `classOf(f)` by weight. Opponents, tournament fields, NPC bouts and NPC
@@ -276,6 +280,18 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   freed like a kick's and stability floored like a kick. `resolveHit`: the kick is stopped,
   the kicker's leg takes raw x `CHECK_BACK` 0.2 x (0.8+0.4 tech) (user: was far too much, 0.75 then 0.45), the checker's 0.2; check chance x0.4 on a kick right after another blow (`Action.chained`), capped 0.5; `Fighter.checkedN` makes him kick less (`moveWeight`); lame curve top 1.0, legs keep 90% between rounds, kicker's
   knee buckles, may break at `legBreak`; moment "ЧЕК ГОЛЕНЬЮ!". Tool `checks "2,3"`.
+- Twisted arms (user: an arm often looks screwed in backwards). Tools `arms` (upper-arm twist
+  about its bone against the chest by action / move), `armflip <move> <preset>` (IK target vs
+  real twist over a strike). Hooks, haymakers, overhands asked for ~160°. `solveArmIK` now
+  swings the elbow round the shoulder-fist line (steps of 0.5 rad) until the twist is within
+  `ARM_TWIST` 100°: attack twist p2..p98 -120..155 -> -61..81.
+- Faces (user: horrid; cuts like pimples). `maskHead` face branch: one faceted egg
+  (SphereGeometry 9x7 deformed: narrow jaw, flatter face, longer), brow shelf, small dark eyes,
+  thin brows, small 3-sided nose, thin mouth, ears; `front(y, x)` puts features on the surface;
+  beard = a shell (partial sphere, same deform) over the jaw. Head marks: raycast to the head
+  meshes (`ray.layers.enableAll()`: fighters are on layer 1), flat decals (MeshBasic,
+  polygonOffset, no outline): bruise = 7-gon disc deepening to purple, cut = thin dark line
+  with a kink. `__cutAll` forces cuts in tests.
 - "Записать бой" (`recorder.ts`): the last 12 s at 15 fps (via `Sim.onStep`), body segments
   in cm as deltas + actions + hits, gzip+base64 code `БОЙ1:` (~16k chars). Button shows when
   paused (#btnRec) and on the KO card. Decode: `tools/run.sh replay code.txt out.json`, then

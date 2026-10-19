@@ -2170,3 +2170,13 @@ body.cutting #btnRec {
 #career .ctier .mv.on {
   color: #e8e0d8;
 }
+#career details.oldcode {
+  margin-top: 12px;
+  padding: 8px;
+  border: 2px dashed #3b3242;
+}
+#career details.oldcode summary {
+  cursor: pointer;
+  color: var(--muted);
+  font: 400 14px/1.4 var(--pxb);
+}

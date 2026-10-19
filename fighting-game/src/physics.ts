@@ -704,6 +704,39 @@ export function solveArmIK(
 ): void {
   v(r.byName[side === 'l' ? 'lUpper' : 'rUpper'].body.translation(), ikRoot);
   solveTwoBone(ikRoot, target, pole, ARM_UPPER * scale, ARM_FORE * scale, 1, outUpper, outFore);
+  // A shoulder only turns the arm so far about its own length. Some poles (hooks, overhands,
+  // haymakers) gave an upper arm turned ~160° against the chest: the arm looked screwed in
+  // backwards (user). Swing the elbow round the shoulder-fist line until it is within reach.
+  const chest = q(r.byName.chest.body.rotation(), armChest).invert();
+  if (Math.abs(armTwist(chest, outUpper)) <= ARM_TWIST) return;
+  armAxis.subVectors(target, ikRoot).normalize();
+  let best = Infinity;
+  for (const step of [1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6]) {
+    armPole.copy(pole).applyAxisAngle(armAxis, step * 0.5);
+    solveTwoBone(ikRoot, target, armPole, ARM_UPPER * scale, ARM_FORE * scale, 1, armU, armF);
+    const t = Math.abs(armTwist(chest, armU));
+    if (t < best) {
+      best = t;
+      outUpper.copy(armU);
+      outFore.copy(armF);
+    }
+    if (t <= ARM_TWIST) return;
+  }
+}
+
+/** How far a shoulder lets the arm turn about its own length, degrees. */
+const ARM_TWIST = 100;
+const armChest = new THREE.Quaternion();
+const armRel = new THREE.Quaternion();
+const armU = new THREE.Quaternion();
+const armF = new THREE.Quaternion();
+const armAxis = new THREE.Vector3();
+const armPole = new THREE.Vector3();
+/** Twist of the upper arm about its bone against the chest, degrees. */
+function armTwist(chestInv: THREE.Quaternion, upper: THREE.Quaternion): number {
+  armRel.copy(chestInv).multiply(upper);
+  if (armRel.w < 0) armRel.set(-armRel.x, -armRel.y, -armRel.z, -armRel.w);
+  return THREE.MathUtils.radToDeg(2 * Math.atan2(armRel.y, armRel.w));
 }
 
 /** Leg IK: ankle at `target`, knee toward `pole`. */

@@ -221,32 +221,62 @@ class FighterView {
       this.comic.bruise(this.comic.boneOf(group), group.worldToLocal(at.clone()), dmg / 6);
       return false;
     }
-    const local = group.worldToLocal(at.clone()).divideScalar(this.f.scale);
-    // Put the mark on the face's surface, not inside the head.
-    const centre = new THREE.Vector3(0, 0.14, 0.01);
-    const out = local.clone().sub(centre);
-    if (out.lengthSq() < 1e-6) out.set(0, 0, 1);
-    out.normalize();
-    local.copy(centre).addScaledVector(out, 0.1 * Math.sqrt(this.f.girth));
+    // Find the skin where the blow landed: cast from outside toward the middle of the head
+    // and stick a flat mark on that face (the old raised dots looked like pimples).
+    const centreW = group.localToWorld(new THREE.Vector3(0, 0.14 * this.f.scale, 0.01));
+    const dir = at.clone().sub(centreW);
+    if (dir.lengthSq() < 1e-8) dir.set(0, 0, 1).applyQuaternion(group.getWorldQuaternion(new THREE.Quaternion()));
+    dir.normalize();
+    const skin: THREE.Object3D[] = [];
+    group.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh && !o.userData.mark && o.visible) skin.push(o);
+    });
+    const ray = new THREE.Raycaster(centreW.clone().addScaledVector(dir, 0.4 * this.f.scale), dir.clone().negate(), 0, 0.5 * this.f.scale);
+    // The fighters live on layer 1 (drawn over the pixel world).
+    ray.layers.enableAll();
+    const hit = ray.intersectObjects(skin, false)[0];
+    if (!hit || !hit.face) return false;
+    const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+    const local = group.worldToLocal(hit.point.clone().addScaledVector(n, 0.0015 * this.f.scale));
+    const nl = n.clone().transformDirection(group.matrixWorld.clone().invert());
     // A blow on the same spot deepens the old mark instead of adding a new one.
-    const near = this.marks.find((m) => m.group === group && m.mesh.position.distanceTo(local) < 0.05);
-    const cut = part === 'head' && dmg > 9 && Math.random() < 0.35;
+    const near = this.marks.find((m) => m.group === group && m.mesh.position.distanceTo(local) < 0.045 * this.f.scale && !m.mesh.userData.cut);
+    const cut = dmg > 9 && Math.random() < ((globalThis as { __cutAll?: boolean }).__cutAll ? 1 : 0.35);
     if (near && !cut) {
       near.n += dmg / 6;
       const k = Math.min(1, near.n / 6);
-      (near.mesh.material as THREE.MeshStandardMaterial).color.setHex(0xb34848).lerp(new THREE.Color(0x4a2046), k);
-      near.mesh.scale.set(1 + 0.6 * k, 1 + 0.6 * k, 0.4);
+      const mat = near.mesh.material as THREE.MeshBasicMaterial;
+      mat.color.setHex(0x9a3a3a).lerp(new THREE.Color(0x3e1a3c), k);
+      mat.opacity = 0.35 + 0.35 * k;
+      near.mesh.scale.setScalar(1 + 0.5 * k);
       return false;
     }
     if (this.marks.length > 40) return false;
-    const mat = new THREE.MeshStandardMaterial({ color: cut ? 0x7a0606 : 0xb34848, roughness: cut ? 0.25 : 0.8 });
-    const mesh = cut
-      ? new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.008, 0.01), mat)
-      : new THREE.Mesh(new THREE.SphereGeometry(0.026, 8, 6), mat);
+    const decal = (c: number, op: number) => {
+      const m = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: op, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, side: THREE.DoubleSide });
+      m.userData.keep = true;
+      m.userData.outlineParameters = { visible: false };
+      return m;
+    };
+    let mesh: THREE.Mesh;
+    if (cut) {
+      // A split: a thin dark line with a slight kink.
+      mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.02, 0.0035), decal(0x5a0408, 0.95));
+      const kink = new THREE.Mesh(new THREE.PlaneGeometry(0.016, 0.003), decal(0x6a060a, 0.9));
+      kink.position.set(0.016, -0.002, 0.0002);
+      kink.rotation.z = -0.35;
+      kink.userData.mark = true;
+      mesh.add(kink);
+      mesh.userData.cut = true;
+    } else {
+      mesh = new THREE.Mesh(new THREE.CircleGeometry(0.015, 7), decal(0x9a3a3a, 0.35));
+      mesh.scale.set(1, 0.8, 1);
+    }
+    mesh.userData.mark = true;
     mesh.position.copy(local);
-    mesh.lookAt(local.clone().add(out));
+    mesh.lookAt(local.clone().add(nl));
     if (cut) mesh.rotateZ((Math.random() - 0.5) * 1.2);
-    else mesh.scale.set(1, 1, 0.4);
+    else mesh.rotateZ(Math.random() * Math.PI);
     group.add(mesh);
     this.marks.push({ mesh, group, n: dmg / 6 });
     return cut;

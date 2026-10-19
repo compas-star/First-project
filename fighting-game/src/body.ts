@@ -608,24 +608,67 @@ function maskHead(G: number, L: ComicLook): THREE.Group {
       for (const sd of [1, -1]) for (const dy of [0, 0.022]) mesh(h, new THREE.BoxGeometry(0.03, 0.007, 0.012), accent, [sd * 0.04 * sg, 0.128 - dy, 0.102 * sg], [1, 1, 1], [0, -sd * 0.4, sd * 0.35]);
     } else if (k === 3) mesh(h, new THREE.BoxGeometry(0.09, 0.016, 0.014), accent, [0, 0.19, 0.1 * sg], [sg, 1, 1], [-0.15, 0, 0]);
   } else {
-    // A carved face: skull, a square jaw, brow ridge, nose and cheekbones, all in facets.
-    const shade = toon(C(L.skin).multiplyScalar(0.78).getHex());
-    mesh(h, new THREE.IcosahedronGeometry(0.098, 1), skinM, [0, 0.152, -0.008], [0.9 * sg, 1.08, 1.0 * sg]);
-    mesh(h, new THREE.DodecahedronGeometry(0.062, 0), skinM, [0, 0.082, 0.028], [1.15 * sg, 0.95, 1.05 * sg]);
-    mesh(h, new THREE.ConeGeometry(0.019, 0.055, 4), skinM, [0, 0.14, 0.098 * sg], [1, 1, 0.9], [Math.PI / 2 + 0.35, Math.PI / 4, 0]);
-    for (const s of [1, -1]) {
-      mesh(h, new THREE.BoxGeometry(0.026, 0.011, 0.012), dark, [s * 0.034 * sg, 0.158, 0.088 * sg], [1, 1, 1], [0, -s * 0.3, 0]);
-      mesh(h, new THREE.BoxGeometry(0.03, 0.006, 0.008), hairM, [s * 0.034 * sg, 0.172, 0.089 * sg], [1, 1, 1], [-0.2, -s * 0.3, s * 0.1]);
-      mesh(h, new THREE.TetrahedronGeometry(0.016, 0), shade, [s * 0.048 * sg, 0.125, 0.064 * sg]);
-      mesh(h, new THREE.DodecahedronGeometry(0.022, 0), skinM, [s * 0.094 * sg, 0.14, -0.005], [0.5, 1, 0.8]);
+    // One carved head (user: the old faces were horrid): a faceted egg that narrows to the
+    // jaw and has a flatter face, with small features set into it, not stuck on.
+    const shade = toon(C(L.skin).multiplyScalar(0.8).getHex());
+    const R = 0.1;
+    const CY = 0.15;
+    const geo = new THREE.SphereGeometry(R, 9, 7);
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      let x = pos.getX(i);
+      let y = pos.getY(i);
+      let z = pos.getZ(i);
+      const low = Math.max(0, -y / R);
+      // Narrow jaw and chin, a flatter face, a slightly longer head.
+      x *= 1 - 0.28 * low * low;
+      if (z > 0) z *= 0.9 + 0.12 * low;
+      if (z < 0) z *= 1.05;
+      y *= 1.12;
+      pos.setXYZ(i, x * sg, y, z * sg);
     }
-    mesh(h, new THREE.BoxGeometry(0.036, 0.007, 0.012), toon(C(L.skin).multiplyScalar(0.5).getHex()), [0, 0.098, 0.083 * sg]);
-    if (L.beard) mesh(h, new THREE.DodecahedronGeometry(0.066, 0), hairM, [0, 0.07, 0.03], [1.18 * sg, 0.85, 1.0 * sg]);
+    geo.computeVertexNormals();
+    mesh(h, geo, skinM, [0, CY, 0]);
+    // Where the face surface is at height y (the front of the head).
+    const front = (y: number, x = 0) => {
+      const v = (y - CY) / 1.12;
+      const low = Math.max(0, -v / R);
+      const zz = Math.sqrt(Math.max(0, R * R - v * v - (x / sg / (1 - 0.28 * low * low)) ** 2));
+      return zz * (0.9 + 0.12 * low) * sg;
+    };
+    // Brow shelf in shade, eyes set under it, thin brows.
+    mesh(h, new THREE.BoxGeometry(0.1, 0.014, 0.02), shade, [0, 0.172, front(0.172) - 0.006], [sg, 1, 1], [-0.25, 0, 0]);
+    for (const sd of [1, -1]) {
+      const ex = sd * 0.033 * sg;
+      mesh(h, new THREE.BoxGeometry(0.022, 0.008, 0.006), dark, [ex, 0.157, front(0.157, ex) - 0.001], [1, 1, 1], [0, -sd * 0.25, sd * 0.06]);
+      mesh(h, new THREE.BoxGeometry(0.028, 0.0055, 0.006), hairM, [ex, 0.173, front(0.173, ex) + 0.002], [1, 1, 1], [-0.25, -sd * 0.25, sd * 0.08]);
+      // Ears.
+      mesh(h, new THREE.BoxGeometry(0.012, 0.034, 0.024), shade, [sd * 0.094 * sg, 0.148, -0.004]);
+    }
+    // A small wedge of a nose and a thin mouth.
+    mesh(h, new THREE.ConeGeometry(0.013, 0.04, 3), skinM, [0, 0.133, front(0.133) + 0.006], [1, 1, 0.8], [0.35, 0, 0]);
+    mesh(h, new THREE.BoxGeometry(0.03, 0.0045, 0.006), toon(C(L.skin).multiplyScalar(0.45).getHex()), [0, 0.1, front(0.1) - 0.0005]);
+    if (L.beard) {
+      // A shell over the jaw in the hair colour, open over the mouth and cheeks.
+      const b = new THREE.SphereGeometry(R * 1.035, 9, 4, Math.PI / 2 - 1.25, 2.5, 1.95, 1.1);
+      const bp = b.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < bp.count; i++) {
+        const y = bp.getY(i);
+        const low = Math.max(0, -y / R);
+        let z = bp.getZ(i);
+        if (z > 0) z *= 0.9 + 0.12 * low;
+        bp.setXYZ(i, bp.getX(i) * (1 - 0.28 * low * low) * sg, y * 1.12, z * sg);
+      }
+      b.computeVertexNormals();
+      const beardM = toon(L.hairColor).clone();
+      beardM.side = THREE.DoubleSide;
+      mesh(h, b, beardM, [0, CY, 0]);
+    }
     if (L.extras.includes('shades')) {
-      for (const s of [1, -1]) mesh(h, new THREE.BoxGeometry(0.045, 0.024, 0.01), dark, [s * 0.034 * sg, 0.16, 0.096 * sg], [1, 1, 1], [0, -s * 0.3, 0]);
-      mesh(h, new THREE.BoxGeometry(0.15, 0.008, 0.008), dark, [0, 0.168, 0.094 * sg], [sg, 1, 1]);
+      for (const sd of [1, -1]) mesh(h, new THREE.BoxGeometry(0.04, 0.02, 0.008), dark, [sd * 0.033 * sg, 0.158, front(0.158, sd * 0.033 * sg) + 0.004], [1, 1, 1], [0, -sd * 0.25, 0]);
+      mesh(h, new THREE.BoxGeometry(0.13, 0.006, 0.006), dark, [0, 0.165, front(0.165) + 0.004], [sg, 1, 1]);
     }
-    if (L.extras.includes('scar')) mesh(h, new THREE.BoxGeometry(0.007, 0.06, 0.008), toon(0x8a2a2a), [0.045 * sg, 0.16, 0.093 * sg], [1, 1, 1], [0, -0.3, 0.3]);
+    if (L.extras.includes('scar')) mesh(h, new THREE.BoxGeometry(0.004, 0.045, 0.004), toon(0x7a2a2a), [0.04 * sg, 0.15, front(0.15, 0.04 * sg) + 0.001], [1, 1, 1], [0, -0.3, 0.3]);
   }
   // Hair, hood or headgear, all in facets.
   const cap = (c: THREE.Material, top = 0.92) => mesh(h, new THREE.IcosahedronGeometry(0.1, 1), c, [0, 0.175, -0.025], [0.96 * sg, top, 1.0 * sg]);

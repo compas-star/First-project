@@ -61,6 +61,29 @@ export class CareerUi {
     this.c = load() ?? newCareer();
     save(this.c);
     $('career').addEventListener('click', (e) => this.onClick(e));
+    // A save file picked on the save screen.
+    $('career').addEventListener('change', (e) => {
+      const input = e.target as HTMLInputElement;
+      if (input.id !== 'saveFile' || !input.files?.[0]) return;
+      input.files[0].text().then((code) => {
+        this.asking = {
+          text: 'Заменить игру на этом устройстве игрой из файла?',
+          run: () => {
+            importSave(code.trim()).then((err) => {
+              if (err) {
+                this.toast = err;
+                this.render();
+                return;
+              }
+              this.c = load() ?? newCareer();
+              this.toast = 'Сохранение загружено. Связки и удары подхватятся после перезапуска страницы.';
+              this.go('home');
+            });
+          },
+        };
+        this.render();
+      });
+    });
   }
 
   get open(): boolean {
@@ -650,11 +673,14 @@ export class CareerUi {
       ? `<div class="pill green">☁ Облачное сохранение включено: игра сама копируется в твой аккаунт claude.ai. ${ago < 0 ? 'Копии ещё нет.' : ago === 0 ? 'Последняя копия — только что.' : `Последняя копия — ${ago} мин назад.`}</div>
         <div class="row"><button type="button" data-act="cloudsave">Сохранить сейчас</button><button type="button" data-act="cloudload">Загрузить из облака</button></div>
         <div class="fnote">Если браузер потеряет игру, при следующем открытии она вернётся из облака сама.</div>`
-      : `<div class="pill">☁ Облако недоступно здесь (игра открыта не на claude.ai или ты не вошёл). Используй код ниже.</div>`;
+      : `<div class="pill">☁ Облако недоступно здесь (игра открыта не на claude.ai или ты не вошёл). Используй файл ниже.</div>`;
     return `<div class="h1">Сохранение</div>
       ${cloud}
-      <div class="h2">Перенос кодом</div>
-      <div class="fnote">Код — это вся игра: карьера, бойцы, деньги, связки, нарисованные удары, настройки.</div>
+      <div class="h2">Файл сохранения</div>
+      <div class="fnote">Вся игра одним файлом: карьера, бойцы, деньги, связки, удары, настройки. Сохрани его себе (в файлы телефона, в облако, отправь в мессенджер), а на другом устройстве загрузи.</div>
+      <div class="row"><button type="button" class="primary" data-act="savefile">Скачать файл</button><button type="button" data-act="loadfile">Загрузить файл</button></div>
+      <input type="file" id="saveFile" accept=".txt,text/plain" hidden>
+      <details class="oldcode"><summary>Перенос кодом (если файл не получается)</summary>
       <div class="h2">1. На этом устройстве</div>
       <button type="button" class="primary wide" data-act="savemake">Сделать код</button>
       <textarea id="saveOut" class="savecode" readonly placeholder="Здесь появится код"></textarea>
@@ -662,7 +688,8 @@ export class CareerUi {
       <div class="h2">2. На другом устройстве</div>
       <div class="fnote">Открой игру там, зайди сюда же, вставь код и нажми «Загрузить». Игра там заменится этой.</div>
       <textarea id="saveIn" class="savecode" placeholder="Вставь код СЕЙВ1:…"></textarea>
-      <button type="button" class="primary wide" data-act="saveload">Загрузить</button>`;
+      <button type="button" class="primary wide" data-act="saveload">Загрузить</button>
+      </details>`;
   }
 
   // ---------- Actions ----------
@@ -747,6 +774,16 @@ export class CareerUi {
         });
         return;
       }
+      case 'savefile':
+        save(c);
+        exportSave().then((code) => saveFile(code)).then(
+          (msg) => say(msg),
+          () => say('Не получилось скачать файл: попробуй перенос кодом ниже'),
+        );
+        return;
+      case 'loadfile':
+        (document.getElementById('saveFile') as HTMLInputElement | null)?.click();
+        return;
       case 'saveload': {
         const code = (document.getElementById('saveIn') as HTMLTextAreaElement | null)?.value.trim() ?? '';
         if (!code) return say('Вставь код в поле');
@@ -1008,6 +1045,34 @@ const GP_LABEL: Record<string, string> = { auto: 'сам решает', ...PLAN_
 function tonusRow(f: CareerFighter): string {
   const t = tonusOf(f);
   return `<div class="stats"><div class="stat"><span>Тонус</span><div class="sbar tonus"><i style="width:${t}%"></i></div><b>${Math.round(t)}</b></div></div><div class="fnote">Форма: <b>${tonusWord(f)}</b></div>`;
+}
+
+/** Offers the save as a file: through claude.ai's downloads where it runs, else a plain link. */
+async function saveFile(code: string): Promise<string> {
+  const day = new Date().toISOString().slice(0, 10);
+  const name = `arena-save-${day}.txt`;
+  const c = (window as unknown as { claude?: { use(n: string): Promise<unknown> } }).claude;
+  const dl = c?.use ? ((await c.use('downloads').catch(() => null)) as { save(r: { filename: string; data: string }): Promise<unknown> } | null) : null;
+  if (dl) {
+    try {
+      await dl.save({ filename: name, data: code });
+      return `Файл ${name} сохранён`;
+    } catch (e) {
+      const why = (e as { code?: string }).code;
+      if (why === 'declined') return 'Скачивание отменено';
+      if (why === 'rate_limited') return 'Окно скачивания уже открыто';
+    }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([code], { type: 'text/plain' }));
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 2000);
+  return `Файл ${name} скачан`;
 }
 
 /** Current level against how far he can go, for each quality. */

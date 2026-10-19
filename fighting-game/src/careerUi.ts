@@ -30,7 +30,7 @@ import { mapSvg, PLACE_BY_ID, type PlaceId } from './cityMap';
 import type { SceneSpec } from './cutscenes';
 import { homeSvg, APPARATUS, type HomeObj } from './homeArt';
 import {
-  ladder, cup, cupCanJoin, cupJoin, cupMyMatch, cupAdvance, cupFought, ambushFight, ambushDone, clubOf, ranked, nextStageNeeds,
+  ladder, clubStage, cup, cupCanJoin, cupJoin, cupMyMatch, cupAdvance, cupFought, ambushFight, ambushDone, clubOf, ranked, nextStageNeeds,
   CUP_TIER, STREET_TIER, CUP_PRIZE, CUP_FEE, STAGE_NAME, type Club, type CupMatch,
 } from './clubs';
 import { callDue, callScene, callDone, act1Pay, watchLesson, basementLost, act, type A1Fight } from './act1';
@@ -914,7 +914,7 @@ export class CareerUi {
     };
     return `<div class="h1">🏴 Клубы</div>
       <div class="fnote">Ступень «${STAGE_NAME[L.stage]}». Чтобы подняться выше: ${esc(nextStageNeeds(this.c))}.</div>
-      ${L.clubs.filter((k) => k.stage <= L.stage).map(card).join('')}
+      ${L.clubs.filter((k) => k.stage <= clubStage(this.c)).map(card).join('')}
       <div class="fnote">Клубы следующих ступеней откроются позже.</div>`;
   }
 

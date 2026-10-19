@@ -17,7 +17,8 @@ import type { DisciplineId } from './disciplines';
 export type SkinId =
   | 'boxer' | 'mma' | 'kick' | 'nakmuay' | 'karateka' | 'luchador' | 'biker'
   | 'ninja' | 'gladiator' | 'robot' | 'clerk' | 'sumo' | 'zombie' | 'wrestler' | 'bjj'
-  | 'rider' | 'artist' | 'brute' | 'feral';
+  | 'rider' | 'artist' | 'brute' | 'feral'
+  | 'worker' | 'sovboxer' | 'vdv' | 'gopnik' | 'ironfist';
 
 export interface Skin {
   id: SkinId;
@@ -45,6 +46,11 @@ export const SKINS: Skin[] = [
   { id: 'artist', name: 'Художник', desc: 'Сбежал со страницы комикса: светлый хвост, рваные джинсы, карандаш за ухом.' },
   { id: 'brute', name: 'Громила', desc: 'Гора мышц, бритая голова, драные фиолетовые штаны.' },
   { id: 'feral', name: 'Зверь', desc: 'Бакенбарды, взъерошенные волосы, жёлтая майка, бинты на кулаках.' },
+  { id: 'worker', name: 'Заводской', desc: 'Синий рабочий комбинезон на голое тело, бинты, рабочие ботинки.' },
+  { id: 'sovboxer', name: 'Советский боксёр', desc: 'Красная майка, красные трусы с белым поясом, белые высокие боксёрки.' },
+  { id: 'vdv', name: 'Десантник', desc: 'Тельняшка, камуфляжные штаны, берцы.' },
+  { id: 'gopnik', name: 'Пацан с района', desc: 'Чёрный спортивный костюм с тремя белыми полосками, бритый затылок.' },
+  { id: 'ironfist', name: '«Железный кулак»', desc: 'Чёрные тайские шорты с золотым поясом, золотой монгкол на голове.' },
 ];
 
 export const SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s])) as Record<SkinId, Skin>;
@@ -436,6 +442,17 @@ export function comicLook(id: SkinId, team: number, seed: number, strength: numb
       return { ...base, hair: 'ponytail', hairColor: 0xf1d36b, top: 'vest', topColor: team, bottom: 'torn', bottomColor: 0x3f6db3, shoes: 0.22, shoeColor: 0xe8e2d6, hands: 'fingerless', handColor: 0x1a1a1a, extras: ['pencil'] };
     case 'brute':
       return { ...base, bulk: 1.45, arms: 1.4, belly: 0.25, hair: 'crop', hairColor: 0x1a1410, bottom: 'torn', bottomColor: 0x5a2d82, band: team, hands: 'wraps' };
+    case 'worker':
+      // Overalls: a bib over the bare chest, trousers to the boots.
+      return { ...base, top: 'vest', topColor: 0x2a4a8a, bottom: 'long', bottomColor: 0x2a4a8a, band: team, hands: 'wraps', shoes: 0.28, shoeColor: 0x2a1f16, hair: 'crop' };
+    case 'sovboxer':
+      return { ...base, top: 'vest', topColor: 0xc8102e, bottom: 'trunks', bottomColor: 0xc8102e, band: 0xf4f4f0, hands: 'boxing', handColor: 0xc8102e, shoes: 0.38, shoeColor: 0xf0eee8, hair: 'crop' };
+    case 'vdv':
+      return { ...base, top: 'tee', topColor: 0x1f4fa8, pattern: 'telnyashka', stripeColor: 0xf4f4f0, bottom: 'long', bottomColor: 0x5a6a3a, band: team, hands: 'fingerless', handColor: 0x1a1a1a, shoes: 0.34, shoeColor: 0x151515, hair: 'crop' };
+    case 'gopnik':
+      return { ...base, top: 'long', topColor: 0x15151a, pattern: 'tracksuit', stripeColor: 0xf4f4f0, bottom: 'long', bottomColor: 0x15151a, band: team, hands: 'bare', shoes: 0.14, shoeColor: 0xe8e8e4, hair: 'bald' };
+    case 'ironfist':
+      return { ...base, hands: 'boxing', handColor: 0x111111, bottom: 'trunks', bottomColor: 0x111111, band: 0xd4a72c, hair: 'headband', maskColor: 0xd4a72c, capColor: 0xd4a72c, shoes: 0 };
     case 'feral':
       return { ...base, hair: 'spiky', hairColor: 0x161214, top: 'vest', topColor: 0xf2c418, bottom: 'long', bottomColor: 0x1d2a63, band: team, shoes: 0.25, shoeColor: 0x2a1a10, hands: 'wraps', extras: ['belt'] };
   }

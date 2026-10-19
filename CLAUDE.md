@@ -408,6 +408,15 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   ladder stage 3, basement back. Lost: `flags.sewer` = home is the sewer (`homeSvg` `sewer`,
   no rent, training −20%). `acts.ts` = one face for the UI (actCard/Film/Seen/Choose/FightDone/
   Goal dispatch to act 2 while it runs). Tool `act2test [runs]` (softlocks, old-save case).
+- District clubs (stage 2, user: no wrestlers, Russian boxers etc., recognisable looks):
+  «Железный кулак» (Шрам's, Thai, skin `ironfist`: black/gold), «Красный Октябрь» (Soviet
+  boxing school, `sovboxer`: red vest + trunks, white boots), «Десант» (veterans, `vdv`:
+  тельняшка, camo, boots), «Химики» (`gopnik`: black tracksuit with white stripes); «Цех №5»
+  got `worker` overalls. Cloth patterns in body.ts: `ComicLook.pattern` 'telnyashka' (3 cm
+  stripes, torso/arms built at step 0.01 even in the low look) / 'tracksuit' (side stripes),
+  `stripeColor`. `clubStage(c)` = 2 once act 2 runs: those clubs join the weekly cup (1-2 men
+  each) and the clubs list; act 2's QF/SF rivals are their men near our rating. Old saves get
+  them in `ladder()`.
 - Forced fights (user: story must not be skippable): `forcedNow` (cup ambush, act 1 's4h',
   act 2 cards with `forced`) replaces every career screen with the card (no nav, no sheet)
   and 'nextday' refuses until it is fought.

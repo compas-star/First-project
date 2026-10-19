@@ -3,7 +3,7 @@
 // and Шрам has you thrown out of the district: you live in the sewer (user's call). Starts
 // for any career whose act 1 is over (old saves too), on the next check.
 import {
-  makeFighter, short, save, classOf, addRel,
+  makeFighter, short, save, classOf, addRel, rating,
   type Career, type CareerFighter, type FightResult, type Tier,
 } from './career';
 import { addMood } from './life';
@@ -11,7 +11,7 @@ import { story, main, heavy, npc, place, levelOf } from './story';
 import { MAP_BY_ID } from './maps';
 import { TV } from './arena';
 import { partsLeft, fightToll } from './city';
-import { ladder } from './clubs';
+import { ladder, clubOf } from './clubs';
 import { kirpich, scar, kid, gus, P, type A1Fight } from './act1';
 import type { SceneSpec, SceneLine } from './cutscenes';
 
@@ -65,12 +65,18 @@ function rival(c: Career, a: Act2, f: CareerFighter, round: 1 | 2): CareerFighte
   if (round === 1 && a.flags.kirpichIn) return kirpich(c, f);
   if (round === 2 && c.act1?.flags.kidScar) return kid(c);
   return npc(c, story(c), `a2r${round}`, () => {
+    // A man of the district's clubs about our level (not Шрам's first man: he is the final's corner).
+    const want = rating(f) + (round === 1 ? -1 : 2);
+    const pool = ladder(c).clubs.filter((k) => k.stage === 2).flatMap((k) => k.members.filter((x) => x.id !== k.leader || k.id !== 'iron'));
+    const near = pool.filter((x) => Math.abs(rating(x) - want) < 6).sort((x, y) => Math.abs(rating(x) - want) - Math.abs(rating(y) - want));
+    if (near.length) return near[Math.floor(Math.random() * Math.min(3, near.length))];
     const m = makeFighter(Math.max(0.02, levelOf(f) + (round === 1 ? -0.02 : 0.03)), 0.5, classOf(f));
     m.story = `${m.story} Заявлен на Турнир района.`;
     return m;
   }, f);
 }
 
+const who = (c: Career, m: CareerFighter) => `${short(m)}${clubOf(c, m.id) ? ` (${clubOf(c, m.id)!.name})` : ''}`;
 const home = (c: Career) => (c.act1?.flags.lost || inSewer(c) ? MAP_BY_ID.alley : MAP_BY_ID.basement);
 const district: Tier = { ...place('ring', 3), name: 'Турнир района' };
 
@@ -420,7 +426,7 @@ const CARDS: Card[] = [
     id: 't1', title: 'Турнир района: четвертьфинал', who: 'Арена района',
     when: (c, a) => c.day >= a.tourDay,
     forced: true,
-    text: (c, a, f) => `Сегодня Турнир района. Четвертьфинал против ${short(rival(c, a, f, 1))}.${a.flags.fee ? '' : ` Взнос $${FEE2} не заплачен!`}`,
+    text: (c, a, f) => `Сегодня Турнир района. Четвертьфинал против ${who(c, rival(c, a, f, 1))}.${a.flags.fee ? '' : ` Взнос $${FEE2} не заплачен!`}`,
     opts: [
       { id: 'go', label: 'На бой', no: (c, a) => (!a.flags.fee ? (c.money >= FEE2 ? 'сначала взнос' : `нет $${FEE2} на взнос`) : null), run: (c, a, f) => ({ lines: [], fight: tourFight(c, a, f, 1) }) },
       { id: 'fee', label: `Заплатить взнос $${FEE2}`, no: (c, a) => (a.flags.fee ? 'уже заплачен' : c.money < FEE2 ? 'не хватает денег' : null), run: (c, a) => {
@@ -454,7 +460,7 @@ const CARDS: Card[] = [
     id: 't2', title: 'Турнир района: полуфинал', who: 'Арена района',
     when: (c, a) => did(a, 't1') && (!a.flags.fix || !!a.flags.fixDecided),
     forced: true,
-    text: (c, a, f) => `Полуфинал против ${short(rival(c, a, f, 2))}.`,
+    text: (c, a, f) => `Полуфинал против ${who(c, rival(c, a, f, 2))}.`,
     opts: [{ id: 'go', label: 'На бой', run: (c, a, f) => ({ lines: [], fight: tourFight(c, a, f, 2) }) }],
   },
   {

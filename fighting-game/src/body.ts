@@ -55,6 +55,9 @@ export interface ComicLook {
   /** Low look: the mask's pattern colour (the team) and a bandana / headband colour. */
   maskAccent?: number;
   capColor?: number;
+  /** Cloth pattern: a sailor's striped vest (тельняшка) or a tracksuit's side stripes. */
+  pattern?: 'telnyashka' | 'tracksuit';
+  stripeColor?: number;
 }
 
 interface Ring {
@@ -292,6 +295,10 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): ComicSkin {
   const topInk = L.low ? topC.clone().multiplyScalar(0.8) : topC.clone().multiplyScalar(0.55);
   const botC = C(L.bottomColor);
   const band = C(L.band);
+  const stripeC = C(L.stripeColor ?? 0xf4f4f0);
+  // Тельняшка: 3 cm stripes (the body is built finer for them, even in the low look).
+  const tel = (y: number) => L.pattern === 'telnyashka' && Math.floor(y / 0.03) % 2 === 0;
+  const fine = L.pattern === 'telnyashka' ? 0.01 : 0;
   const shoe = C(L.shoeColor);
   const B = new Builder();
   if (L.low) B.step = 0.075;
@@ -308,6 +315,7 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): ComicSkin {
   const bottomCol = (y: number, ang: number): THREE.Color => {
     // Torn jeans: the knees show through ragged holes.
     if (L.bottom === 'torn' && y > 0.44 && y < 0.55 && front(ang, 0.9) && Math.sin(ang * 7 + y * 60) > -0.3) return skin;
+    if (L.pattern === 'tracksuit' && L.bottom === 'long' && Math.abs(Math.sin(ang)) > 0.86) return stripeC;
     if (L.bottom === 'long' && Math.abs(Math.sin(ang)) > 0.97) return botC.clone().multiplyScalar(0.7);
     return botC;
   };
@@ -326,6 +334,8 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): ComicSkin {
 
   // The trunk: a comic V, narrow waist, a slab of chest and lats; bound to the spine.
   const belly = L.belly;
+  const step0 = B.step;
+  if (fine) B.step = fine;
   B.tube(0, [
     { y: 0.97, rx: 0.145 * G, rz: 0.106 * G },
     { y: 1.06, rx: (0.13 + 0.03 * belly) * G, rz: (0.1 + 0.045 * belly) * G, oz: 0.015 * belly },
@@ -343,8 +353,10 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): ComicSkin {
       return Math.abs(Math.sin(ang)) > 0.96 ? topInk : topC;
     }
     if (torsoCovered) {
+      if (L.pattern === 'telnyashka' && L.top !== 'vest') return y > 1.47 && front(ang, 0.5) ? skin : tel(y) ? stripeC : topC;
+      if (L.pattern === 'tracksuit') return front(ang, 0.07) && y > 1.0 ? stripeC : y > 1.46 ? topC.clone().multiplyScalar(0.75) : topC;
       if (L.bottom === 'singlet') return front(ang, 0.6) || Math.cos(ang) < -0.8 || y < 1.36 ? botC : skin;
-      if (L.top === 'vest') return front(ang, 0.4) && y > 1.25 ? skin : topC;
+      if (L.top === 'vest') return front(ang, 0.4) && y > 1.25 ? skin : L.pattern === 'telnyashka' && tel(y) ? stripeC : topC;
       return topC;
     }
     // Bare torso: inked anatomy. Pecs, a six-pack, the line down the middle.
@@ -355,6 +367,7 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): ComicSkin {
     if (belly < 0.4 && Math.abs(Math.abs(Math.sin(ang)) - 0.55) < 0.05 && fr > 0 && y > 1.03 && y < 1.22) return ink;
     return skin;
   }, 0.08, 0.05, 24);
+  B.step = step0;
 
   // The neck: bull-necked for the big ones.
   const nk = 0.048 + 0.012 * U;
@@ -373,6 +386,8 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): ComicSkin {
     const x = side * (0.19 + 0.012 * U) * G;
     const armCol = (y: number, ang: number): THREE.Color => {
       if (y > sleeve) {
+        if (tel(y)) return stripeC;
+        if (L.pattern === 'tracksuit' && Math.sin(ang) * side > 0.8) return stripeC;
         if (L.top === 'jacket' && Math.abs(y - 0.9) < 0.02) return topInk;
         return Math.abs(Math.sin(ang)) > 0.97 ? topInk : topC;
       }
@@ -383,6 +398,7 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): ComicSkin {
       return skin;
     };
     // Shoulder cap (deltoid) and biceps, down to the elbow.
+    if (fine) B.step = fine;
     B.tube(x, [
       { y: 1.48, rx: 0.05 * G, rz: 0.055 * G },
       { y: 1.42, rx: (0.058 + 0.016 * U) * G, rz: (0.058 + 0.014 * U) * G },
@@ -397,6 +413,7 @@ export function comicBody(r: Rig, girth: number, L: ComicLook): ComicSkin {
       { y: 0.95, rx: (0.035 + 0.005 * A) * G, rz: (0.033 + 0.004 * A) * G },
       { y: 0.86, rx: 0.032 * G, rz: 0.03 * G },
     ], el, -1, sh, armCol, 0.05, 0.06);
+    B.step = step0;
     // Thigh and shin.
     const hx = side * 0.1 * G;
     // Loose cloth trousers in the low look, gathered into wraps at the calf.

@@ -112,6 +112,54 @@ const FACTORY: Man[] = [
   { name: 'Малой «Пацан» Лаптев', level: 0.03, disc: 'street', weight: 66, height: 1.72, tilt: { bodySpeed: 1.08 }, story: 'Ровесник Тимохи. Смотрит на наш подвал с интересом.' },
 ];
 
+// ---------- The clubs of the district (stage 2, act 2) ----------
+
+const IRON: Man[] = [
+  { name: 'Кувалда «Правая рука» Ткачёв', level: 0.36, disc: 'muaythai', weight: 92, height: 1.86, tilt: { strength: 1.15, cardio: 1.1 }, story: 'Старший в «Железном кулаке» после Шрама. Спарринг-партнёр Стали. Бьёт коленями в клинче.', legs: 0.5 },
+  { name: 'Гвоздь «Тихий» Лаврин', level: 0.28, disc: 'muaythai', weight: 72, height: 1.75, tilt: { skill: 1.15, evasion: 1.1 }, story: 'Молчит, кланяется перед боем, ломает рёбра локтем.', legs: 0.45 },
+  { name: 'Бур «Сверло» Осипов', level: 0.25, disc: 'kickboxing', weight: 81, height: 1.8, tilt: { bodySpeed: 1.1 }, story: 'Быстрые лоу-кики. Шрам привёз его из другого города.', legs: 0.5 },
+  { name: 'Стас «Мажор» Шрамов', level: 0.2, disc: 'muaythai', weight: 77, height: 1.83, tilt: { strength: 0.95, skill: 1.05 }, story: 'Племянник Шрама. Дорогие шорты, дорогая машина, средний удар.', legs: 0.3 },
+  { name: 'Ли «Тайка» Кан', level: 0.24, disc: 'muaythai', weight: 63, height: 1.68, tilt: { bodySpeed: 1.12, evasion: 1.1, strength: 0.88 }, story: 'Тренировалась в Таиланде. Шрам платит ей больше всех.', legs: 0.6 },
+];
+
+const OCTOBER: Man[] = [
+  { name: 'Белов «Комсорг» Белов', level: 0.34, disc: 'boxing', weight: 79, height: 1.78, tilt: { skill: 1.2, mindSpeed: 1.1 }, story: 'Лидер «Красного Октября», мастер спорта ещё той страны. Двойка — как метроном.' },
+  { name: 'Дед «Сорок пятый» Миронов', level: 0.22, disc: 'boxing', weight: 86, height: 1.76, tilt: { skill: 1.25, bodySpeed: 0.85, cardio: 0.85 }, story: 'Ему за пятьдесят. Медленный, но ни одного лишнего движения.' },
+  { name: 'Ваня «Пионер» Шустов', level: 0.18, disc: 'boxing', weight: 64, height: 1.7, tilt: { bodySpeed: 1.15, cardio: 1.1 }, story: 'Бегает по рингу как заведённый. Лучший ученик Комсорга.' },
+  { name: 'Гена «Молот» Крутов', level: 0.26, disc: 'boxing', weight: 98, height: 1.9, tilt: { strength: 1.2 }, story: 'Тяжеловес клуба. Апперкот, после которого не встают.' },
+  { name: 'Олег «Левша» Зорин', level: 0.21, disc: 'boxing', weight: 73, height: 1.77, tilt: { evasion: 1.15 }, story: 'Боксирует от обороны и всех злит.' },
+];
+
+const DESANT: Man[] = [
+  { name: 'Батя «Второго августа» Корнеев', level: 0.35, disc: 'street', weight: 95, height: 1.84, tilt: { strength: 1.15, cardio: 1.15, skill: 0.95 }, story: 'Лидер «Десанта», ветеран. Армейский рукопашный бой, ни шагу назад.', aggression: 0.8 },
+  { name: 'Сапёр «Без права на ошибку» Лужин', level: 0.24, disc: 'kickboxing', weight: 80, height: 1.8, tilt: { mindSpeed: 1.12 }, story: 'Спокойный, считает каждый удар.', legs: 0.35 },
+  { name: 'Танкист «Броня» Дрозд', level: 0.22, disc: 'street', weight: 108, height: 1.93, tilt: { strength: 1.12, bodySpeed: 0.88 }, story: 'Его не пробить. Он и не уворачивается.' },
+  { name: 'Связист «Позывной Сокол» Рыжов', level: 0.17, disc: 'kickboxing', weight: 70, height: 1.76, tilt: { bodySpeed: 1.1 }, story: 'Самый молодой в клубе. Ногами бьёт выше головы.', legs: 0.4 },
+  { name: 'Старшина «Устав» Гаврилов', level: 0.2, disc: 'boxing', weight: 85, height: 1.81, tilt: { cardio: 1.2 }, story: 'Двенадцать раундов на мешке каждое утро.' },
+];
+
+const CHEMISTS: Man[] = [
+  { name: 'Сёма «Хим» Химичев', level: 0.31, disc: 'street', weight: 78, height: 1.79, tilt: { bodySpeed: 1.1, skill: 0.9 }, story: 'Лидер «Химиков» с района у химзавода. Улыбается, когда его бьют.', aggression: 0.9 },
+  { name: 'Жека «Семки» Пронин', level: 0.18, disc: 'street', weight: 70, height: 1.74, tilt: { evasion: 1.1 }, story: 'Сидит на корточках у ринга до самого гонга.', aggression: 0.85 },
+  { name: 'Толян «Барсетка» Кошкин', level: 0.2, disc: 'boxing', weight: 90, height: 1.85, tilt: { strength: 1.1 }, story: 'Был боксёром до армии. Теперь — до первой бутылки.' },
+  { name: 'Вован «Шнурок» Мельник', level: 0.14, disc: 'street', weight: 62, height: 1.7, tilt: { bodySpeed: 1.12, strength: 0.88 }, story: 'Мелкий и вёрткий. Бьёт исподтишка.', aggression: 0.95 },
+  { name: 'Костян «Карбид» Ершов', level: 0.24, disc: 'kickboxing', weight: 84, height: 1.82, tilt: { strength: 1.08 }, story: 'Спокойнее остальных. Поэтому опаснее.', legs: 0.3 },
+];
+
+function districtClubs(): Club[] {
+  const make = (list: Man[], skin: SkinId) => list.map((m) => man(m, skin));
+  const iron = make(IRON, 'ironfist');
+  const oct = make(OCTOBER, 'sovboxer');
+  const des = make(DESANT, 'vdv');
+  const chem = make(CHEMISTS, 'gopnik');
+  return [
+    { id: 'iron', name: '«Железный кулак»', stage: 2, motto: 'Сталь закаляется в огне', desc: 'Клуб Шрама. Тайский бокс, чёрные шорты с золотом, золотые монгколы. Деньги, порядок и Сталь — сын хозяина.', colors: ['#111111', '#d4a72c'], skin: 'ironfist', leader: iron[0].id, members: iron },
+    { id: 'october', name: '«Красный Октябрь»', stage: 2, motto: 'Работай двоечкой', desc: 'Старая школа бокса при ДК «Красный Октябрь». Красные майки и трусы, белые боксёрки, вымпелы на стенах. Чистый бокс, никаких ног.', colors: ['#c8102e', '#f4f4f0'], skin: 'sovboxer', leader: oct[0].id, members: oct },
+    { id: 'desant', name: '«Десант»', stage: 2, motto: 'Никто, кроме нас', desc: 'Клуб ветеранов. Тельняшки, камуфляж, берцы. Армейский рукопашный бой, выносливость и упрямство.', colors: ['#1f4fa8', '#f4f4f0'], skin: 'vdv', leader: des[0].id, members: des },
+    { id: 'chem', name: '«Химики»', stage: 2, motto: 'Чё, с какого района?', desc: 'Пацаны из района у химзавода. Чёрные спортивные костюмы с полосками, бритые затылки. Грязно, быстро, толпой.', colors: ['#15151a', '#f4f4f0'], skin: 'gopnik', leader: chem[0].id, members: chem },
+  ];
+}
+
 function man(m: Man, skin: SkinId): CareerFighter {
   const cls = WCLASSES.find((w) => m.weight <= w.hi) ?? WCLASSES[2];
   const f = makeFighter(m.level, 0.4 + m.level, cls);
@@ -133,21 +181,34 @@ function man(m: Man, skin: SkinId): CareerFighter {
 
 function makeClubs(): Club[] {
   const bikers = BIKERS.map((m) => man(m, 'biker'));
-  const factory = FACTORY.map((m) => man(m, 'boxer'));
+  const factory = FACTORY.map((m) => man(m, 'worker'));
   return [
     { id: 'horses', name: '«Железные кони»', stage: 1, motto: 'Кто не с нами — тот под колёсами', desc: 'Байкеры. Чёрная кожа, жилетки с конём на спине. Дерутся грязно и тяжело. Тусуются у «Подковы».', colors: ['#1a1a1e', '#ff5d3a'], skin: 'biker', leader: bikers[0].id, members: bikers },
-    { id: 'shop5', name: '«Цех №5»', stage: 1, motto: 'Смена кончилась — смена началась', desc: 'Заводские с тракторного. Синие комбинезоны, номер цеха на спине. Дисциплина, выносливость, честные бои. Враждуют с байкерами.', colors: ['#2a4a8a', '#f2c14e'], skin: 'boxer', leader: factory[0].id, members: factory },
+    { id: 'shop5', name: '«Цех №5»', stage: 1, motto: 'Смена кончилась — смена началась', desc: 'Заводские с тракторного. Синие комбинезоны, номер цеха на спине. Дисциплина, выносливость, честные бои. Враждуют с байкерами.', colors: ['#2a4a8a', '#f2c14e'], skin: 'worker', leader: factory[0].id, members: factory },
+    ...districtClubs(),
   ];
 }
 
 export function ladder(c: Career): Ladder {
   c.ladder ??= { stage: 1, open: false, clubs: makeClubs(), cup: null, cupWins: 0, beaten: [], history: [] };
+  // Older saves: the district's clubs join; the factory men get their overalls.
+  if (!c.ladder.clubs.some((k) => k.stage === 2)) {
+    c.ladder.clubs.push(...districtClubs());
+    const shop = c.ladder.clubs.find((k) => k.id === 'shop5');
+    if (shop) {
+      shop.skin = 'worker';
+      for (const m of shop.members) m.skin = 'worker';
+    }
+  }
   return c.ladder;
 }
 
 /** Known beyond the basement (district champion or higher): before that no sponsors, no
  * interviews, no champions calling him out (user: odd for a nobody from a basement). */
 export const known = (c: Career) => ladder(c).stage >= 3;
+
+/** Clubs that come to the weekly cup and show in the list: the district's once act 2 runs. */
+export const clubStage = (c: Career) => (ladder(c).stage >= 2 || c.act2 ? 2 : 1);
 
 export const clubOf = (c: Career, id: string): Club | null => ladder(c).clubs.find((k) => k.members.some((m) => m.id === id)) ?? null;
 export const isLeader = (c: Career, id: string) => ladder(c).clubs.some((k) => k.leader === id);
@@ -233,10 +294,13 @@ const dayWord = (c: Career, d: number) => (d === c.day ? 'сегодня' : d ==
 function draw(c: Career, cp: Cup): void {
   const L = ladder(c);
   const field: CareerFighter[] = [];
-  for (const k of L.clubs.filter((x) => x.stage === 1)) {
+  const top = clubStage(c);
+  for (const k of L.clubs.filter((x) => x.stage <= top).sort(() => Math.random() - 0.5)) {
     const r = ranked(k);
-    // The leader comes most weeks; the others take turns.
-    const pick = [r[0], ...r.slice(1).sort(() => Math.random() - 0.5)].slice(0, 2 + (Math.random() < 0.4 ? 1 : 0));
+    // The leader comes most weeks; the others take turns. Once the district's clubs come,
+    // every club sends one or two.
+    const n = top === 1 ? 2 + (Math.random() < 0.4 ? 1 : 0) : k.stage === top ? 1 + (Math.random() < 0.5 ? 1 : 0) : Math.random() < 0.6 ? 1 : 0;
+    const pick = [r[0], ...r.slice(1).sort(() => Math.random() - 0.5)].slice(0, n);
     if (Math.random() < 0.25) pick.shift();
     field.push(...pick);
   }

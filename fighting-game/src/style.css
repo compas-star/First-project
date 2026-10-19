@@ -2187,3 +2187,56 @@ body.cutting #btnRec {
   color: var(--muted);
   font: 400 14px/1.4 var(--pxb);
 }
+/* The city: parts of the day, satiety and energy (city.ts). */
+#career .daybar .parts {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0;
+}
+#career .pdot {
+  flex: 1;
+  text-align: center;
+  padding: 4px 0;
+  font: 400 9px/1.4 var(--px);
+  border: 2px solid var(--ink);
+  background: #0f0c12;
+  color: #8a7f95;
+}
+#career .pdot.used {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+#career .pdot.now {
+  background: var(--gold);
+  color: #1a1420;
+}
+#career .needs {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+#career .need {
+  display: grid;
+  grid-template-columns: 96px 1fr 30px;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+#career .need b {
+  text-align: right;
+}
+#career .need.mid .sbar i {
+  background: repeating-linear-gradient(90deg, var(--gold) 0 6px, #c99b2f 6px 8px);
+}
+#career .need.low .sbar i {
+  background: repeating-linear-gradient(90deg, #ff4d6d 0 6px, #c23350 6px 8px);
+}
+#career .need.low span {
+  color: #ff6b84;
+}
+#career .daybar .money {
+  color: var(--lime);
+}
+#career .qbox.city .ibtns {
+  margin-bottom: 8px;
+}

@@ -4,13 +4,13 @@
 // what you got.
 import {
   STAT_KEYS, STAT_INFO, INTENSITY, TIERS, TIER_BY_ID, MAX_ROSTER,
-  load, save, reset, newCareer, tick, queueTraining, planSkip, skipPlan, gainOf, busy, refreshMarket, buy, sell,
+  load, save, reset, newCareer, tick, busy, refreshMarket, buy, sell,
   rating, talentWord, value, opponent, afterFight, tourFight, roundName, short, odds,
   person, current, myMatch, settle, settleOthers, finished, closeTour,
   rankings, rankOf, relOf, WCLASSES, classOf, sameClass, isChamp, champOf, type WClass, relWord, rivalsOf, titleBout, tierOf, TITLE_PURSE,
-  DAY_MS, MARKET_DAYS, dayName, weekday, weekStart, eventsOn, evById, dayCost, nextDay, canBook, book, unbook, rebook,
+  MARKET_DAYS, dayName, weekday, weekStart, eventsOn, evById, nextDay, canBook, book, unbook, rebook,
   challenge, startTour, evTitle, bookedOn,
-  tonusOf, tonusWord, CRAFT_NAME, CRAFT_TIERS, TIER_OPEN, craftOf, craftGain, craftMoves, type Craft, moveName, styleCost, changeStyle,
+  tonusOf, tonusWord, CRAFT_NAME, CRAFT_TIERS, TIER_OPEN, craftOf, craftMoves, type Craft, moveName, styleCost, changeStyle,
   type Career, type CareerFighter, type Tier, type FightResult, type StatKey, type Ev,
 } from './career';
 import { DISCIPLINE_BY_ID, type DisciplineId } from './disciplines';
@@ -21,6 +21,10 @@ import { exportSave, importSave } from './saveCode';
 import { cloudFlush, cloudRestore, cloudAt, cloudState } from './cloud';
 import { pendingChapter, storyChoose, storyCheck, storyFightDone } from './story';
 import { GYMS, gymOf, gymOpen, moveGym, type GymId } from './gyms';
+import {
+  PARTS, JOBS, FOODS, TRAIN_ENERGY, MIN_TRAIN_ENERGY, HUNGRY, RENT, satOf, energyOf, partOf, partsLeft, cannot, jobClosed,
+  trainNow, work, eat, rest, sessionGain, sessionCraft, needWord, DOW,
+} from './city';
 
 export interface CareerHooks {
   /** Show this fight in the arena; `done` gets the result when it is over. */
@@ -114,16 +118,6 @@ export class CareerUi {
       this.render();
       return;
     }
-    // Only the day's clock moves.
-    const left = this.c.dayAt + DAY_MS - Date.now();
-    document.querySelectorAll<HTMLElement>('#career .daybar').forEach((el) => {
-      const t = el.querySelector('.cl');
-      if (t) t.textContent = clock(left);
-      const bar = el.querySelector<HTMLElement>('.bar i');
-      if (bar) bar.style.width = `${Math.min(100, 100 - (100 * left) / DAY_MS)}%`;
-      const nb = el.querySelector<HTMLElement>('[data-act="nextday"] b');
-      if (nb) nb.innerHTML = this.dayBtn().replace(/◆/g, '<i class="gem">◆</i>');
-    });
   }
 
   private me(): CareerFighter {
@@ -182,18 +176,19 @@ export class CareerUi {
       : `<div class="help">
           <div class="h2">Как играть</div>
           <ol>
-            <li>Карьера идёт <b>по дням</b>. Каждый день боец либо <b>тренируется</b>, либо <b>дерётся</b>, либо отдыхает.</li>
-            <li>В <b>календаре</b> — вечера боёв, турниры и бои за пояс. Запишись заранее; в день боя нажми «На бой».</li>
-            <li>День идёт ${DAY_MS / 60000} минуты настоящего времени. <b>Жетоны ◆</b> заканчивают его сразу. <b>Деньги $</b> — на тренировки, взносы и бойцов.</li>
-            <li>Победы дают деньги и <b>известность</b>; она открывает лиги выше. После тяжёлого боя боец несколько дней лечится.</li>
+            <li>День = <b>утро, день, вечер</b>. Каждая тренировка, смена или отдых занимает часть дня. Когда всё сделано — <b>«Спать»</b>, и наступает новый день. Сам по себе день не идёт.</li>
+            <li>Следи за <b>сытостью</b> и <b>энергией</b>. Голодный тренируется вполсилы, без сил тренироваться нельзя. Еда стоит денег, энергию даёт сон и отдых.</li>
+            <li>Деньги — <b>подработки</b> (стройка, рынок, бар) и <b>бои</b>. Раз в неделю квартплата $${RENT}.</li>
+            <li>В <b>календаре</b> — вечера боёв, турниры и бои за пояс. Запишись заранее; бой занимает вечер. Победы дают деньги и <b>известность</b>.</li>
           </ol>
           <button type="button" data-act="help">Понятно</button>
         </div>`;
     const tour = this.tourBanner();
     return `${help}${this.dayBar()}${this.storyCard()}${this.incidents()}${tour}${this.today()}
+      ${this.city(f)}
       ${this.hero(f)}
       <div class="big2">
-        <button type="button" class="bigbtn" data-act="to" data-s="gym"><b>Тренировать</b><span>${busy(c, f) ? 'сегодня занят' : 'занимает день'}</span></button>
+        <button type="button" class="bigbtn" data-act="to" data-s="gym"><b>Тренировать</b><span>${cannot(c, f, 1, MIN_TRAIN_ENERGY) ?? 'часть дня'}</span></button>
         <button type="button" class="bigbtn primary" data-act="to" data-s="cal"><b>Календарь</b><span>бои, турниры, пояс</span></button>
       </div>
       <div class="nav4">
@@ -233,18 +228,39 @@ export class CareerUi {
   }
 
   private dayBtn(): string {
-    const n = dayCost(this.c);
-    return n ? `Следующий день · ${n} ◆` : 'Следующий день';
+    return '🌙 Спать · новый день';
   }
 
-  /** Today's date, the day's clock, and the button that ends it. */
+  /** Today's date, the part of the day the picked fighter is in, and the button that ends it. */
   private dayBar(): string {
     const c = this.c;
-    const left = c.dayAt + DAY_MS - Date.now();
+    const f = this.me();
+    const p = partOf(f);
+    const dots = [0, 1, 2].map((i) => `<span class="pdot${i < p ? ' used' : i === p ? ' now' : ''}">${PARTS[i]}</span>`).join('');
     return `<div class="daybar">
-      <div class="dtop"><b>📅 ${dayName(c.day)}, ${weekday(c.day)}</b><span>день ${c.day} · до конца дня <b class="cl">${clock(left)}</b></span></div>
-      <div class="bar"><i style="width:${Math.min(100, 100 - (100 * left) / DAY_MS)}%"></i></div>
-      <button type="button" data-act="nextday"><b>${this.dayBtn()}</b></button>
+      <div class="dtop"><b>📅 ${dayName(c.day)}, ${weekday(c.day)}</b><span>день ${c.day} · <b class="money">$${c.money}</b></span></div>
+      <div class="parts">${dots}</div>
+      <div class="needs">${needBar('🍞 Сытость', satOf(f))}${needBar('⚡ Энергия', energyOf(f))}</div>
+      <button type="button" data-act="nextday" class="${partsLeft(c, f) ? '' : 'primary'}"><b>${this.dayBtn()}</b></button>
+    </div>`;
+  }
+
+  /** Food, work and rest for the picked fighter: what the parts of the day go on besides the gym. */
+  private city(f: CareerFighter): string {
+    const c = this.c;
+    const foods = FOODS.map((x) => `<button type="button" class="ibtn" data-act="eat" data-f="${x.id}" ${c.money < x.price ? 'disabled' : ''}>
+      <b>${x.name}</b><span class="gain">+${x.sat}</span><span>$${x.price}</span><small>${x.note}</small></button>`).join('');
+    const jobs = JOBS.map((j) => {
+      const why = jobClosed(c, f, j);
+      return `<button type="button" class="ibtn" data-act="work" data-j="${j.id}" ${why ? 'disabled' : ''}>
+        <b>${j.name}</b><span class="gain">+$${j.pay}</span><span>${j.parts === 2 ? '2 части' : '1 часть'} · −${j.e}⚡</span><small>${why ?? j.desc}</small></button>`;
+    }).join('');
+    const restNo = partsLeft(c, f) < 1 ? 'день кончился' : '';
+    return `<div class="qbox city">
+      <div class="h2">Еда</div><div class="ibtns">${foods}</div>
+      <div class="h2">Подработка</div><div class="ibtns">${jobs}</div>
+      <button type="button" data-act="rest" ${restNo ? 'disabled' : ''}>😌 Отдохнуть · 1 часть · +15⚡, настроение${restNo ? ` · ${restNo}` : ''}</button>
+      ${DOW(c.day) === 6 ? `<div class="fnote">Сегодня ночью квартплата: $${RENT}.</div>` : ''}
     </div>`;
   }
 
@@ -284,10 +300,11 @@ export class CareerUi {
     if (!busy(c, f)) {
       if (c.tour?.fighter === f.id) return `<div class="pill gold">На турнире, ждёт следующего боя</div>`;
       const b = bookedOn(c, f, c.day);
-      return b ? `<div class="pill gold">Сегодня бой: ${esc(evTitle(b))}</div>` : `<div class="pill green">Сегодня свободен: можно тренировать или драться</div>`;
+      const left = partsLeft(c, f);
+      return b ? `<div class="pill gold">Сегодня вечером бой: ${esc(evTitle(b))}</div>` : left ? `<div class="pill green">Сейчас ${PARTS[partOf(f)]}: осталось частей дня — ${left}</div>` : `<div class="pill">День прожит: пора спать</div>`;
     }
     const days = f.busyUntil - c.day;
-    return `<div class="pill">${f.session ? 'В зале' : 'Отдыхает'}: ${esc(f.busyWhat)} · ${days <= 1 ? 'свободен завтра' : `свободен с ${dayName(f.busyUntil)} (через ${days} дн.)`}</div>`;
+    return `<div class="pill">${f.session ? 'В зале' : 'Отдыхает'}: ${esc(f.busyWhat)} · ${days <= 1 ? 'свободен завтра' : `свободен с ${dayName(f.busyUntil)} (через ${days} дн.)`}. Есть и отдыхать можно.</div>`;
   }
 
   // ---------- Gym ----------
@@ -301,9 +318,8 @@ export class CareerUi {
       ${this.dayBar()}
       ${this.status(f)}
       ${tonusRow(f)}
-      <div class="fnote">Любая тренировка держит <b>тонус</b>, даже на потолке. День без зала — минус форма: боец медленнее, слабее и быстрее выдыхается.</div>
-      ${tabs}
-      ${this.queueBox(f)}`;
+      <div class="fnote">Тренировка занимает <b>часть дня</b> и тратит энергию и сытость. Любая держит <b>тонус</b>, даже на потолке. День без зала — минус форма.</div>
+      ${tabs}`;
     if (this.gymTab === 'moves') return head + this.movesTab(f);
     if (this.gymTab === 'style') return head + this.styleTab(f);
     if (this.gymTab === 'halls') return head + this.hallsTab();
@@ -315,10 +331,10 @@ export class CareerUi {
     const disc = DISCIPLINE_BY_ID[f.discipline];
     const sel: Craft = this.move === 'legs' ? 'legs' : 'hands';
     const its = INTENSITY.map((it) => {
-      const g = craftGain(f, sel, it, c);
-      const no = c.money < it.cost ? 'мало денег' : '';
+      const g = sessionCraft(f, sel, it, c);
+      const no = cannot(c, f, 1, Math.max(TRAIN_ENERGY[it.id], MIN_TRAIN_ENERGY));
       return `<button type="button" class="ibtn" data-act="train" data-it="${it.id}" data-m="${sel}" ${no ? 'disabled' : ''}>
-        <b>${it.name}</b><span class="gain">+${(g * 100).toFixed(1)}%</span><span>1 день · $${it.cost}</span>
+        <b>${it.name}</b><span class="gain">+${(g * 100).toFixed(1)}%</span><span>1 часть · −${TRAIN_ENERGY[it.id]}⚡</span>
         <small>${it.injury ? `травма ${Math.round(it.injury * 100)}%` : 'без риска'}${no ? ` · ${no}` : ''}</small></button>`;
     }).join('');
     const rows = (['hands', 'legs'] as Craft[]).map((k) => {
@@ -338,7 +354,7 @@ export class CareerUi {
     }).join('');
     return `<div class="fnote">Качай <b>руки</b> или <b>ноги</b>. Чем выше, тем чаще, быстрее и сильнее он бьёт этим, а на 35% и 70% открываются более сложные удары. ✦ — удар не из его стиля, теперь он его бьёт. Чем выше техника, тем быстрее учится.</div>
       <div class="trows">${rows}</div>
-      <div class="h2">${CRAFT_NAME[sel]}: добавить тренировку</div>
+      <div class="h2">${CRAFT_NAME[sel]}: тренировать</div>
       <div class="ibtns">${its}</div>`;
   }
 
@@ -373,27 +389,6 @@ export class CareerUi {
     return `<div class="fnote">Стиль задаёт стойку, дистанцию и любимые удары. Руки и ноги при смене стиля остаются как были.</div>${rows}`;
   }
 
-  private queueBox(f: CareerFighter): string {
-    const c = this.c;
-    const q = f.queue ?? [];
-    const what = (x: { stat: StatKey; move?: string }) => (x.move ? CRAFT_NAME[x.move as Craft] ?? moveName(x.move) : STAT_INFO[x.stat].name);
-    const now = f.session ? `<div class="qrow now"><span>Сегодня</span><b>${esc(what(f.session))}</b><small>${esc(f.busyWhat)}</small></div>` : '';
-    const plan = q.map((x, i) => {
-      const it = INTENSITY.find((y) => y.id === x.it)!;
-      return `<div class="qrow"><span>${f.session || busy(c, f) ? `+${i + 1} дн.` : i === 0 ? 'Сегодня' : `+${i} дн.`}</span><b>${esc(what(x))}</b><small>${it.name.toLowerCase()} · $${it.cost}</small><button type="button" class="qx" data-act="unqueue" data-i="${i}">✕</button></div>`;
-    }).join('');
-    const sk = planSkip(c, f);
-    return now || plan
-      ? `<div class="qbox"><div class="h2">План тренировок</div>${now}${plan}
-          <div class="row">
-            <button type="button" data-act="nextday"><b>${this.dayBtn()}</b></button>
-            <button type="button" class="primary" data-act="skipplan" ${sk.days && c.tokens >= sk.tokens ? '' : 'disabled'}>Пропустить весь план<br><small>${sk.days} дн. · ${sk.tokens} ◆</small></button>
-          </div>
-          ${q.length ? '<button type="button" data-act="clearplan">Очистить план</button>' : ''}
-        </div>`
-      : '';
-  }
-
   private statsTab(f: CareerFighter): string {
     const c = this.c;
     const rows = STAT_KEYS.map((k) => {
@@ -406,18 +401,18 @@ export class CareerUi {
       </button>`;
     }).join('');
     const its = INTENSITY.map((it) => {
-      const g = gainOf(f, this.stat, it, c);
-      const no = c.money < it.cost ? 'мало денег' : '';
+      const g = sessionGain(f, this.stat, it, c);
+      const no = cannot(c, f, 1, Math.max(TRAIN_ENERGY[it.id], MIN_TRAIN_ENERGY));
       return `<button type="button" class="ibtn" data-act="train" data-it="${it.id}" ${no ? 'disabled' : ''}>
         <b>${it.name}</b>
         <span class="gain">+${fmtGain(this.stat, g)}</span>
-        <span>1 день · $${it.cost}</span>
+        <span>1 часть · −${TRAIN_ENERGY[it.id]}⚡</span>
         <small>${it.injury ? `травма ${Math.round(it.injury * 100)}%` : 'без риска'}${no ? ` · ${no}` : ''}</small>
       </button>`;
     }).join('');
-    return `<div class="fnote">Выбери качество, потом жми тренировки — каждая занимает один день и встаёт в план. Чем ближе к потолку, тем меньше даёт. В день боя тренировки нет.</div>
+    return `<div class="fnote">Выбери качество и жми тренировку — она сразу идёт и занимает часть дня. Чем ближе к потолку, тем меньше даёт. ${satOf(f) < HUNGRY ? '<b>Голодный: прирост вдвое меньше — сначала поешь.</b>' : ''}</div>
       <div class="trows">${rows}</div>
-      <div class="h2">${STAT_INFO[this.stat].name}: добавить тренировку</div>
+      <div class="h2">${STAT_INFO[this.stat].name}: тренировать</div>
       <div class="ibtns">${its}</div>`;
   }
 
@@ -909,9 +904,19 @@ export class CareerUi {
       case 'train': {
         const it = INTENSITY.find((x) => x.id === b.dataset.it)!;
         const m = b.dataset.m;
-        const err = queueTraining(c, me, this.stat, it, m);
-        return say(err ?? `+ ${(m ? CRAFT_NAME[m as Craft] : STAT_INFO[this.stat].name).toLowerCase()} (${it.name.toLowerCase()}) в плане`);
+        const r = trainNow(c, me, this.stat, it, m as Craft | undefined);
+        return say(r.ok ? `${short(me)}: ${r.text}` : r.text);
       }
+      case 'eat': {
+        const r = eat(c, me, FOODS.find((x) => x.id === b.dataset.f)!);
+        return say(r.text);
+      }
+      case 'work': {
+        const r = work(c, me, JOBS.find((x) => x.id === b.dataset.j)!);
+        return say(r.text);
+      }
+      case 'rest':
+        return say(rest(c, me).text);
       case 'gymtab':
         this.gymTab = b.dataset.t as 'stats' | 'moves' | 'style' | 'halls';
         return say(null);
@@ -936,22 +941,6 @@ export class CareerUi {
         (this.bill?.tour && c.tour ? c.roster.find((x) => x.id === c.tour!.fighter) ?? me : me).gamePlan = [];
         save(c);
         return say('План боя сброшен: решает сам');
-      case 'unqueue': {
-        me.queue?.splice(Number(b.dataset.i), 1);
-        save(c);
-        return say(null);
-      }
-      case 'clearplan':
-        me.queue = [];
-        save(c);
-        return say('План очищен');
-      case 'skipplan': {
-        const was = { ...me.stats };
-        const err = skipPlan(c, me);
-        const gains = (Object.keys(was) as StatKey[]).filter((k) => me.stats[k] - was[k] > 1e-6).map((k) => `${STAT_INFO[k].name} +${fmtGain(k, me.stats[k] - was[k])}`);
-        this.calDay = c.day;
-        return say([err, gains.length ? `Итог: ${gains.join(', ')}` : '', `Сейчас ${dayName(c.day)}`].filter(Boolean).join('. '));
-      }
       case 'nextday': {
         const done = (err: string | null) => {
           if (err) return say(err);
@@ -1155,10 +1144,10 @@ function tierRating(t: Tier): string {
   return r;
 }
 
-const clock = (ms: number) => {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-};
+/** A need (satiety, energy) as a labelled bar, coloured by how low it is. */
+function needBar(name: string, v: number): string {
+  return `<div class="need ${needWord(v)}"><span>${name}</span><div class="sbar"><i style="width:${Math.round(v)}%"></i></div><b>${Math.round(v)}</b></div>`;
+}
 
 /** Day of the month, with the month's short name on the 1st. */
 function dateOf1(day: number): string {

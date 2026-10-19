@@ -143,11 +143,21 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
 - `career.ts` + `careerUi.ts`: manager mode ("Карьера" button; the sandbox stays as is).
   Fighters with a story, stats (`bodySpeed, strength, mindSpeed, skill, evasion, cardio`)
   and hidden caps (talent). **Calendar** (user's request): the career runs by days
-  (`Career.day`, day 1 = Monday 3 March; a day lasts `DAY_MS` 3 min real time, passes by
-  itself in `tick`, also while closed, max 10 at once; "Следующий день" ends it now for
-  1 ◆ per minute left). The day does not pass while ours has an unfought booking today
-  (`waiting`) or a tournament open. Each day a fighter trains (light/normal 1 day, hard 2;
-  gain applied at midnight in `endDay`) or fights; `busyUntil` = first free day; recovery
+  (`Career.day`, day 1 = Monday 3 March). Days no longer pass in real time (`tick` is a no-op
+  unless `globalThis.__realtimeDays`): the player ends the day with "🌙 Спать" (`nextDay`, free).
+  The day does not end while ours has an unfought booking today
+  (`waiting`) or a tournament open. **City** (`city.ts`, user: like Punch Club; balance from
+  `tools/econ.ts`, doc "Город и экономика"): a day = утро/день/вечер (`f.parts` spent) + night;
+  `f.sat` satiety and `f.energy` 0..100. Training (`trainNow`) is one part, applied at once
+  (0.8 of the old day's gain x `feedK`: hungry <30 half, sports food x1.2), energy 15/30/45 by
+  intensity, no money cost; jobs (`JOBS`: стройка 2 parts weekdays $45, рынок $25, вышибала
+  Fri/Sat evening $60 with a coin-flip brawl), food (`FOODS` $5/$15/$40), rest (+15 energy);
+  a booked fight keeps the evening (`partsLeft`), costs energy/satiety (`fightToll` in
+  afterFight); tired/hungry fighters get less cardio/power (`needsK` in toParams). Night
+  (`cityNight` in endDay): +70 energy (x0.8 hungry), satiety −15 −4 per idle part, starving
+  = tonus −10, rent $70 on Sunday night. UI: day bar with parts and need bars, food/work/rest
+  box on home; the old day-long plan queue is gone (cleared on load). Tool `citytest`.
+  Old: a fighter trained or fought per day; `busyUntil` = first free day; recovery
   after a fight in days. `Career.events` (`plan`, 5 weeks ahead): per league fight nights
   and tournaments on fixed cycles (`SCHEDULE`), title bout every 10 days. Ours signs up in
   advance (`book`: tour fee paid then, single fight gets its opponent; `rebook`, `unbook`,

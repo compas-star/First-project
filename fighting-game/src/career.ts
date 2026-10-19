@@ -11,6 +11,7 @@ import { storyDay, storyAfterFight, type StoryState } from './story';
 import { gymDay, gymK, type GymId } from './gyms';
 import { DISCIPLINE_BY_ID } from './disciplines';
 import { rollTraits, ensureLife, dailyLife, trainK, lifeParams, moodAfterFight, type TraitId, type Incident } from './life';
+import { cityNight, needsK, fightToll } from './city';
 
 export type StatKey = 'bodySpeed' | 'strength' | 'mindSpeed' | 'skill' | 'evasion' | 'cardio';
 export type Stats = Record<StatKey, number>;
@@ -65,6 +66,13 @@ export interface CareerFighter {
   drills?: Record<string, number>;
   /** The manager's plan for each round of his next fights (PlanId or 'auto'). */
   gamePlan?: string[];
+  /** The city (city.ts): satiety and energy 0..100, parts of today spent, today's food boost,
+   *  the last day he trained. */
+  sat?: number;
+  energy?: number;
+  parts?: number;
+  boost?: number;
+  trainedDay?: number;
 }
 
 export interface Tier {
@@ -338,6 +346,10 @@ export function toParams(f: CareerFighter, team: 0 | 1, angry = false): FighterP
   p.strength *= tk;
   p.cardio = (p.cardio ?? 1) * tk;
   p.mindSpeed *= 1 + (tk - 1) * 0.5;
+  // Tired or hungry: shorter wind, a bit weaker (city.ts).
+  const nk = needsK(f);
+  p.cardio = (p.cardio ?? 1) * nk.cardio;
+  p.strength *= nk.power;
   if (f.craft) p.moves = craftMoves(f);
   if (f.gamePlan?.some((x) => x !== 'auto')) p.roundPlan = [...f.gamePlan];
   lifeParams(f, p);
@@ -354,7 +366,7 @@ export function tonusWord(f: CareerFighter): string {
   const t = tonusOf(f);
   return t >= 85 ? 'отличная' : t >= 65 ? 'хорошая' : t >= 45 ? 'средняя' : t >= 25 ? 'уходит' : 'заржавел';
 }
-const TONUS_GAIN: Record<Intensity['id'], number> = { light: 8, normal: 14, hard: 22 };
+export const TONUS_GAIN: Record<Intensity['id'], number> = { light: 8, normal: 14, hard: 22 };
 
 // ---------- Hands and legs (strike craft) and style ----------
 
@@ -428,9 +440,9 @@ export interface Intensity {
 }
 
 export const INTENSITY: Intensity[] = [
-  { id: 'light', name: 'Лёгкая', days: 1, cost: 10, k: 0.45, injury: 0 },
-  { id: 'normal', name: 'Обычная', days: 1, cost: 30, k: 1, injury: 0.02 },
-  { id: 'hard', name: 'Тяжёлая', days: 1, cost: 75, k: 2, injury: 0.1 },
+  { id: 'light', name: 'Лёгкая', days: 1, cost: 0, k: 0.45, injury: 0 },
+  { id: 'normal', name: 'Обычная', days: 1, cost: 0, k: 1, injury: 0.02 },
+  { id: 'hard', name: 'Тяжёлая', days: 1, cost: 0, k: 2, injury: 0.08 },
 ];
 
 /** What a session would add: small, and less the closer he is to his ceiling. */
@@ -563,12 +575,15 @@ export function waiting(c: Career): Ev | null {
 }
 
 /** Tokens to end the day now: one per started minute left. */
-export function dayCost(c: Career, now = Date.now()): number {
-  return Math.max(0, Math.ceil((c.dayAt + DAY_MS - now) / 60000));
+export function dayCost(_c: Career, _now = Date.now()): number {
+  // The city: the day ends when the player sends them to sleep, for free.
+  return 0;
 }
 
 /** Days that have run out in real time: they pass (while the game was closed too). */
 export function tick(c: Career, now = Date.now()): string[] {
+  // Days no longer pass by themselves (city.ts): only "Спать" ends one.
+  if (!(globalThis as { __realtimeDays?: boolean }).__realtimeDays) return [];
   const out: string[] = [];
   let n = 0;
   while (now - c.dayAt >= DAY_MS && !waiting(c) && !c.tour && n++ < 10) {
@@ -613,7 +628,10 @@ export function nextDay(c: Career, force = false): string | null {
 
 /** Midnight: the world's fights of the day, sessions finished, a new day planned. */
 function endDay(c: Career): string[] {
+  const today = c.day;
+  const night = cityNight(c);
   const out = worldDay(c, c.day);
+  out.push(...night);
   c.day++;
   const trained = new Set<CareerFighter>();
   for (const f of c.roster) {
@@ -650,18 +668,13 @@ function endDay(c: Career): string[] {
   }
   // A day without the gym: he goes soft (slower while getting over a fight).
   for (const f of c.roster) {
-    if (trained.has(f)) continue;
+    if (trained.has(f) || f.trainedDay === today) continue;
     const before = tonusOf(f);
     f.tonus = Math.max(0, before - (f.busyWhat && !f.session ? 3 : 6));
     if (before >= 45 && f.tonus < 45) out.push(`${short(f)} теряет форму: пора в зал`);
   }
   if (c.day - c.marketAt >= MARKET_DAYS) refreshMarket(c);
   plan(c);
-  // The new day's planned sessions begin.
-  for (const f of c.roster) {
-    const why = startQueued(c, f);
-    if (why) out.push(`${short(f)}: план тренировок встал (${why.toLowerCase()})`);
-  }
   out.push(...dailyLife(c));
   out.push(...gymDay(c));
   out.push(...storyDay(c));
@@ -837,6 +850,7 @@ export function afterFight(c: Career, f: CareerFighter, t: Tier, opp: CareerFigh
     f.stats[k] = Math.min(f.caps[k], f.stats[k] + Math.min(room, x * (0.3 + room)));
   };
   moodAfterFight(f, r.won, r.ko);
+  fightToll(f, tour);
   if (!title) out.push(...storyAfterFight(c, f, r.won));
   learn('skill', 0.012);
   learn('mindSpeed', 0.004);
@@ -1257,6 +1271,8 @@ export function load(): Career | null {
     c.gifts ??= [];
     ensureWorld(c);
     ensureLife(c);
+    // The city: plans of whole days in the gym are gone (a session is a part of a day now).
+    for (const f of c.roster) f.queue = [];
     // Single drilled strikes from before hands/legs: the best of each kind carries over.
     for (const f of c.roster) {
       if (!f.drills) continue;

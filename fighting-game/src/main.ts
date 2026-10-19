@@ -368,13 +368,30 @@ function stepCut(): void {
       box.className = `cutline ${l.who === null ? 'cap' : `team${l.who}`}${l.name === 'Михалыч' ? ' tape' : ''}`;
       (box.querySelector('b') as HTMLElement).textContent = l.who === null ? '' : l.name ?? sim.fighters[l.who].p.name;
       TV.talk = l.name === 'Михалыч';
+      // They mumble their lines; captions are silent.
+      if (l.who === null) sound.hush();
+      else {
+        const who = l.name ?? sim.fighters[l.who].p.name;
+        const next = cs.c.lines[li + 1];
+        sound.mumble(l.text, voiceOf(who, sim.fighters[l.who].p), who === 'Михалыч', (next ? next.at : cs.c.dur) - l.at - 0.3);
+      }
       (box.querySelector('span') as HTMLElement).textContent = l.text;
     }
   }
   if (t >= cs.c.dur) endCut();
 }
 
+/** Voice pitch by who speaks: the story's people have their own, the rest by size. */
+function voiceOf(name: string, p: FighterParams): number {
+  const known: Record<string, number> = { Михалыч: 118, Кирпич: 72, Гусь: 96, Шрам: 108, Тимоха: 178 };
+  for (const [k, v] of Object.entries(known)) if (name.includes(k)) return v;
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) | 0;
+  return 150 - 25 * ((p.height ?? 1.8) - 1.6) + ((h >>> 0) % 25) - 12;
+}
+
 function endCut(): void {
+  sound.hush();
   if (!cutState) return;
   const done = cutState.done;
   view.clearExtras();

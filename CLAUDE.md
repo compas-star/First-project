@@ -355,6 +355,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   `CutLine.name`); `Cut.hide` (a scene with one man), `Cut.extra` (a third man: a fighter of a
   side Sim shown via `view.addExtra(f, place)`, stepped in `stepCut`, cleared in `endCut`).
   Hooks: `CareerHooks.scene(spec, done)`, fight opts `scene` (film before the fight).
+  Mumble (user: they should mumble in cutscenes): `Sound.mumble(text, pitch, tape, maxDur)` —
+  a sawtooth syllable per ~2.6 letters through two vowel formants, pauses at punctuation,
+  rising on '?'; tape = TV speaker band + hiss; `hush()` on the next line / end. Played in
+  `stepCut` for every spoken line; `voiceOf` in main.ts: Кирпич 72 Hz, Гусь 96, Шрам 108,
+  Михалыч 118 (tape), Тимоха 178, others by height. Offline RMS ~0.01-0.014 over a line.
 - Ring ropes are one solid springy wall per side in physics (user: men got stuck between /
   behind thin rope colliders); plus a referee rescue if a pelvis spends >1.2 s outside them.
 - Gyms (`gyms.ts`, user: different gyms): `Career.gym`/`gymUntil`, weekly price (`gymDay` at

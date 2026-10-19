@@ -142,6 +142,92 @@ export class Sound {
     src.stop(t + decay + 0.05);
   }
 
+  /** The mumble now playing (cutscene speech), to cut it off when the next line starts. */
+  private talkGain: GainNode | null = null;
+
+  /**
+   * Speech as mumble (user: let them mumble in the cutscenes): a syllable per 2-3 letters,
+   * a buzzing voice at `pitch` through two vowel formants, pauses at spaces and stops.
+   * `tape` puts it through an old TV speaker (narrow band, wobble, hiss).
+   */
+  mumble(text: string, pitch: number, tape = false, maxDur = 6): void {
+    const ctx = this.ctx;
+    const offline = typeof OfflineAudioContext !== 'undefined' && ctx instanceof OfflineAudioContext;
+    if (!this.enabled || !ctx || (ctx.state !== 'running' && !offline)) return;
+    this.hush();
+    const t0 = ctx.currentTime + 0.02;
+    const out = ctx.createGain();
+    out.gain.value = tape ? 0.7 : 1;
+    let tail: AudioNode = out;
+    if (tape) {
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 380;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 2600;
+      out.connect(hp).connect(lp);
+      tail = lp;
+    }
+    tail.connect(this.master!);
+    this.talkGain = out;
+    // Vowel formants (Hz): а, о, у, э, и.
+    const VOW: [number, number][] = [[750, 1250], [500, 900], [350, 700], [550, 1750], [300, 2200]];
+    const SYL = 0.095;
+    let t = t0;
+    const words = text.split(/\s+/).filter(Boolean);
+    for (const w of words) {
+      const n = Math.max(1, Math.min(4, Math.round(w.replace(/[^а-яёa-z]/gi, '').length / 2.6)));
+      for (let i = 0; i < n && t - t0 < maxDur; i++) {
+        const dur = SYL * (0.75 + Math.random() * 0.6);
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        const f0 = pitch * (0.88 + Math.random() * 0.3) * (i === n - 1 && /[?]$/.test(w) ? 1.25 : 1);
+        o.frequency.setValueAtTime(f0, t);
+        o.frequency.linearRampToValueAtTime(f0 * (0.9 + Math.random() * 0.15), t + dur);
+        const v = VOW[Math.floor(Math.random() * VOW.length)];
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.1, t + 0.012);
+        g.gain.setValueAtTime(0.1, t + dur * 0.6);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        for (const [k, f] of v.entries()) {
+          const bp = ctx.createBiquadFilter();
+          bp.type = 'bandpass';
+          bp.frequency.value = f * (0.95 + Math.random() * 0.1);
+          bp.Q.value = 6;
+          const fg = ctx.createGain();
+          fg.gain.value = k ? 1.2 : 2.2;
+          o.connect(bp).connect(fg).connect(g);
+        }
+        g.connect(out);
+        o.start(t);
+        o.stop(t + dur + 0.02);
+        t += dur + 0.012;
+      }
+      t += /[.,!?…—:;]$/.test(w) ? 0.22 : 0.05;
+    }
+    if (tape) {
+      // Hiss of the tape under the voice.
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      const g = ctx.createGain();
+      g.gain.value = 0.012;
+      src.connect(g).connect(out);
+      src.start(t0, Math.random());
+      src.stop(Math.min(t, t0 + maxDur) + 0.2);
+    }
+  }
+
+  /** Cuts the mumble off (next line, the scene skipped). */
+  hush(): void {
+    if (!this.ctx || !this.talkGain) return;
+    this.talkGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.03);
+    const g = this.talkGain;
+    setTimeout(() => g.disconnect(), 400);
+    this.talkGain = null;
+  }
+
   /** A falling sine: the body of a thud. */
   private thump(ctx: AudioContext, from: number, to: number, gain: number, decay: number, at = 0): void {
     const t = ctx.currentTime + at;

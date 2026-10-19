@@ -411,6 +411,8 @@ export class Fighter {
   knockdowns = 0;
   /** Unconscious (knocked out or the fight stopped). */
   out = false;
+  /** Seconds spent outside the ring ropes on the apron. */
+  apronT = 0;
   /** A blow heavy enough to drop him without putting him out. */
   flash = false;
   /** A liver shot lands now and folds him a moment later, at this world time. */
@@ -1438,14 +1440,14 @@ export class Sim {
   }
 
   /** Puts a fighter who fell out of the ring back on the canvas near the middle, lying down. */
-  private backInside(f: Fighter): void {
+  private backInside(f: Fighter, down = true): void {
     const p = f.rag.pelvis.body.translation();
     const inward = { x: 0, z: 0 };
     room(this.map, p.x, p.z, inward);
-    const to = new THREE.Vector3(p.x, 0, p.z).multiplyScalar(0.35);
+    const to = new THREE.Vector3(p.x, 0, p.z).multiplyScalar(down ? 0.35 : 0.7);
     const dx = to.x - p.x;
     const dz = to.z - p.z;
-    const dy = this.map.floorY + 0.25 - p.y;
+    const dy = down ? this.map.floorY + 0.25 - p.y : 0.05;
     for (const part of f.rag.parts) {
       const t = part.body.translation();
       part.body.setTranslation({ x: t.x + dx, y: t.y + dy, z: t.z + dz }, true);
@@ -1453,7 +1455,8 @@ export class Sim {
       part.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     }
     f.pos.set(to.x, 0, to.z);
-    if (f.state === 'ok') this.knockDown(f, 'вылетел за канаты');
+    if (f.state === 'ok' && down) this.knockDown(f, 'вылетел за канаты');
+    if (!down) resetFeet(f);
     f.say('рефери возвращает на ринг');
   }
 
@@ -2015,6 +2018,16 @@ export class Sim {
     if (fellOut && this.rules.roundLen && !f.out) {
       this.backInside(f);
       return;
+    }
+    // Caught behind the ropes on the apron (or tangled in them): the referee pulls him back in.
+    if (this.map.edge === 'ropes' && !f.out && !this.grapple && p.y > this.map.floorY - 0.7) {
+      const r = room(this.map, p.x, p.z, { x: 0, z: 0 });
+      f.apronT = r < -0.05 ? f.apronT + h : 0;
+      if (f.apronT > 1.2) {
+        f.apronT = 0;
+        this.backInside(f, false);
+        return;
+      }
     }
     if ((p.y < -2 || fellOut) && !f.out) {
       f.out = true;

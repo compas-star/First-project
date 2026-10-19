@@ -23,8 +23,9 @@ import { pendingChapter, storyChoose, storyCheck, storyFightDone } from './story
 import { GYMS, gymOf, gymOpen, moveGym, type GymId } from './gyms';
 import {
   PARTS, JOBS, FOODS, TRAIN_ENERGY, MIN_TRAIN_ENERGY, HUNGRY, RENT, satOf, energyOf, partOf, partsLeft, cannot, jobClosed,
-  trainNow, work, eat, rest, sessionGain, sessionCraft, needWord, DOW,
+  trainNow, work, eat, rest, sessionGain, sessionCraft, needWord, DOW, treat, treatCost, beer,
 } from './city';
+import { mapSvg, PLACE_BY_ID, type PlaceId } from './cityMap';
 
 export interface CareerHooks {
   /** Show this fight in the arena; `done` gets the result when it is over. */
@@ -38,7 +39,7 @@ export interface CareerHooks {
   close(): void;
 }
 
-type Screen = 'save' | 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
+type Screen = 'place' | 'save' | 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -60,6 +61,9 @@ export class CareerUi {
   private asking: { text: string; run: () => void } | null = null;
   /** The fighter shown on the profile screen. */
   private profileId = '';
+  /** The place on the map open now, and the last one visited (marked on the map). */
+  private placeId: PlaceId = 'flat';
+  private visited: PlaceId | null = null;
   /** What happened in the last fight (result screen). */
   private outcome: { won: boolean; title: string; lines: string[] } | null = null;
 
@@ -157,6 +161,7 @@ export class CareerUi {
       : this.screen === 'team' ? this.team()
       : this.screen === 'market' ? this.market()
       : this.screen === 'save' ? this.saveView()
+      : this.screen === 'place' ? this.place()
       : this.logView();
     const ask = this.asking
       ? `<div class="askbox"><div>${esc(this.asking.text)}</div><div class="row"><button type="button" class="primary" data-act="yes">Да</button><button type="button" data-act="no">Нет</button></div></div>`
@@ -185,12 +190,8 @@ export class CareerUi {
         </div>`;
     const tour = this.tourBanner();
     return `${help}${this.dayBar()}${this.storyCard()}${this.incidents()}${tour}${this.today()}
-      ${this.city(f)}
-      ${this.hero(f)}
-      <div class="big2">
-        <button type="button" class="bigbtn" data-act="to" data-s="gym"><b>Тренировать</b><span>${cannot(c, f, 1, MIN_TRAIN_ENERGY) ?? 'часть дня'}</span></button>
-        <button type="button" class="bigbtn primary" data-act="to" data-s="cal"><b>Календарь</b><span>бои, турниры, пояс</span></button>
-      </div>
+      <div class="mapbox">${this.cityMap()}<div class="fnote">Тапни здание: тренировка, работа, еда, бои. Каждое дело занимает часть дня.</div></div>
+      ${this.hero(f, true)}
       <div class="nav4">
         <button type="button" data-act="to" data-s="rank">Рейтинг</button>
         <button type="button" data-act="to" data-s="team">Команда <b>${c.roster.length}/${MAX_ROSTER}</b></button>
@@ -245,23 +246,73 @@ export class CareerUi {
     </div>`;
   }
 
-  /** Food, work and rest for the picked fighter: what the parts of the day go on besides the gym. */
-  private city(f: CareerFighter): string {
+  /** The district with badges for what is on today. */
+  private cityMap(): string {
     const c = this.c;
-    const foods = FOODS.map((x) => `<button type="button" class="ibtn" data-act="eat" data-f="${x.id}" ${c.money < x.price ? 'disabled' : ''}>
-      <b>${x.name}</b><span class="gain">+${x.sat}</span><span>$${x.price}</span><small>${x.note}</small></button>`).join('');
-    const jobs = JOBS.map((j) => {
+    const f = this.me();
+    const b: Partial<Record<PlaceId, string>> = {};
+    if (c.roster.some((x) => bookedOn(c, x, c.day)) || c.tour) b.arena = 'БОЙ';
+    if (!jobClosed(c, f, JOBS[0])) b.site = '$';
+    if (!jobClosed(c, f, JOBS[1])) b.market = '$';
+    if (DOW(c.day) === 4 || DOW(c.day) === 5) b.bar = '$';
+    if (treatCost(c, f)) b.hospital = '+';
+    if (!partsLeft(c, f)) b.flat = 'Zz';
+    return mapSvg(b, this.visited, true);
+  }
+
+  /** One place on the map: what can be done there. */
+  private place(): string {
+    const c = this.c;
+    const f = this.me();
+    const p = PLACE_BY_ID[this.placeId];
+    const food = (ids: string[]) => `<div class="h2">Еда</div><div class="ibtns">${FOODS.filter((x) => ids.includes(x.id)).map((x) => `<button type="button" class="ibtn" data-act="eat" data-f="${x.id}" ${c.money < x.price ? 'disabled' : ''}>
+      <b>${x.name}</b><span class="gain">+${x.sat}</span><span>$${x.price}</span><small>${x.note}</small></button>`).join('')}</div>`;
+    const job = (id: string) => {
+      const j = JOBS.find((x) => x.id === id)!;
       const why = jobClosed(c, f, j);
-      return `<button type="button" class="ibtn" data-act="work" data-j="${j.id}" ${why ? 'disabled' : ''}>
-        <b>${j.name}</b><span class="gain">+$${j.pay}</span><span>${j.parts === 2 ? '2 части' : '1 часть'} · −${j.e}⚡</span><small>${why ?? j.desc}</small></button>`;
-    }).join('');
-    const restNo = partsLeft(c, f) < 1 ? 'день кончился' : '';
-    return `<div class="qbox city">
-      <div class="h2">Еда</div><div class="ibtns">${foods}</div>
-      <div class="h2">Подработка</div><div class="ibtns">${jobs}</div>
-      <button type="button" data-act="rest" ${restNo ? 'disabled' : ''}>😌 Отдохнуть · 1 часть · +15⚡, настроение${restNo ? ` · ${restNo}` : ''}</button>
-      ${DOW(c.day) === 6 ? `<div class="fnote">Сегодня ночью квартплата: $${RENT}.</div>` : ''}
-    </div>`;
+      return `<div class="h2">Работа</div><div class="ibtns"><button type="button" class="ibtn wide" data-act="work" data-j="${j.id}" ${why ? 'disabled' : ''}>
+        <b>${j.name}</b><span class="gain">+$${j.pay}</span><span>${j.parts === 2 ? '2 части дня' : '1 часть дня'} · −${j.e}⚡</span><small>${why ?? j.desc}</small></button></div>`;
+    };
+    const restBtn = (label: string) => `<button type="button" data-act="rest" ${partsLeft(c, f) ? '' : 'disabled'}>${label}</button>`;
+    let body = '';
+    switch (p.id) {
+      case 'flat':
+        body = `${food(['cheap'])}
+          <div class="h2">Отдых</div>${restBtn('😌 Отдохнуть · 1 часть · +15⚡, настроение')}
+          <button type="button" data-act="to" data-s="gym" ${gymOf(c).id === 'basement' ? '' : 'disabled'}>🥊 Спуститься в подвал${gymOf(c).id === 'basement' ? ' · тренировка' : ' · команда ходит в другой зал'}</button>
+          ${DOW(c.day) === 6 ? `<div class="fnote">Сегодня ночью квартплата: $${RENT}.</div>` : `<div class="fnote">Квартплата $${RENT} — в ночь с воскресенья на понедельник.</div>`}`;
+        break;
+      case 'cafe':
+        body = food(['cafe', 'sport']);
+        break;
+      case 'market':
+        body = job('market') + food(['cheap']);
+        break;
+      case 'site':
+        body = job('site');
+        break;
+      case 'bar':
+        body = `${job('bouncer')}<div class="h2">Посидеть</div><button type="button" data-act="beer" ${partsLeft(c, f) && c.money >= 8 ? '' : 'disabled'}>🍺 Пиво с мужиками · 1 часть · $8 · настроение +10</button>`;
+        break;
+      case 'hospital': {
+        const cost = treatCost(c, f);
+        body = cost
+          ? `<button type="button" class="primary" data-act="treat" ${c.money >= cost ? '' : 'disabled'}>💊 Лечиться · $${cost} · вдвое быстрее</button>`
+          : `<div class="fnote">${short(f)} здоров${f.treated ? ' (уже лечится)' : ''}. Сюда — после тяжёлого боя или травмы.</div>`;
+        break;
+      }
+      case 'arena':
+        body = `${this.today()}<button type="button" class="primary" data-act="to" data-s="cal">📅 Календарь боёв</button><button type="button" data-act="to" data-s="rank">🏆 Рейтинг</button>`;
+        break;
+      case 'gyms':
+        body = `<div class="fnote">Команда сейчас ходит в «${esc(gymOf(c).name)}».</div>
+          <button type="button" class="primary" data-act="gymgo" data-t="stats" ${gymOf(c).id === 'basement' ? 'disabled' : ''}>🥊 Тренироваться${gymOf(c).id === 'basement' ? ' · сначала выбери зал' : ''}</button>
+          <button type="button" data-act="gymgo" data-t="halls">Выбрать зал</button>`;
+        break;
+      default:
+        body = '<div class="fnote">Скоро: подпольные бои, следующий шаг.</div>';
+    }
+    return `<div class="h1">${p.icon} ${esc(p.name)}</div><div class="fnote">${esc(p.desc)}</div>${this.dayBar()}${this.status(f)}<div class="qbox city">${body}</div>`;
   }
 
   /** Our fights today, and the next ones booked. */
@@ -917,6 +968,17 @@ export class CareerUi {
       }
       case 'rest':
         return say(rest(c, me).text);
+      case 'beer':
+        return say(beer(c, me).text);
+      case 'treat':
+        return say(treat(c, me).text);
+      case 'place':
+        this.placeId = b.dataset.p as PlaceId;
+        this.visited = this.placeId;
+        return this.go('place');
+      case 'gymgo':
+        this.gymTab = b.dataset.t as 'stats' | 'halls';
+        return this.go('gym');
       case 'gymtab':
         this.gymTab = b.dataset.t as 'stats' | 'moves' | 'style' | 'halls';
         return say(null);

@@ -231,3 +231,33 @@ export function needsK(f: CareerFighter): { cardio: number; power: number } {
 
 export const needWord = (v: number) => (v >= 70 ? 'good' : v >= HUNGRY ? 'mid' : 'low');
 export { moodOf };
+
+// ---------- Places in town ----------
+
+/** Hospital: pay per day left and the recovery takes half as long. */
+export function treatCost(c: Career, f: CareerFighter): number {
+  return busy(c, f) && !f.treated ? 40 * (f.busyUntil - c.day) : 0;
+}
+
+export function treat(c: Career, f: CareerFighter): { ok: boolean; text: string } {
+  const cost = treatCost(c, f);
+  if (!cost) return { ok: false, text: f.treated ? 'уже лечат' : 'лечить нечего' };
+  if (c.money < cost) return { ok: false, text: 'не хватает денег' };
+  c.money -= cost;
+  const left = f.busyUntil - c.day;
+  f.busyUntil = c.day + Math.ceil(left / 2);
+  f.treated = true;
+  save(c);
+  return { ok: true, text: `Врачи взялись: в строю через ${f.busyUntil - c.day || 'один'} дн.` };
+}
+
+/** A beer in the bar: the evening goes, the mood comes back. */
+export function beer(c: Career, f: CareerFighter): { ok: boolean; text: string } {
+  if (partsLeft(c, f) < 1) return { ok: false, text: 'день кончился — спать' };
+  if (c.money < 8) return { ok: false, text: 'не хватает денег' };
+  c.money -= 8;
+  spend(f, 1, -5, -5);
+  addMood(f, 10);
+  save(c);
+  return { ok: true, text: 'Пиво с мужиками: настроение лучше' };
+}

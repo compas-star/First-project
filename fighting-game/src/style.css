@@ -2240,3 +2240,36 @@ body.cutting #btnRec {
 #career .qbox.city .ibtns {
   margin-bottom: 8px;
 }
+/* The district map (cityMap.ts). */
+#career .mapbox {
+  margin: 8px 0;
+}
+#career .citymap {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 3px solid var(--ink);
+  box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.55);
+  image-rendering: pixelated;
+}
+#career .citymap .place {
+  cursor: pointer;
+}
+#career .citymap .place:active .wall,
+#career .citymap .place.here .wall {
+  stroke: #fff;
+}
+#career .citymap .msign {
+  font: 400 7px var(--px);
+}
+#career .citymap .mtiny {
+  font: 400 5px var(--px);
+  fill: #f2c14e;
+}
+#career .citymap .mbadge {
+  font: 400 8px var(--px);
+  fill: #1a1420;
+}
+#career .ibtn.wide {
+  grid-column: 1 / -1;
+}

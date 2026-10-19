@@ -73,6 +73,8 @@ export interface CareerFighter {
   parts?: number;
   boost?: number;
   trainedDay?: number;
+  /** The hospital took this recovery (pays once per injury). */
+  treated?: boolean;
 }
 
 export interface Tier {
@@ -663,6 +665,7 @@ function endDay(c: Career): string[] {
       } else f.busyWhat = '';
     } else if (!f.session && f.busyWhat && f.busyUntil <= c.day) {
       out.push(`${short(f)} восстановился`);
+      f.treated = false;
       f.busyWhat = '';
     }
   }
@@ -859,6 +862,7 @@ export function afterFight(c: Career, f: CareerFighter, t: Tier, opp: CareerFigh
   f.busyFrom = c.day;
   f.busyUntil = c.day + 1 + days;
   f.busyWhat = r.broken ? 'лечит перелом' : 'восстанавливается после боя';
+  f.treated = false;
   out.push(days ? `Восстановление: ${days} дн., в строю с ${dayName(f.busyUntil)}` : 'Цел, завтра снова в строю');
   c.log.unshift(...out.map((s) => `${short(f)}: ${s}`));
   c.log.length = Math.min(c.log.length, 30);

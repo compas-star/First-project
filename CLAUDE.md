@@ -157,6 +157,14 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   (`cityNight` in endDay): +70 energy (x0.8 hungry), satiety −15 −4 per idle part, starving
   = tonus −10, rent $70 on Sunday night. UI: day bar with parts and need bars, food/work/rest
   box on home; the old day-long plan queue is gone (cleared on load). Tool `citytest`.
+  District map (`cityMap.ts`): the home screen is an SVG night street (`mapSvg`, 360x420,
+  crispEdges), each building a `data-act="place"` group with its own face (arena lights,
+  cafe awning, market stalls, site scaffold + crane, alley bricks + fire barrel...) and
+  badges (БОЙ, $, +, Zz). Tap = screen 'place' (`CareerUi.place()`): Дом (доширак, rest,
+  down to the basement gym), Пельменная (cafe, sports food), Рынок/Стройка (jobs), «Подкова»
+  (bouncer, beer $8), Больница (`treat`: $40 per day left, recovery halved, once per injury),
+  Арена (fights today, calendar, rankings), Спортквартал (gym / choose a gym); Подворотня
+  and Крыши wait for underground fights.
   Old: a fighter trained or fought per day; `busyUntil` = first free day; recovery
   after a fight in days. `Career.events` (`plan`, 5 weeks ahead): per league fight nights
   and tournaments on fixed cycles (`SCHEDULE`), title bout every 10 days. Ours signs up in

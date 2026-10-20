@@ -8,7 +8,7 @@ import type { Rules } from './sim';
 import type { SkinId } from './skins';
 import { MOVES } from './moves';
 import { storyDay, storyAfterFight, type StoryState } from './story';
-import { gymDay, gymK, type GymId } from './gyms';
+import { gymDay, gymK, gymCap, type GymId } from './gyms';
 import { DISCIPLINE_BY_ID } from './disciplines';
 import { rollTraits, ensureLife, dailyLife, trainK, lifeParams, moodAfterFight, type TraitId, type Incident } from './life';
 import { cityNight, needsK, fightToll } from './city';
@@ -76,6 +76,8 @@ export interface CareerFighter {
   parts?: number;
   boost?: number;
   trainedDay?: number;
+  /** Day each quality was last worked (training, or a fight); unworked ones fade. */
+  worked?: Partial<Record<StatKey, number>>;
   /** The hospital took this recovery (pays once per injury). */
   treated?: boolean;
 }
@@ -459,8 +461,20 @@ export const INTENSITY: Intensity[] = [
 /** What a session would add: small, and less the closer he is to his ceiling. */
 export function gainOf(f: CareerFighter, k: StatKey, it: Intensity, c?: Career): number {
   const info = STAT_INFO[k];
-  const room = (f.caps[k] - f.stats[k]) / Math.max(0.05, f.caps[k] - info.lo);
+  // The gym's equipment stops him short of his talent (user: better gyms to grow further).
+  const top = gymCap(c, f, k);
+  const room = (top - f.stats[k]) / Math.max(0.05, f.caps[k] - info.lo);
   return Math.max(0, info.base * it.k * trainK(f) * gymK(c, k) * Math.min(1, 0.15 + 1.6 * room) * (room > 0 ? 1 : 0));
+}
+
+/** Days a quality may go unworked before it fades, and how much it fades a day (of his range). */
+export const FADE_AFTER = 4;
+export const FADE = 0.003;
+
+/** He worked these qualities today (a session, a fight = all of them). */
+export function worked(f: CareerFighter, day: number, keys: StatKey[] = STAT_KEYS): void {
+  f.worked ??= {};
+  for (const k of keys) f.worked[k] = day;
 }
 
 /** Busy today (training, getting over a fight); `busyUntil` is the first day he is free. */
@@ -678,6 +692,23 @@ function endDay(c: Career): string[] {
       f.busyWhat = '';
     }
   }
+  // Qualities not worked for a few days fade (user: stats should drop without training), down
+  // to 15% of the way to his talent; a fight or any session on it keeps it.
+  for (const f of c.roster) {
+    const w = (f.worked ??= {});
+    const lost: string[] = [];
+    for (const k of STAT_KEYS) {
+      w[k] ??= today;
+      const idle = today - w[k]!;
+      if (idle < FADE_AFTER) continue;
+      const info = STAT_INFO[k];
+      const floor = info.lo + 0.15 * (f.caps[k] - info.lo);
+      if (f.stats[k] <= floor) continue;
+      f.stats[k] = Math.max(floor, f.stats[k] - FADE * (f.caps[k] - info.lo));
+      if (idle === FADE_AFTER) lost.push(STAT_INFO[k].name.toLowerCase());
+    }
+    if (lost.length) out.push(`${short(f)}: без тренировок уходит ${lost.join(', ')}`);
+  }
   // A day without the gym: he goes soft (slower while getting over a fight).
   for (const f of c.roster) {
     if (trained.has(f) || f.trainedDay === today) continue;
@@ -867,7 +898,7 @@ export function afterFight(c: Career, f: CareerFighter, t: Tier, opp: CareerFigh
     f.stats[k] = Math.min(f.caps[k], f.stats[k] + Math.min(room, x * (0.3 + room)));
   };
   moodAfterFight(f, r.won, r.ko);
-  fightToll(f, tour);
+  fightToll(f, tour, c.day);
   if (!title) out.push(...storyAfterFight(c, f, r.won));
   learn('skill', 0.012);
   learn('mindSpeed', 0.004);

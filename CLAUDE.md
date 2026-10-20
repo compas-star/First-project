@@ -466,6 +466,14 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
 - Fights without rounds stop at `NO_ROUND_LIMIT` 120 s of fight time (twice a career round):
   `timeUp` = decision on damage dealt (user: endless fights took too long). Roof fights in
   act 1: 3 rounds, $120 (`ROOF_PAY`), $20 for a loss (user: $300 for a minute was too much).
+- Training rework (user: stats should fade without training; better gyms to grow further):
+  `Gym.level` = equipment, how far toward his talent a man can be trained there (basement 0.6,
+  «Перчатка»/«Сиам» 0.75, power/mind 0.8, «Железный кулак» 0.85, «Олимп» 1); `gymCap` caps
+  `gainOf` and `trainNow` ("тренажёры не тянут — нужен зал получше"). `CareerFighter.worked`
+  = day each quality was last worked (a session works it and its pair: speed+cardio,
+  evasion+reaction; a fight works all, via `fightToll(f, tour, day)`); after `FADE_AFTER` 4
+  idle days it loses `FADE` 0.003 of its range a day, down to 15% of the way to talent
+  (midnight in `endDay`). The apparatus sheet shows the gym's ceiling and idle days.
 - Forced fights (user: story must not be skippable): `forcedNow` (cup ambush, act 1 's4h',
   act 2 cards with `forced`) replaces every career screen with the card (no nav, no sheet)
   and 'nextday' refuses until it is fought.

@@ -3,7 +3,7 @@
 // their own screens with a way back. Before a fight you see who you meet; after it,
 // what you got.
 import {
-  STAT_KEYS, STAT_INFO, INTENSITY, TIERS, TIER_BY_ID, MAX_ROSTER,
+  STAT_KEYS, STAT_INFO, FADE_AFTER, INTENSITY, TIERS, TIER_BY_ID, MAX_ROSTER,
   load, save, reset, newCareer, tick, busy, refreshMarket, buy, sell,
   rating, talentWord, value, opponent, toParams, afterFight, tourFight, roundName, roundTier, short, odds,
   person, current, myMatch, settle, settleOthers, finished, closeTour,
@@ -20,7 +20,7 @@ import type { FighterParams } from './config';
 import { exportSave, importSave } from './saveCode';
 import { cloudFlush, cloudRestore, cloudAt, cloudState } from './cloud';
 import { pendingChapter, storyChoose, storyCheck, storyFightDone } from './story';
-import { GYMS, gymOf, gymOpen, moveGym, type GymId } from './gyms';
+import { GYMS, gymOf, gymOpen, moveGym, gymCap, type GymId } from './gyms';
 import {
   PARTS, JOBS, FOODS, TRAIN_ENERGY, MIN_TRAIN_ENERGY, HUNGRY, RENT, satOf, energyOf, partOf, partsLeft, cannot, jobClosed,
   trainNow, work, eat, rest, sessionGain, sessionCraft, needWord, DOW, treat, treatCost, beer, fightToll,
@@ -354,7 +354,13 @@ export class CareerUi {
         return `<button type="button" class="ibtn" data-act="atrain" data-it="${it.id}" ${no ? 'disabled' : ''}><b>${it.name}</b><span class="gain">${g}</span><span>1 часть · −${TRAIN_ENERGY[it.id]}⚡</span><small>${no ?? (it.injury ? `травма ${Math.round(it.injury * 100)}%` : 'без риска')}</small></button>`;
       }).join('');
       const lost = act(c)?.flags.lost ? '<div class="fnote">Подвал закрыт — тренируешься во дворе, на 20% хуже.</div>' : '';
-      return `${head(ap.name)}${lost}${tabs}<div class="fmeta">${opt.name} сейчас: <b>${cur}</b>${satOf(f) < HUNGRY ? ' · <b>голодный — вполсилы</b>' : ''}</div><div class="ibtns">${its}</div>`;
+      const k = opt.k as StatKey;
+      const capNote = opt.craft ? '' : f.stats[k] >= gymCap(c, f, k) - 1e-3
+        ? `<div class="pill red">Здешние тренажёры больше не дают роста: ${fmtStat(k, gymCap(c, f, k))}. Нужен зал получше (Город → Спортквартал)</div>`
+        : `<div class="fnote">Потолок этого зала: ${fmtStat(k, gymCap(c, f, k))}</div>`;
+      const idle = c.day - (f.worked?.[k] ?? c.day);
+      const fade = !opt.craft && idle >= FADE_AFTER - 1 ? `<div class="fnote">Не тренировал ${idle} дн.${idle >= FADE_AFTER ? ' — уже уходит' : ' — завтра начнёт уходить'}</div>` : '';
+      return `${head(ap.name)}${lost}${tabs}<div class="fmeta">${opt.name} сейчас: <b>${cur}</b>${satOf(f) < HUNGRY ? ' · <b>голодный — вполсилы</b>' : ''}</div>${capNote}${fade}<div class="ibtns">${its}</div>`;
     }
     switch (o) {
       case 'bed':
@@ -640,9 +646,10 @@ export class CareerUi {
       return `<div class="hero"><div class="fname">${esc(g.name)}${mine ? ' <span class="pill green">вы здесь</span>' : ''}</div>
         <div class="fnote">${esc(g.desc)}</div>
         <div class="fmeta"><b>${bonus}</b> · ${g.price ? `$${g.price}/неделю` : 'бесплатно'}</div>
+        <div class="fmeta">Тренажёры: до <b>${Math.round(g.level * 100)}%</b> таланта</div>
         ${mine ? (c.gymUntil && g.price ? `<div class="fnote">Оплачено до ${dayName(c.gymUntil)}</div>` : '') : `<button type="button" data-act="gymmove" data-g="${g.id}" ${why || c.money < g.price ? 'disabled' : ''}>Перейти${why ? ` · ${why}` : c.money < g.price ? ' · мало денег' : ''}</button>`}</div>`;
     }).join('');
-    return `<div class="fnote">Вся команда тренируется в одном зале. Бонус зала умножает прирост от тренировок. Плата списывается раз в неделю; нет денег — команда вернётся в подвал.</div>${rows}`;
+    return `<div class="fnote">Вся команда тренируется в одном зале. Тренажёры зала решают, до какого уровня можно дорасти (процент от таланта); бонус умножает прирост. Качество, которое не тренировали ${FADE_AFTER} дня, понемногу уходит. Плата раз в неделю; нет денег — команда вернётся в подвал.</div>${rows}`;
   }
 
   private styleTab(f: CareerFighter): string {
@@ -1443,7 +1450,7 @@ export class CareerUi {
           $('career').hidden = true;
           clearInterval(this.timer);
           this.hooks.fight(f, opp, tier, title, (res) => {
-            fightToll(f, true);
+            fightToll(f, true, c.day);
             const lines = cupFought(c, f, m, res.won);
             this.outcome = { won: res.won, title, lines };
             this.screen = 'result';

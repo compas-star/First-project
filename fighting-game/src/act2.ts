@@ -675,7 +675,7 @@ export function act2Choose(c: Career, opt: string): { lines: string[]; fight?: A
 
 export function act2FightDone(c: Career, f: CareerFighter, fight: A1Fight, r: FightResult): { lines: string[]; scene?: SceneSpec } {
   const a = act2(c)!;
-  fightToll(f);
+  fightToll(f, false, c.day);
   const res = fight.after(c, f, r);
   if (a.pending && a.pending !== 'end' && a.done.includes(a.pending)) a.pending = null;
   if (!a.pending) act2Check(c);

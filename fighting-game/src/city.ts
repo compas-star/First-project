@@ -4,10 +4,10 @@
 // energy (sleep and rest give it back). Numbers balanced with tools/econ.ts.
 import {
   type Career, type CareerFighter, type StatKey, type Intensity, type Craft,
-  busy, bookedOn, gainOf, craftGain, save, short, STAT_INFO, CRAFT_NAME, CRAFT_TIERS, TIER_OPEN, moveName, tonusOf, TONUS_GAIN,
+  busy, bookedOn, gainOf, craftGain, save, short, worked, STAT_INFO, CRAFT_NAME, CRAFT_TIERS, TIER_OPEN, moveName, tonusOf, TONUS_GAIN,
 } from './career';
 import { addMood, moodOf } from './life';
-import { gymK } from './gyms';
+import { gymK, gymCap } from './gyms';
 
 export const PARTS = ['утро', 'день', 'вечер', 'ночь'];
 export const DOW = (day: number) => (day - 1) % 7; // 0 = Monday
@@ -52,6 +52,8 @@ export function cannot(c: Career, f: CareerFighter, parts: number, e: number): s
 }
 
 /** One session in the gym, right now: the gain lands at once. Returns a line or an error. */
+const PAIR: Partial<Record<StatKey, StatKey>> = { bodySpeed: 'cardio', cardio: 'bodySpeed', evasion: 'mindSpeed', mindSpeed: 'evasion' };
+
 export function trainNow(c: Career, f: CareerFighter, k: StatKey, it: Intensity, move?: Craft): { ok: boolean; text: string } {
   const e = TRAIN_ENERGY[it.id];
   const why = cannot(c, f, 1, Math.max(e, MIN_TRAIN_ENERGY));
@@ -67,14 +69,18 @@ export function trainNow(c: Career, f: CareerFighter, k: StatKey, it: Intensity,
     if (opened > 0) text += `. Новые удары: ${CRAFT_TIERS[move][opened].map(moveName).join(', ')}`;
   } else {
     const before = f.stats[k];
-    f.stats[k] = Math.min(f.caps[k], before + sessionGain(f, k, it, c) * luck);
+    f.stats[k] = Math.min(f.caps[k], Math.max(before, Math.min(gymCap(c, f, k), before + sessionGain(f, k, it, c) * luck)));
     const d = f.stats[k] - before;
     const shown = k === 'skill' || k === 'evasion' ? `${(d * 100).toFixed(1)}%` : `×${d.toFixed(3)}`;
-    text = `${STAT_INFO[k].name} +${shown}${d < 1e-4 ? ' (потолок, но тонус держит)' : ''}`;
+    const why = before >= f.caps[k] - 1e-3 ? 'потолок таланта' : 'тренажёры не тянут — нужен зал получше';
+    text = `${STAT_INFO[k].name} +${shown}${d < 1e-4 ? ` (${why}; форму держит)` : ''}`;
   }
   if (satOf(f) < HUNGRY) text += ' — голодный, вполсилы';
   f.tonus = Math.min(100, tonusOf(f) + TONUS_GAIN[it.id] * 0.6 * gymK(c, 'tonus'));
   f.trainedDay = c.day;
+  // A session keeps its quality and its pair from fading (the rope: speed and wind; the
+  // pendulum: evasion and reaction); hands/legs drills work strength (bag, tyres).
+  worked(f, c.day, [k, ...(PAIR[k] ? [PAIR[k]!] : [])]);
   spend(f, 1, e, TRAIN_SAT[it.id]);
   if (Math.random() < it.injury) {
     f.busyFrom = c.day;
@@ -220,7 +226,8 @@ export function cityNight(c: Career): string[] {
 }
 
 /** Spends the fight's toll (energy, food) and the rest of his day. */
-export function fightToll(f: CareerFighter, tour = false): void {
+export function fightToll(f: CareerFighter, tour = false, day?: number): void {
+  if (day !== undefined) worked(f, day);
   f.energy = Math.max(0, energyOf(f) - (tour ? 25 : 40));
   f.sat = Math.max(0, satOf(f) - (tour ? 12 : 20));
   f.parts = 3;

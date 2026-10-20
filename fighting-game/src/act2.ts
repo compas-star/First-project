@@ -45,9 +45,10 @@ export const inSewer = (c: Career) => !!c.act2?.flags.sewer;
 export function ensureAct2(c: Career): string[] {
   const a1 = c.act1;
   if (c.act2 || !a1?.ending || !a1.done.includes('end')) return [];
+  // The district comes after the cup of «Подкова» is won (user: you must win it to move on).
+  if (ladder(c).stage < 2) return [];
   if (a1.flags.callDue && !a1.flags.called) return [];
   c.act2 = { start: c.day, done: [], seen: [], pending: null, flags: {}, tourDay: c.day + 23, bet: 0 };
-  ladder(c).open = true;
   save(c);
   return ['🎬 Начинается акт 2: «Район»'];
 }

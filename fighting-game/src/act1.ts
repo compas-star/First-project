@@ -4,7 +4,7 @@
 // scene played on the engine first (storyCut), then the manager's choice. Three endings:
 // the basement is ours, lost, or sold to Шрам.
 import {
-  makeFighter, short, save, toParams, classOf, MAX_ROSTER,
+  makeFighter, short, save, toParams, classOf, MAX_ROSTER, dayName,
   type Career, type CareerFighter, type FightResult, type Tier,
 } from './career';
 import { addMood } from './life';
@@ -12,7 +12,7 @@ import { story, main, heavy, npc, place, levelOf } from './story';
 import { MAP_BY_ID } from './maps';
 import { TV } from './arena';
 import { partsLeft, fightToll } from './city';
-import { ladder } from './clubs';
+import { ladder, cup } from './clubs';
 import type { SceneSpec, SceneLine } from './cutscenes';
 import type { FighterParams } from './config';
 
@@ -41,7 +41,6 @@ const DEBT = 1500;
 const ROOF_PAY = 120;
 /** Days between two scenes of the act (forced ones excepted). */
 export const SCENE_GAP = 2;
-const CUP_TIP = 'Гусь: «Хочешь денег — по субботам турнир в подвале «Подковы». Записывайся на арене. Только подготовься как следует»';
 
 export const act = (c: Career): Act1 | null => c.act1 ?? null;
 /** The act's own day number (1..20). */
@@ -51,7 +50,9 @@ const did = (a: Act1, id: string) => a.done.includes(id);
 /** Begins the act for a career that has not had it (a new one, or an old save). */
 export function ensureAct1(c: Career): void {
   if (c.act1) {
-    if (c.act1.done.includes('s2') || c.act1.ending) ladder(c).open = true;
+    if (c.act1.done.includes('c1') || c.act1.ending) ladder(c).open = true;
+    // Saves from before the cup card: the cup was opened by Гусь's tip.
+    if (ladder(c).open && !c.act1.done.includes('c1')) c.act1.done.push('c1');
     return;
   }
   const s = story(c);
@@ -443,8 +444,7 @@ function kirpichFight(c: Career, a: Act1, f: CareerFighter): A1Fight {
       a.debt += 300;
       a.flags.kirpichHome = 0;
       out(c2, f2, 2, 'отходит после драки с Кирпичом');
-      ladder(c2).open = true;
-      return { lines: [`Кирпич оказался сильнее. Гусь: «Будешь должен больше: $${a.debt}. В субботу турнир в подвале «Подковы» — запишись. Только подготовься как следует»`, `${short(f2)} 2 дня лечится`] };
+      return { lines: [`Кирпич оказался сильнее. Гусь: «Будешь должен больше: $${a.debt}»`, `${short(f2)} 2 дня лечится`] };
     },
   };
 }
@@ -615,24 +615,40 @@ const CARDS: Card[] = [
       { id: 'pay', label: '«Дай время, отдадим»', run: (c, a) => {
         a.plan = 'pay';
         a.flags.gusView = 1;
-        ladder(c).open = true;
-        return { lines: ['Гусь: «Разумно. По понедельникам, сто пятьдесят. Остальное — тридцатого». Каждый понедельник $150', CUP_TIP] };
+        return { lines: ['Гусь: «Разумно. По понедельникам, сто пятьдесят. Остальное — тридцатого». Каждый понедельник $150'] };
       } },
       { id: 'bold', label: '«Михалыч тебе ничего не должен»', run: (c, a) => {
         a.plan = 'bold';
         a.debt += 200;
         a.flags.gusView = 3;
-        ladder(c).open = true;
-        return { lines: [`Гусь улыбается: «Тогда тридцатого — вся сумма. И процент за дерзость». Долг $${a.debt}`, CUP_TIP] };
+        return { lines: [`Гусь улыбается: «Тогда тридцатого — вся сумма. И процент за дерзость». Долг $${a.debt}`] };
       } },
       { id: 'sport', label: '«Давай решим по-спортивному»', run: (c, a) => {
         a.plan = 'sport';
         a.flags.gusView = 2;
         a.kirpichDay = a.start + 6;
-        ladder(c).open = true;
-        return { lines: ['Гусь оглядывается: «Кирпич, слышал? В пятницу, в подворотне». Бой с Кирпичом — на 7-й день', CUP_TIP] };
+        return { lines: ['Гусь оглядывается: «Кирпич, слышал? В пятницу, в подворотне». Бой с Кирпичом — на 7-й день'] };
       } },
     ],
+  },
+  {
+    id: 'c1', title: 'Афиша Кубка', who: '«Подкова»',
+    when: (c, a) => actDay(c, a) >= 8,
+    text: (c) => `На двери «Подковы» афиша: «КУБОК ПОДКОВЫ. 16 бойцов. Четыре субботы. Победителю $1000». Первый вечер — ${dayName(cup(c).day)}.`,
+    scene: (c, f) => ({
+      map: MAP_BY_ID.bar, a: P(f, 0), b: P(f, 1), dist: 2.4, hide: [false, true],
+      lines: [
+        { who: null, text: 'Бар «Подкова». На двери в подвал — свежая афиша', shot: 'wide' },
+        { who: null, text: '«КУБОК ПОДКОВЫ. 16 бойцов. Клубы и одиночки. Четыре субботы. Победителю — $1000 и уважение района»', shot: 'close0' },
+        { who: null, text: 'Бармен: «Записывайся, пока места есть. Взнос полтинник»', shot: 'wide' },
+        { who: 0, text: 'Тысяча… И уважение района.', shot: 'close0' },
+      ],
+    }),
+    opts: [{ id: 'ok', label: 'Запомнить', run: (c) => {
+      ladder(c).open = true;
+      const cp = cup(c);
+      return { lines: [`Кубок «Подковы» открыт: записаться можно в городе, «Арена» → Кубок. Первый вечер — ${dayName(cp.day)}. Выиграть его — путь в район`] };
+    } }],
   },
   {
     id: 's3', title: 'Вторая кассета', who: 'Михалыч (кассета)',

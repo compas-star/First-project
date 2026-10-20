@@ -3,7 +3,7 @@
 import { save, type Career, type CareerFighter, type FightResult } from './career';
 import { act1Card, act1Film, act1Seen, act1Choose, act1FightDone, act1Goal, act1Check, ensureAct1, type A1Fight, type Act1Card } from './act1';
 import { act2Active, act2Card, act2Film, act2Seen, act2Choose, act2FightDone, act2Goal, act2Check } from './act2';
-import { ambushFight } from './clubs';
+import { ambushFight, cup, cupNight, nightDay } from './clubs';
 import type { SceneSpec } from './cutscenes';
 
 /** Opens what is due in the running act (and starts act 2 once act 1 is closed). */
@@ -31,7 +31,13 @@ export function actFightDone(c: Career, f: CareerFighter, fight: A1Fight, r: Fig
 }
 
 export function actGoal(c: Career): { text: string; debt: number; left: number; fee?: number } | null {
-  return act2Active(c) ? act2Goal(c) : act1Goal(c);
+  if (act2Active(c)) return act2Goal(c);
+  const g = act1Goal(c);
+  if (g || c.act2 || !c.act1?.ending) return g;
+  // Between the acts: the cup is the way on.
+  const cp = cup(c);
+  const r = cupNight(c, cp);
+  return { text: cp.ours ? 'Выиграть Кубок «Подковы»' : 'Записаться на Кубок «Подковы» и выиграть его', debt: 0, left: r < 0 ? 0 : nightDay(cp, r) - c.day };
 }
 
 /** Something the story will not let him walk past: a fight at the door, a tournament bout. */

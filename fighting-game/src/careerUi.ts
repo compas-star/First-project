@@ -26,12 +26,14 @@ import {
   trainNow, work, eat, rest, sessionGain, sessionCraft, needWord, DOW, treat, treatCost, beer, fightToll,
 } from './city';
 import { MAP_BY_ID } from './maps';
+import { PREPS, PREP_BY_ID, type PrepId } from './prep';
 import { mapSvg, PLACE_BY_ID, type PlaceId } from './cityMap';
 import type { SceneSpec } from './cutscenes';
 import { homeSvg, APPARATUS, type HomeObj } from './homeArt';
 import {
   ladder, clubStage, cup, cupCanJoin, cupJoin, cupMyMatch, cupAdvance, cupFought, ambushFight, ambushDone, clubOf, ranked, nextStageNeeds,
-  CUP_TIER, STREET_TIER, CUP_PRIZE, CUP_FEE, STAGE_NAME, type Club, type CupMatch,
+  cupTier, cupTonight, cupNight, cupResult, cupCountRest, cupBet, cupPerson, coef, isOurs, nightDay,
+  STREET_TIER, CUP_PRIZE, CUP_FEE, CUP_NIGHTS, CUP_ROUND_NAME, STAGE_NAME, type Club, type CupMatch,
 } from './clubs';
 import { callDue, callScene, callDone, trainTip, act1Pay, watchLesson, basementLost, act, type A1Fight } from './act1';
 import { actCheck, actCard, actFilm, actSeen, actChoose, actFightDone, actGoal, forcedNow } from './acts';
@@ -51,7 +53,7 @@ export interface CareerHooks {
   close(): void;
 }
 
-type Screen = 'cup' | 'clubs' | 'club' | 'map' | 'more' | 'place' | 'save' | 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
+type Screen = 'prep' | 'cup' | 'clubs' | 'club' | 'map' | 'more' | 'place' | 'save' | 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -84,6 +86,11 @@ export class CareerUi {
   private visited: PlaceId | null = null;
   /** What happened in the last fight (result screen). */
   private outcome: { won: boolean; title: string; lines: string[] } | null = null;
+  /** The fight about to start (cup, story...): preparation first, then `go`. */
+  private prep: { me: CareerFighter; opp: CareerFighter; tier: Tier; title: string; note?: string; bet?: { r: number; i: number }; go: (tweak: (p: FighterParams) => void) => void } | null = null;
+  private prepPick: PrepId = 'none';
+  /** A bet being placed in the cup: which fight and on whom. */
+  private betSel: { r: number; i: number; on: string } | null = null;
 
   constructor(private hooks: CareerHooks) {
     this.c = load() ?? newCareer();
@@ -138,7 +145,7 @@ export class CareerUi {
     clearInterval(this.timer);
     this.hooks.scene(callScene(this.c), () => {
       callDone(this.c);
-      this.toast = 'Турнир открыт: Город → Арена → «Турнир недели»';
+      this.toast = 'Кубок «Подковы» открыт: Город → Арена → «Кубок»';
       this.screen = 'home';
       this.show();
     });
@@ -161,6 +168,11 @@ export class CareerUi {
   private a1Fight(fight: A1Fight): void {
     const c = this.c;
     const f = fight.who ?? c.roster.find((x) => x.id === c.pick) ?? c.roster[0];
+    this.toPrep({ me: f, opp: fight.opp, tier: fight.tier, title: fight.title, go: (tweak) => this.a1Go(fight, f, tweak) });
+  }
+
+  private a1Go(fight: A1Fight, f: CareerFighter, tweak: (p: FighterParams) => void): void {
+    const c = this.c;
     $('career').hidden = true;
     clearInterval(this.timer);
     this.hooks.fight(f, fight.opp, fight.tier, fight.title, (r) => {
@@ -169,7 +181,7 @@ export class CareerUi {
       this.screen = 'result';
       if (res.scene) this.hooks.scene(res.scene, () => this.show());
       else this.show();
-    }, undefined, { scene: fight.pre, cls: classOf(f).name });
+    }, tweak, { scene: fight.pre, cls: classOf(f).name });
   }
 
   /** Act 1: the goal and the open scene. */
@@ -248,7 +260,7 @@ export class CareerUi {
       <div class="wallet"><span title="деньги">$<b>${c.money.toLocaleString('ru')}</b></span><span title="жетоны">◆ <b>${c.tokens}</b></span></div>
     </div>`;
     // A fight the story will not let him walk past covers every screen until it is fought.
-    const forced = this.screen === 'result' ? null : forcedNow(c);
+    const forced = this.screen === 'result' || this.screen === 'prep' ? null : forcedNow(c);
     const body =
       forced ? this.forcedView(forced.kind)
       : this.screen === 'home' ? this.home()
@@ -265,6 +277,7 @@ export class CareerUi {
       : this.screen === 'place' ? this.place()
       : this.screen === 'map' ? this.mapView()
       : this.screen === 'cup' ? this.cupView()
+      : this.screen === 'prep' ? this.prepView()
       : this.screen === 'clubs' ? this.clubsView()
       : this.screen === 'club' ? this.clubView()
       : this.screen === 'more' ? this.moreView()
@@ -306,9 +319,10 @@ export class CareerUi {
     cupAdvance(c);
     const amb = ambushFight(c);
     const myCup = cupMyMatch(c);
+    const tonightCup = ladder(c).open ? cupTonight(c) : null;
     const banners = [
       amb ? `<button type="button" class="banner hot" data-act="ambush">👊 У подъезда ждёт ${esc(short(amb.opp))} из ${esc(amb.club.name)} — разобраться</button>` : '',
-      myCup ? `<button type="button" class="banner hot" data-act="to" data-s="cup">🏆 Турнир сегодня — твой бой</button>` : '',
+      myCup ? `<button type="button" class="banner hot" data-act="to" data-s="cup">🏆 Вечер Кубка «Подковы» — твой бой</button>` : tonightCup ? `<button type="button" class="banner" data-act="to" data-s="cup">🏆 Сегодня вечер Кубка: ${CUP_ROUND_NAME[tonightCup.r].toLowerCase()} — смотреть и ставить</button>` : '',
       card ? `<button type="button" class="banner hot" data-act="obj" data-o="tv">🎬 ${esc(card.title)} — ${card.film && !card.watched ? 'включи телевизор' : 'выбери, что делать'}</button>` : '',
       calls ? `<button type="button" class="banner" data-act="obj" data-o="phone">📞 Звонков: ${calls}</button>` : '',
     ].join('');
@@ -506,7 +520,7 @@ export class CareerUi {
         break;
       }
       case 'arena':
-        body = `<button type="button" class="primary" data-act="to" data-s="cup">🏆 Турнир недели</button>
+        body = `<button type="button" class="primary" data-act="to" data-s="cup">🏆 Кубок «Подковы»</button>
           <button type="button" data-act="to" data-s="clubs">🏴 Клубы</button>
           ${this.today()}<button type="button" data-act="to" data-s="cal">📅 Календарь</button><button type="button" data-act="to" data-s="rank">Рейтинг</button>`;
         break;
@@ -764,6 +778,10 @@ export class CareerUi {
       ${feel <= -50 ? '<div class="pill red">Заклятые враги: гонорар ×1,5, известность ×2. Оба лезут вперёд злее и небрежнее.</div>' : ''}
       <div class="vtable">${rows}</div>
       <div class="pill ${p >= 55 ? 'green' : p <= 45 ? 'red' : 'gold'}">Букмекеры дают тебе примерно ${p}%</div>
+      <div class="qbox"><div class="h2">Перед боем</div>${PREPS.map((x) => {
+        const no = x.no?.(this.c, me) ?? null;
+        return `<button type="button" class="gprow${this.prepPick === x.id ? ' on' : ''}" data-act="prepick" data-p="${x.id}" ${no ? 'disabled' : ''}><span>${esc(x.name)}</span><b>${esc(no ?? x.desc)}</b></button>`;
+      }).join('')}</div>
       ${this.planEditor(me, b.tier.rules.rounds)}
       <button type="button" class="primary wide" data-act="fight">В бой</button>
 `;
@@ -867,41 +885,143 @@ export class CareerUi {
     return `<div class="cupman${mine ? ' mine' : ''}"><span class="cdot" style="background:${k ? k.colors[0] : '#555'};border-color:${k ? k.colors[1] : '#999'}"></span><b>${esc(short(f))}</b><small>${k ? esc(k.name) : mine ? 'твой' : 'без клуба'} · ${rating(f)}</small>${extra}</div>`;
   }
 
-  /** The weekly tournament: sign up, the bracket over two days, our fights. */
+  /** The cup of «Подкова»: sign up, the fight nights, watching and betting, our fights. */
   private cupView(): string {
     const c = this.c;
     const L = ladder(c);
     const cp = cup(c);
     cupAdvance(c);
     const f = this.me();
-    const who = (id: string) => c.roster.find((x) => x.id === id) ?? cp.entrants.find((x) => x.id === id);
-    const my = cupMyMatch(c);
-    const match = (m: CupMatch | null, name: string) => {
-      if (!m) return '';
-      const A = who(m.a), Bm = who(m.b);
-      if (!A || !Bm) return '';
-      const mine = m === my;
-      return `<div class="cupm${mine ? ' mine' : ''}"><div class="cupr">${name}</div>
-        ${this.manLine(A, m.w === m.a ? ' <em>✔</em>' : '')}${this.manLine(Bm, m.w === m.b ? ' <em>✔</em>' : '')}
-        ${mine ? `<button type="button" class="primary" data-act="cupfight">⚔ На бой</button>` : ''}</div>`;
-    };
-    const head = `<div class="h1">🏆 Подвальный турнир</div>
-      <div class="fnote">Подвал бара «Подкова». 8 бойцов: клубы и одиночки. <b>Суббота</b> — четвертьфиналы и полуфиналы, <b>воскресенье</b> — финал и бой за 3-е место. Платят за 1–3 место: $${CUP_PRIZE.join(' / $')}. Взнос $${CUP_FEE}.</div>
-      <div class="fmeta">Ступень: <b>${STAGE_NAME[L.stage]}</b>. Дальше: ${esc(nextStageNeeds(c))}.</div>`;
-    if (!L.open) return `${head}<div class="pill">Пока закрыто. Откроется по сюжету.</div><button type="button" data-act="to" data-s="clubs">🏴 Клубы подвала</button>`;
-    const day1 = cp.day === c.day ? 'сегодня' : `${dayName(cp.day)} (${weekday(cp.day)})`;
+    const who = (id: string) => cupPerson(c, cp, id);
+    const night = cupNight(c, cp);
+    const tonight = cupTonight(c);
+    const head = `<div class="poster"><div class="h1">🏆 Кубок «Подковы» №${cp.n}</div>
+      <div class="fnote">16 бойцов, без весовых категорий. Четыре субботы подряд: 1/8 финала (1 раунд), четвертьфиналы и полуфиналы (по 3), финал (5). Призы: $${CUP_PRIZE.join(' / $')}. Взнос $${CUP_FEE}. Победа в Кубке — дорога в район.</div>
+      <div class="fmeta">Ступень: <b>${STAGE_NAME[L.stage]}</b>. Дальше: ${esc(nextStageNeeds(c))}.</div></div>`;
+    if (!L.open) return `${head}<div class="pill">Пока закрыто. Откроется по сюжету.</div><button type="button" data-act="to" data-s="clubs">🏴 Клубы</button>`;
     const why = cupCanJoin(c, f);
     const sign = cp.ours
-      ? `<div class="pill green">Записан: ${esc(short(c.roster.find((x) => x.id === cp.ours) ?? f))}. Турнир ${day1}</div>`
-      : `<button type="button" class="primary" data-act="cupjoin" ${why ? 'disabled' : ''}>Записаться · $${CUP_FEE}${why ? ` · ${why}` : ''}</button>`;
-    const bracket = cp.qf.length
-      ? `<div class="h2">Суббота</div>${cp.qf.map((m, i) => match(m, `Четвертьфинал ${i + 1}`)).join('')}${cp.sf.map((m, i) => match(m, `Полуфинал ${i + 1}`)).join('')}
-        ${cp.final ? `<div class="h2">Воскресенье</div>${match(cp.third, 'За 3-е место')}${match(cp.final, 'Финал')}` : ''}`
-      : `<div class="fnote">Сетку тянут в день турнира. Клубы обычно выставляют по 2–3 человека.</div>`;
-    const done = cp.done ? `<div class="pill gold">Турнир окончен. Следующий — в следующую субботу.</div>` : '';
-    return `${head}${sign}${done}${bracket}
-      <button type="button" data-act="to" data-s="clubs">🏴 Клубы подвала</button>
-      ${L.history.length ? `<div class="newsbox"><div class="h2">Прошлые турниры</div>${L.history.slice(0, 5).map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}`;
+      ? `<div class="pill green">В сетке: ${esc(short(who(cp.ours)))}</div>`
+      : cp.rounds.length
+        ? '<div class="pill">Запись закрыта. Можно смотреть бои и ставить.</div>'
+        : `<button type="button" class="primary" data-act="cupjoin" ${why ? 'disabled' : ''}>Записаться · $${CUP_FEE}${why ? ` · ${why}` : ''}</button>`;
+    const when = (d: number) => (d === c.day ? '<b>сегодня</b>' : `${dayName(d)} (${weekday(d)})`);
+    const sched = Array.from({ length: CUP_NIGHTS }, (_, r) => `<div class="cupsched${r === night ? ' on' : ''}${cp.rounds[r]?.every((m) => m.w) ? ' done' : ''}"><span>${CUP_ROUND_NAME[r]}</span><span>${when(nightDay(cp, r))}</span></div>`).join('');
+    const betOf = (r: number, i: number) => cp.bets.find((x) => x.r === r && x.i === i);
+    const row = (m: CupMatch, r: number, i: number, live: boolean) => {
+      const A = who(m.a), Bm = who(m.b);
+      const [ka, kb] = coef(c, cp, m);
+      const mine = isOurs(cp, m);
+      const bt = betOf(r, i);
+      const side = (x: CareerFighter, k: number) => `${this.manLine(x, m.w === x.id ? ' <em>✔</em>' : m.w ? '' : ` <i class="kf">×${k.toFixed(2)}</i>`)}`;
+      let acts = '';
+      if (!m.w && live) {
+        if (mine) acts = `<button type="button" class="primary" data-act="cupfight">⚔ Подготовка и бой</button>`;
+        else acts = `<div class="row"><button type="button" data-act="cupwatch" data-r="${r}" data-i="${i}">👁 Смотреть</button>${bt ? '' : `<button type="button" data-act="betpick" data-r="${r}" data-i="${i}">💵 Ставка</button>`}</div>`;
+      } else if (!m.w && !mine && !bt) acts = `<button type="button" data-act="betpick" data-r="${r}" data-i="${i}">💵 Ставка</button>`;
+      const sel = this.betSel && this.betSel.r === r && this.betSel.i === i && !m.w
+        ? `<div class="betbox"><div class="row">${[[m.a, ka], [m.b, kb]].map(([id, k]) => `<button type="button" class="${this.betSel!.on === id ? 'primary' : ''}" data-act="betside" data-on="${id}">${esc(short(who(id as string)))} ×${(k as number).toFixed(2)}</button>`).join('')}</div>
+          <div class="row">${[10, 25, 50, 100].map((n) => `<button type="button" data-act="betgo" data-n="${n}" ${c.money >= n ? '' : 'disabled'}>$${n}</button>`).join('')}</div></div>`
+        : '';
+      const how = m.how === 'odds' ? '<small class="fnote">досчитан</small>' : m.how === 'forfeit' ? '<small class="fnote">неявка</small>' : '';
+      return `<div class="cupm${mine ? ' mine' : ''}">${side(A, ka)}${side(Bm, kb)}${how}
+        ${bt ? `<div class="pill ${bt.paid ? (bt.on === m.w ? 'green' : 'red') : 'gold'}">Ставка $${bt.stake} на ${esc(short(who(bt.on)))} ×${bt.k.toFixed(2)}</div>` : ''}${acts}${sel}</div>`;
+    };
+    let nightHtml = '';
+    if (cp.done) nightHtml = `<div class="pill gold">Кубок окончен. Следующий — через две недели.</div>`;
+    else if (!cp.rounds.length) {
+      nightHtml = `<div class="h2">Участники</div><div class="fnote">Сетку тянут в первый вечер. Сильнейших разводят по разным половинам.</div>
+        ${[...cp.entrants].sort((x, y) => rating(y) - rating(x)).map((m) => this.manLine(m)).join('')}`;
+    } else {
+      const r = Math.min(night, cp.rounds.length - 1);
+      const live = !!tonight && tonight.r === r;
+      const ms = cp.rounds[r];
+      const third = r === CUP_NIGHTS - 1 && cp.third ? row(cp.third, r, -1, live) : '';
+      const left = live ? tonight!.ms.filter((m) => !m.w && !isOurs(cp, m)).length : 0;
+      nightHtml = `<div class="h2">${CUP_ROUND_NAME[r]} · ${when(nightDay(cp, r))}</div>
+        ${live ? '<div class="fnote">Вечер боёв. Смотри чужие бои, ставь у букмекера. Свой бой — когда будешь готов.</div>' : '<div class="fnote">Ставки уже принимают.</div>'}
+        ${third}${ms.map((m, i) => row(m, r, i, live)).join('')}
+        ${left ? `<button type="button" data-act="cupcount">⏩ Досчитать остальные бои вечера (${left})</button>` : ''}`;
+      const past = cp.rounds.slice(0, r).map((R, k) => `<details><summary>${CUP_ROUND_NAME[k]}</summary>${R.map((m, i) => row(m, k, i, false)).join('')}</details>`).join('');
+      nightHtml += past;
+    }
+    const won = cp.bets.filter((x) => x.paid && x.on === (x.i < 0 ? cp.third : cp.rounds[x.r]?.[x.i])?.w).reduce((s0, x) => s0 + Math.round(x.stake * x.k), 0);
+    const spent = cp.bets.reduce((s0, x) => s0 + x.stake, 0);
+    return `${head}${sign}<div class="qbox">${sched}</div>${nightHtml}
+      ${cp.bets.length ? `<div class="fnote">Ставки за Кубок: поставлено $${spent}, выиграно $${won}</div>` : ''}
+      <button type="button" data-act="to" data-s="clubs">🏴 Клубы</button>
+      ${L.history.length ? `<div class="newsbox"><div class="h2">Прошлые Кубки</div>${L.history.slice(0, 5).map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}`;
+  }
+
+  /** Before a fight: who he is, the odds, what to do beforehand, the plan per round. */
+  private prepView(): string {
+    const pr = this.prep;
+    if (!pr) return this.home();
+    const c = this.c;
+    const me = pr.me;
+    const o = pr.opp;
+    const p = Math.round(100 * odds(me, o));
+    const rows = STAT_KEYS.map((k) => {
+      const a = me.stats[k];
+      const z = o.stats[k];
+      const cls = (x: number, y: number) => (x > y * 1.03 ? 'better' : x < y * 0.97 ? 'worse' : '');
+      return `<div class="vrow"><b class="${cls(a, z)}">${fmtStat(k, a)}</b><span>${STAT_INFO[k].name}</span><b class="${cls(z, a)}">${fmtStat(k, z)}</b></div>`;
+    }).join('');
+    const opts = PREPS.map((x) => {
+      const no = x.no?.(c, me) ?? null;
+      return `<button type="button" class="gprow${this.prepPick === x.id ? ' on' : ''}" data-act="prepick" data-p="${x.id}" ${no ? 'disabled' : ''}><span>${esc(x.name)}</span><b>${esc(no ?? x.desc)}</b></button>`;
+    }).join('');
+    const k = clubOf(c, o.id);
+    return `<div class="h1">${esc(pr.title)}</div>
+      <div class="vs">
+        <div class="vside red"><b>${esc(short(me))}</b><span>${esc(DISCIPLINE_BY_ID[me.discipline].name)} · ${me.height.toFixed(2)} м · ${me.weight} кг</span><span>рейтинг ${rating(me)}</span></div>
+        <div class="vmid">VS</div>
+        <div class="vside blue"><b>${esc(short(o))}</b><span>${esc(DISCIPLINE_BY_ID[o.discipline].name)} · ${o.height.toFixed(2)} м · ${o.weight} кг</span><span>рейтинг ${rating(o)}${k ? ` · ${esc(k.name)}` : ''}</span></div>
+      </div>
+      ${pr.note ? `<div class="fnote">${esc(pr.note)}</div>` : ''}
+      <div class="fstory">${esc(o.story)}</div>
+      <div class="vtable">${rows}</div>
+      <div class="pill ${p >= 55 ? 'green' : p <= 45 ? 'red' : 'gold'}">Шансы примерно ${p}%</div>
+      <div class="qbox"><div class="h2">Перед боем</div>${opts}</div>
+      ${this.planEditor(me, pr.tier.rules.rounds)}
+      <button type="button" class="primary wide" data-act="prepgo">⚔ В бой</button>`;
+  }
+
+  /** The first look at a fight night plays its opening: the cellar full, the card of the night. */
+  private cupIntro(): boolean {
+    const c = this.c;
+    const t = ladder(c).open ? cupTonight(c) : null;
+    const cp = cup(c);
+    if (!t || cp.seen.includes(t.r)) return false;
+    cp.seen.push(t.r);
+    save(c);
+    const m = t.ms[t.ms.length - 1];
+    const A = cupPerson(c, cp, m.a);
+    const B = cupPerson(c, cp, m.b);
+    const pairs = t.ms.length;
+    $('career').hidden = true;
+    clearInterval(this.timer);
+    this.hooks.scene({
+      map: MAP_BY_ID.bar, a: { ...toParams(A, 0), name: short(A) }, b: { ...toParams(B, 1), name: short(B) }, dist: 3.2,
+      lines: [
+        { who: null, text: 'Суббота. Подвал «Подковы» набит битком. Дым, крики, ставки на салфетках', shot: 'wide', act: (s) => (s.scene!.dist = 2.0) },
+        { who: null, text: `Кубок «Подковы» №${cp.n}. ${CUP_ROUND_NAME[t.r]}! ${pairs > 1 ? `Сегодня ${pairs} ${pairs < 5 ? 'боя' : 'боёв'}` : 'Один бой — за всё'}`, shot: 'group' },
+        { who: null, text: `Главный бой вечера: ${short(A)} против ${short(B)}`, shot: 'over0' },
+        { who: null, text: 'Букмекер у стойки: «Ставки до гонга, господа!»', shot: 'low' },
+      ],
+    }, () => {
+      this.screen = 'cup';
+      this.show();
+    });
+    return true;
+  }
+
+  /** Opens the preparation screen for a fight. */
+  private toPrep(pr: NonNullable<CareerUi['prep']>): void {
+    this.prep = pr;
+    this.prepPick = 'none';
+    this.sheet = null;
+    this.go('prep');
   }
 
   private clubsView(): string {
@@ -1204,6 +1324,8 @@ export class CareerUi {
         return this.go('home');
       case 'to':
         this.sheet = null;
+        if (b.dataset.s === 'cup' && this.cupIntro()) return;
+        if (b.dataset.s === 'preview') this.prepPick = 'none';
         return this.go(b.dataset.s as Screen);
       case 'story': {
         const out = storyChoose(c, b.dataset.o!);
@@ -1309,21 +1431,85 @@ export class CareerUi {
       case 'cupfight': {
         const m = cupMyMatch(c);
         if (!m) return say('Сегодня твоего боя нет');
-        const f = c.roster.find((x) => x.id === c.ladder!.cup!.ours)!;
-        const cp = c.ladder!.cup!;
-        const opp = cp.entrants.find((x) => x.id === (m.a === f.id ? m.b : m.a))!;
+        const cp = cup(c);
+        const f = c.roster.find((x) => x.id === cp.ours)!;
+        const opp = cupPerson(c, cp, m.a === f.id ? m.b : m.a);
         const k = clubOf(c, opp.id);
-        const title = `Подвальный турнир: ${short(f)} против ${short(opp)}${k ? ` (${k.name})` : ''}`;
+        const r = m === cp.third ? 2 : cp.rounds.findIndex((R) => R.includes(m));
+        const name = m === cp.third ? 'бой за 3-е место' : CUP_ROUND_NAME[r].toLowerCase();
+        const title = `Кубок «Подковы», ${name}: ${short(f)} против ${short(opp)}`;
+        const tier = cupTier(r === CUP_NIGHTS - 1 && m === cp.third ? 2 : r);
+        return this.toPrep({ me: f, opp, tier, title, note: k ? `${k.name}: «${k.motto}»` : 'Одиночка без клуба', go: (tweak) => {
+          $('career').hidden = true;
+          clearInterval(this.timer);
+          this.hooks.fight(f, opp, tier, title, (res) => {
+            fightToll(f, true);
+            const lines = cupFought(c, f, m, res.won);
+            this.outcome = { won: res.won, title, lines };
+            this.screen = 'result';
+            const champ = res.won && cp.done && cp.rounds[CUP_NIGHTS - 1][0] === m;
+            if (champ) this.hooks.scene(cupChampScene(f, opp, cp.n), () => this.show());
+            else this.show();
+          }, tweak, { cls: classOf(f).name, scene: {
+            map: MAP_BY_ID.bar, a: { ...toParams(f, 0), name: short(f) }, b: { ...toParams(opp, 1), name: short(opp) }, dist: 3,
+            lines: [
+              { who: null, text: `Кубок «Подковы». ${m === cp.third ? 'Бой за третье место' : CUP_ROUND_NAME[r]}`, shot: 'wide', act: (s) => (s.scene!.dist = 1.6) },
+              { who: null, text: `В красном углу — ${short(f)}! В синем${k ? ` — ${k.name},` : ' —'} ${short(opp)}!`, shot: 'group' },
+              { who: 1, text: r === CUP_NIGHTS - 1 ? 'Кубок мой.' : 'Быстро закончим.', shot: 'over1' },
+            ],
+          } });
+        } });
+      }
+      case 'cupwatch': {
+        const cp = cup(c);
+        const r = Number(b.dataset.r);
+        const i = Number(b.dataset.i);
+        const m = i < 0 ? cp.third : cp.rounds[r]?.[i];
+        if (!m || m.w) return say(null);
+        const A = cupPerson(c, cp, m.a);
+        const B = cupPerson(c, cp, m.b);
+        const title = `Кубок «Подковы», ${CUP_ROUND_NAME[r].toLowerCase()}: ${short(A)} против ${short(B)}`;
         $('career').hidden = true;
         clearInterval(this.timer);
-        this.hooks.fight(f, opp, roundTier(CUP_TIER, m === cp.final ? 1 : cp.qf.includes(m) ? 4 : 2, 4), title, (r) => {
-          fightToll(f, true);
-          const lines = cupFought(c, f, m, r.won);
-          this.outcome = { won: r.won, title, lines };
-          this.screen = 'result';
+        this.hooks.fight(A, B, cupTier(i < 0 ? 2 : r), title, (res) => {
+          const lines = cupResult(c, m, res.won ? m.a : m.b);
+          this.toast = [`Победил ${short(res.won ? A : B)}${res.ko ? ' досрочно' : ''}`, ...lines].join(' · ');
+          this.screen = 'cup';
           this.show();
-        }, undefined, { cls: classOf(f).name });
+        });
         return;
+      }
+      case 'cupcount':
+        return say(cupCountRest(c).join(' · ') || 'Остальные бои вечера досчитаны');
+      case 'betpick': {
+        const cp = cup(c);
+        const r = Number(b.dataset.r);
+        const i = Number(b.dataset.i);
+        const m = i < 0 ? cp.third : cp.rounds[r]?.[i];
+        this.betSel = m ? { r, i, on: m.a } : null;
+        return say(null);
+      }
+      case 'betside':
+        if (this.betSel) this.betSel.on = b.dataset.on!;
+        return say(null);
+      case 'betgo': {
+        const sel = this.betSel;
+        this.betSel = null;
+        if (!sel) return say(null);
+        return say(cupBet(c, sel.r, sel.i, sel.on, Number(b.dataset.n)));
+      }
+      case 'prepick':
+        this.prepPick = b.dataset.p as PrepId;
+        return say(null);
+      case 'prepgo': {
+        const pr = this.prep;
+        if (!pr) return say(null);
+        const pp = PREP_BY_ID[this.prepPick];
+        if (pp.no?.(c, pr.me)) return say(pp.no(c, pr.me));
+        pp.cost?.(pr.me);
+        this.prep = null;
+        save(c);
+        return pr.go((p) => pp.apply(p));
       }
       case 'ambush': {
         const a = ambushFight(c);
@@ -1518,8 +1704,26 @@ export class CareerUi {
       this.bill = null;
       this.screen = 'result';
       this.show();
-    }, undefined, { title: !!b.title, cls: classOf(me).name });
+    }, (p) => PREP_BY_ID[this.prepPick].apply(p), { title: !!b.title, cls: classOf(me).name });
+    PREP_BY_ID[this.prepPick].cost?.(me);
   }
+}
+
+/** The cup is ours: the man down, the belt on, the crowd. */
+function cupChampScene(f: CareerFighter, opp: CareerFighter, n: number): SceneSpec {
+  return {
+    map: MAP_BY_ID.bar, a: { ...toParams(f, 0), name: short(f) }, b: { ...toParams(opp, 1), name: short(opp) }, dist: 2.2,
+    start: (sim) => {
+      sim.fighters[1].out = true;
+      sim.knockDown(sim.fighters[1], 'нокаут', 'back', 'l');
+      sim.startAction(sim.fighters[0], 'victory', { dur: 1e9 });
+    },
+    lines: [
+      { who: null, text: `КУБОК «ПОДКОВЫ» №${n}`, shot: 'orbit0', act: (_s, fx) => fx.belt(0) },
+      { who: null, text: 'Подвал ревёт. Бармен ставит бутылку на стойку: за счёт заведения', shot: 'low' },
+      { who: 0, text: 'Это только начало.', shot: 'close0' },
+    ],
+  };
 }
 
 const MAIN_SCREENS: Screen[] = ['home', 'map', 'cal', 'team', 'more'];

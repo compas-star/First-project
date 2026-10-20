@@ -444,6 +444,28 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   `stripeColor`. `clubStage(c)` = 2 once act 2 runs: those clubs join the weekly cup (1-2 men
   each) and the clubs list; act 2's QF/SF rivals are their men near our rating. Old saves get
   them in `ladder()`.
+- **Кубок «Подковы»** (replaces the weekly 2-day cup; user: tournaments felt weak, want an
+  event, 16 men, weekly fights, watching and betting, a choice before every fight): `Cup` v2 in
+  clubs.ts: 16 entrants (all stage-1 club men + loners; from stage 2 two-three per club), four
+  Saturdays (`nightDay`): 1/8 (1 round), 1/4 and 1/2 (3), final (5) + bout for third (3)
+  (`cupTier(r)`); seeded bracket (`SEED`, drawn on the first night, ours in a free place);
+  fee $50, prizes $1000/$400/$150; the next cup two weeks after the final (`cup()`; old v1
+  cups replaced, fee refunded). Bets (`cupBet`, `coef` = 0.93/p, odds() by rating) paid in
+  `decide`; others' fights watched in the arena (`cupwatch` → `cupResult`) or counted
+  (`cupCountRest`, midnight `cupDay`; ours unfought = forfeit). Winning the cup = ladder
+  stage 2 (`checkStage`); act 2 starts only then (`ensureAct2`), between the acts `actGoal`
+  points at the cup. Act 1 card 'c1' (day 8) announces it (first night the Saturday a week
+  later); Гусь's old cup tip is gone. UI: 'cup' screen (poster, schedule, the night's card
+  with coefficients, 👁 Смотреть / 💵 Ставка inline stake box, past rounds), `cupIntro` film
+  on the first look at a fight night, our fight via the prep screen with an announcer film,
+  `cupChampScene` (belt) after winning the final. Tool `cuptest [weeks]`.
+- Preparation before a fight (`prep.ts`, `PREPS`: как есть / разминка (speed +3%, energy −10)
+  / изучить записи (mind +6%, a part of the day) / беречь силы (cardio +12%) / завестись
+  (strength +4%, aggression, skill −4%)): screen 'prep' (`toPrep`) for cup and story (act)
+  fights, and the same block on the calendar preview; applied through the fight hook's tweak.
+- Fights without rounds stop at `NO_ROUND_LIMIT` 120 s of fight time (twice a career round):
+  `timeUp` = decision on damage dealt (user: endless fights took too long). Roof fights in
+  act 1: 3 rounds, $120 (`ROOF_PAY`), $20 for a loss (user: $300 for a minute was too much).
 - Forced fights (user: story must not be skippable): `forcedNow` (cup ambush, act 1 's4h',
   act 2 cards with `forced`) replaces every career screen with the card (no nav, no sheet)
   and 'nextday' refuses until it is fought.

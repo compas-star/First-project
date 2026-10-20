@@ -5,7 +5,7 @@ import { newCareer, nextDay, rating, type Career } from '../src/career';
 import { actCard, actChoose, actFightDone, actSeen, actFilm, actCheck, forcedNow } from '../src/acts';
 import { act1Pay, callDue, callDone } from '../src/act1';
 import { act2Fee, inSewer } from '../src/act2';
-import { ambushFight, ambushDone } from '../src/clubs';
+import { ambushFight, ambushDone, ladder } from '../src/clubs';
 const RUNS = Number(process.argv[2] ?? 100);
 const ends: Record<string, number> = {};
 let locks = 0;
@@ -14,6 +14,8 @@ let sample: string[] = [];
 function play(c: Career, days: number, log: string[]): void {
   for (let d = 0; d < days; d++) {
     c.incidents = [];
+    // The cup of «Подкова» is not played here: count it as won once act 1 is over.
+    if (c.act1?.ending) ladder(c).stage = Math.max(ladder(c).stage, 2);
     if (callDue(c)) callDone(c);
     actCheck(c);
     for (let k = 0; k < 6; k++) {

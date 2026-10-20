@@ -44,32 +44,59 @@ export interface CupMatch {
   a: string;
   b: string;
   w: string | null;
+  /** How it was decided: 'ring' (fought or watched), 'odds' (counted), 'forfeit'. */
+  how?: 'ring' | 'odds' | 'forfeit';
 }
 
-/** One weekly tournament: day 1 quarter- and semi-finals, day 2 the final and third place. */
+/** A bet with the bookmaker of «Подкова» on one fight of the cup. */
+export interface Bet {
+  r: number;
+  /** Fight index in its round (-1 = the bout for third place). */
+  i: number;
+  on: string;
+  stake: number;
+  /** The coefficient taken. */
+  k: number;
+  paid?: boolean;
+}
+
+/**
+ * The cup of «Подкова» (user: tournaments felt weak; 16 men, a fight night every week, watch the
+ * others' fights and bet on them, preparation before every fight). Four Saturdays in a row:
+ * last 16, quarter-finals, semi-finals, the final (and the bout for third place). Winning it is
+ * the way up the ladder; losing means signing up for the next one, two weeks after.
+ */
 export interface Cup {
-  /** Career day of day 1 (a Saturday). */
+  v: 2;
+  /** Season number. */
+  n: number;
+  /** Career day of the first fight night (a Saturday); the next nights a week apart. */
   day: number;
+  /** The 16 men (one place is a loner's until ours signs up). */
   entrants: CareerFighter[];
-  /** Ours, if signed up. */
   ours: string | null;
-  qf: CupMatch[];
-  sf: CupMatch[];
-  final: CupMatch | null;
+  /** The bracket: rounds[0] last 16 ... rounds[3] the final; filled night by night. */
+  rounds: CupMatch[][];
   third: CupMatch | null;
   done: boolean;
+  bets: Bet[];
+  /** Nights whose opening film was played. */
+  seen: number[];
   /** A club man waiting at the door before the final. */
   ambush?: { club: string; man: CareerFighter; settled: boolean };
 }
 
-export const CUP_FEE = 30;
-export const CUP_PRIZE = [300, 150, 80];
-/** The cup's place: the cellar of the bar, one round of three clock minutes. */
+export const CUP_FEE = 50;
+export const CUP_PRIZE = [1000, 400, 150];
+export const CUP_NIGHTS = 4;
+export const CUP_ROUND_NAME = ['1/8 финала', 'Четвертьфиналы', 'Полуфиналы', 'Финал'];
+/** The cup's place: the cellar of the bar. Rounds per night: 1, 3, 3, 5 (third place 3). */
 export const CUP_TIER: Tier = {
-  id: 'cup', name: 'Подвальный турнир', desc: '', map: 'bar',
+  id: 'cup', name: 'Кубок «Подковы»', desc: '', map: 'bar',
   rules: { roundLen: 180, clock: 3, rounds: 1, tough: 1.2, standing: true },
-  level: [0, 0.2], fame: 0, purse: [0, 0], fee: CUP_FEE, prize: CUP_PRIZE[0], tokens: 2, size: 8,
+  level: [0, 0.2], fame: 0, purse: [0, 0], fee: CUP_FEE, prize: CUP_PRIZE[0], tokens: 2, size: 16,
 };
+export const cupTier = (r: number): Tier => ({ ...CUP_TIER, rules: { ...CUP_TIER.rules, rounds: [1, 3, 3, 5][r] ?? 3 } });
 /** A night fight at the door. */
 export const STREET_TIER: Tier = {
   id: 'street', name: 'У подъезда', desc: '', map: 'alley',
@@ -230,50 +257,71 @@ export function ladderLock(c: Career, tierId: string, title: boolean): string | 
 export function nextStageNeeds(c: Career): string {
   const L = ladder(c);
   if (L.stage >= 2) return 'дальше — по сюжету';
-  const need: string[] = [];
-  if (!L.cupWins) need.push('выиграть подвальный турнир');
-  for (const k of L.clubs.filter((x) => x.stage === 1)) if (!L.beaten.includes(k.id)) need.push(`победить лидера ${k.name}`);
-  return need.length ? need.join(', ') : 'всё сделано';
+  return 'выиграть Кубок «Подковы»';
 }
 
 function checkStage(c: Career): string[] {
   const L = ladder(c);
-  if (L.stage === 1 && L.cupWins > 0 && L.clubs.filter((k) => k.stage === 1).every((k) => L.beaten.includes(k.id))) {
+  if (L.stage === 1 && L.cupWins > 0) {
     L.stage = 2;
-    return ['🏆 Открыта ступень «Район»: крыши и лиги района'];
+    return ['🏆 Кубок твой! Открыта ступень «Район»'];
   }
   return [];
 }
 
-// ---------- The weekly tournament ----------
+// ---------- The cup of «Подкова» ----------
 
 /** The next Saturday (today if it is one). */
 const nextSat = (day: number) => day + ((SAT - DOW(day) + 7) % 7);
+export const nightDay = (cp: Cup, r: number) => cp.day + 7 * r;
 
 /** Loners of the district, about the clubs' level. */
 function loner(c: Career): CareerFighter {
-  const f = makeFighter(0.02 + Math.random() * 0.14, 0.5, WCLASSES[Math.floor(Math.random() * 3)]);
+  const top = clubStage(c) === 2 ? 0.3 : 0.16;
+  const f = makeFighter(0.02 + Math.random() * top, 0.5, WCLASSES[Math.floor(Math.random() * 3)]);
   f.story = `${f.story} Без клуба.`;
   return f;
 }
 
-/** This week's tournament: made when first asked for, the field drawn on day 1. */
+/** 16 men: the clubs' men (two or three per club from the district on), loners for the rest. */
+function field(c: Career): CareerFighter[] {
+  const L = ladder(c);
+  const top = clubStage(c);
+  const out: CareerFighter[] = [];
+  for (const k of L.clubs.filter((x) => x.stage <= top)) {
+    const r = ranked(k);
+    const n = top === 1 ? r.length : k.stage === top ? 3 : 2;
+    out.push(...r.slice(0, n));
+  }
+  while (out.length > 16) out.splice(1 + Math.floor(Math.random() * (out.length - 1)), 1);
+  while (out.length < 16) out.push(loner(c));
+  return out;
+}
+
+/** The cup now signing up or running; a new one two weeks after the last ended (the first a
+ * week after it was announced). Old weekly cups are replaced (the fee paid back). */
 export function cup(c: Career): Cup {
   const L = ladder(c);
-  if (!L.cup || (L.cup.done && c.day > L.cup.day + 1)) {
-    L.cup = { day: nextSat(c.day), entrants: [], ours: null, qf: [], sf: [], final: null, third: null, done: false };
+  const old = L.cup as unknown as (Cup & { v?: number }) | null;
+  if (old && old.v !== 2) {
+    if (old.ours && !old.done) c.money += 30;
+    L.cup = null;
+  }
+  if (!L.cup || (L.cup.done && c.day > nightDay(L.cup, CUP_NIGHTS - 1))) {
+    const after = L.cup ? nightDay(L.cup, CUP_NIGHTS - 1) + 14 : c.day + 7;
+    L.cup = { v: 2, n: (L.cup?.n ?? 0) + 1, day: nextSat(Math.max(after, c.day + 1)), entrants: field(c), ours: null, rounds: [], third: null, done: false, bets: [], seen: [] };
   }
   return L.cup;
 }
 
-const findIn = (c: Career, cp: Cup, id: string) => c.roster.find((f) => f.id === id) ?? cp.entrants.find((f) => f.id === id)!;
+export const cupPerson = (c: Career, cp: Cup, id: string) => c.roster.find((f) => f.id === id) ?? cp.entrants.find((f) => f.id === id)!;
 
 export function cupCanJoin(c: Career, f: CareerFighter): string | null {
   const L = ladder(c);
   const cp = cup(c);
   if (!L.open) return 'откроется по сюжету';
   if (cp.ours) return cp.ours === f.id ? 'уже записан' : 'записан другой твой боец';
-  if (c.day > cp.day || (c.day === cp.day && cp.qf.length)) return 'запись закрыта';
+  if (cp.rounds.length) return 'запись закрыта';
   if (c.money < CUP_FEE) return `взнос $${CUP_FEE}`;
   return null;
 }
@@ -284,61 +332,133 @@ export function cupJoin(c: Career, f: CareerFighter): string {
   const cp = cup(c);
   c.money -= CUP_FEE;
   cp.ours = f.id;
+  // Ours takes the place of the weakest loner.
+  const lone = cp.entrants.filter((m) => !clubOf(c, m.id)).sort((x, y) => rating(x) - rating(y))[0] ?? cp.entrants[cp.entrants.length - 1];
+  cp.entrants = cp.entrants.filter((m) => m !== lone);
   save(c);
-  return `${short(f)} записан на турнир (${dayWord(c, cp.day)}). Взнос $${CUP_FEE}`;
+  return `${short(f)} в сетке Кубка «Подковы». Первый бой — ${dayWord(c, cp.day)}, взнос $${CUP_FEE}`;
 }
 
 const dayWord = (c: Career, d: number) => (d === c.day ? 'сегодня' : d === c.day + 1 ? 'завтра' : `через ${d - c.day} дн.`);
 
-/** Draws the field on day 1: two or three from each club, loners for the rest. */
+/** Seeds 1..16 in bracket order: the best two can only meet in the final. */
+const SEED = [0, 15, 7, 8, 4, 11, 3, 12, 2, 13, 5, 10, 6, 9, 1, 14];
+
+/** The bracket is drawn on the first night: seeded by strength, ours in a free place. */
 function draw(c: Career, cp: Cup): void {
-  const L = ladder(c);
-  const field: CareerFighter[] = [];
-  const top = clubStage(c);
-  for (const k of L.clubs.filter((x) => x.stage <= top).sort(() => Math.random() - 0.5)) {
-    const r = ranked(k);
-    // The leader comes most weeks; the others take turns. Once the district's clubs come,
-    // every club sends one or two.
-    const n = top === 1 ? 2 + (Math.random() < 0.4 ? 1 : 0) : k.stage === top ? 1 + (Math.random() < 0.5 ? 1 : 0) : Math.random() < 0.6 ? 1 : 0;
-    const pick = [r[0], ...r.slice(1).sort(() => Math.random() - 0.5)].slice(0, n);
-    if (Math.random() < 0.25) pick.shift();
-    field.push(...pick);
-  }
-  const need = 8 - (cp.ours ? 1 : 0);
-  while (field.length > need) field.splice(1 + Math.floor(Math.random() * (field.length - 1)), 1);
-  while (field.length < need) field.push(loner(c));
-  cp.entrants = field;
-  const ids = [...(cp.ours ? [cp.ours] : []), ...field.map((f) => f.id)].sort(() => Math.random() - 0.5);
-  cp.qf = [0, 2, 4, 6].map((i) => ({ a: ids[i], b: ids[i + 1], w: null }));
+  const men = [...cp.entrants].sort((x, y) => rating(y) - rating(x));
+  if (cp.ours) men.splice(4 + Math.floor(Math.random() * (men.length - 3)), 0, cupPerson(c, cp, cp.ours));
+  const ids = SEED.map((k) => men[k].id);
+  cp.rounds = [[0, 2, 4, 6, 8, 10, 12, 14].map((i) => ({ a: ids[i], b: ids[i + 1], w: null }))];
 }
 
-const coin = (c: Career, cp: Cup, m: CupMatch) => (m.w ??= Math.random() < odds(findIn(c, cp, m.a), findIn(c, cp, m.b)) ? m.a : m.b);
 const loserOf = (m: CupMatch) => (m.w === m.a ? m.b : m.a);
-const ours = (cp: Cup, m: CupMatch) => !!cp.ours && (m.a === cp.ours || m.b === cp.ours);
+export const isOurs = (cp: Cup, m: CupMatch) => !!cp.ours && (m.a === cp.ours || m.b === cp.ours);
 
-/** Our next fight today, if any. */
-export function cupMyMatch(c: Career): CupMatch | null {
-  cupAdvance(c);
-  const cp = ladder(c).cup;
-  if (!cp?.ours || cp.done) return null;
-  if (c.day === cp.day) return [...cp.qf, ...cp.sf].find((m) => ours(cp, m) && !m.w) ?? null;
-  if (c.day === cp.day + 1) return [cp.third, cp.final].find((m) => m && ours(cp, m) && !m.w) ?? null;
-  return null;
+/** The bookmaker's coefficients for a fight: [on a, on b] (a 7% margin). */
+export function coef(c: Career, cp: Cup, m: CupMatch): [number, number] {
+  const p = odds(cupPerson(c, cp, m.a), cupPerson(c, cp, m.b));
+  const k = (q: number) => Math.max(1.05, Math.round((0.93 / Math.max(0.04, q)) * 100) / 100);
+  return [k(p), k(1 - p)];
 }
 
-/** Moves the bracket on: settles others' fights up to ours, builds the next round. */
+/** Which night it is (the round being fought today, or the next one), -1 when over. */
+export function cupNight(c: Career, cp = cup(c)): number {
+  if (cp.done) return -1;
+  for (let r = 0; r < CUP_NIGHTS; r++) if (c.day <= nightDay(cp, r)) return r;
+  return CUP_NIGHTS - 1;
+}
+
+/** Tonight's fights (empty if no fight night today). */
+export function cupTonight(c: Career): { r: number; ms: CupMatch[] } | null {
+  const cp = cup(c);
+  cupAdvance(c);
+  const r = cupNight(c, cp);
+  if (r < 0 || c.day !== nightDay(cp, r) || !cp.rounds[r]) return null;
+  return { r, ms: r === CUP_NIGHTS - 1 && cp.third ? [cp.third, ...cp.rounds[r]] : cp.rounds[r] };
+}
+
+/** Our fight tonight, if any. */
+export function cupMyMatch(c: Career): CupMatch | null {
+  const t = cupTonight(c);
+  const cp = cup(c);
+  return t?.ms.find((m) => isOurs(cp, m) && !m.w) ?? null;
+}
+
+/** Sets a winner, pays the bets on that fight. */
+function decide(c: Career, cp: Cup, m: CupMatch, w: string, how: CupMatch['how']): string[] {
+  if (m.w) return [];
+  m.w = w;
+  m.how = how;
+  const out: string[] = [];
+  for (const b of cp.bets) {
+    const bm = b.i < 0 ? cp.third : cp.rounds[b.r]?.[b.i];
+    if (bm !== m || b.paid) continue;
+    b.paid = true;
+    if (b.on === w) {
+      const win = Math.round(b.stake * b.k);
+      c.money += win;
+      out.push(`Ставка сыграла: +$${win}`);
+    } else out.push(`Ставка $${b.stake} сгорела`);
+  }
+  if (out.length) c.log.unshift(...out.map((x) => `💵 ${x}`));
+  return out;
+}
+
+/** A fight of others counted by the odds (not watched). */
+const coin = (c: Career, cp: Cup, m: CupMatch) => decide(c, cp, m, Math.random() < odds(cupPerson(c, cp, m.a), cupPerson(c, cp, m.b)) ? m.a : m.b, 'odds');
+
+/** Draws the bracket on the first night and builds each next round once the last is decided. */
 export function cupAdvance(c: Career): void {
   const cp = ladder(c).cup;
-  if (!cp || cp.done) return;
-  if (c.day >= cp.day && !cp.qf.length) draw(c, cp);
-  if (c.day < cp.day) return;
-  for (const m of cp.qf) if (!ours(cp, m)) coin(c, cp, m);
-  if (!cp.sf.length && cp.qf.every((m) => m.w)) cp.sf = [{ a: cp.qf[0].w!, b: cp.qf[1].w!, w: null }, { a: cp.qf[2].w!, b: cp.qf[3].w!, w: null }];
-  for (const m of cp.sf) if (!ours(cp, m)) coin(c, cp, m);
-  if (c.day < cp.day + 1 || !cp.sf.length || !cp.sf.every((m) => m.w)) return;
-  cp.final ??= { a: cp.sf[0].w!, b: cp.sf[1].w!, w: null };
-  cp.third ??= { a: loserOf(cp.sf[0]), b: loserOf(cp.sf[1]), w: null };
-  for (const m of [cp.third, cp.final]) if (!ours(cp, m)) coin(c, cp, m);
+  if (!cp || cp.v !== 2 || cp.done) return;
+  if (c.day >= cp.day && !cp.rounds.length) draw(c, cp);
+  for (let r = 0; r < CUP_NIGHTS - 1; r++) {
+    const R = cp.rounds[r];
+    if (!R || cp.rounds[r + 1] || !R.every((m) => m.w)) continue;
+    const next: CupMatch[] = [];
+    for (let i = 0; i < R.length; i += 2) next.push({ a: R[i].w!, b: R[i + 1].w!, w: null });
+    cp.rounds.push(next);
+    if (r + 1 === CUP_NIGHTS - 1) cp.third = { a: loserOf(R[0]), b: loserOf(R[1]), w: null };
+  }
+}
+
+/** A fight of the night decided: watched in the arena, or ours. */
+export function cupResult(c: Career, m: CupMatch, w: string): string[] {
+  const cp = cup(c);
+  const out = decide(c, cp, m, w, 'ring');
+  cupAdvance(c);
+  out.push(...settleIfDone(c));
+  save(c);
+  return out;
+}
+
+/** Counts the rest of tonight's fights (except ours). */
+export function cupCountRest(c: Career): string[] {
+  const t = cupTonight(c);
+  if (!t) return [];
+  const cp = cup(c);
+  const out: string[] = [];
+  for (const m of t.ms) if (!m.w && !isOurs(cp, m)) out.push(...coin(c, cp, m));
+  cupAdvance(c);
+  out.push(...settleIfDone(c));
+  save(c);
+  return out;
+}
+
+/** A bet on a fight not yet decided. */
+export function cupBet(c: Career, r: number, i: number, on: string, stake: number): string {
+  const cp = cup(c);
+  const m = i < 0 ? cp.third : cp.rounds[r]?.[i];
+  if (!m || m.w) return 'Этот бой уже решён';
+  if (c.money < stake) return 'Не хватает денег';
+  if (cp.bets.some((b) => b.r === r && b.i === i)) return 'На этот бой ставка уже есть';
+  const [ka, kb] = coef(c, cp, m);
+  const k = on === m.a ? ka : kb;
+  c.money -= stake;
+  cp.bets.push({ r, i, on, stake, k });
+  save(c);
+  return `Ставка $${stake} на ${short(cupPerson(c, cp, on))} ×${k.toFixed(2)}: выигрыш $${Math.round(stake * k)}`;
 }
 
 /** After our fight in the cup. Returns lines for the result screen. */
@@ -346,9 +466,8 @@ export function cupFought(c: Career, f: CareerFighter, m: CupMatch, won: boolean
   const L = ladder(c);
   const cp = L.cup!;
   const oppId = m.a === f.id ? m.b : m.a;
-  m.w = won ? f.id : oppId;
   const out: string[] = [];
-  const opp = findIn(c, cp, oppId);
+  const opp = cupPerson(c, cp, oppId);
   const k = clubOf(c, oppId);
   if (won) {
     f.record.w++;
@@ -360,8 +479,11 @@ export function cupFought(c: Career, f: CareerFighter, m: CupMatch, won: boolean
     }
   } else f.record.l++;
   addMood(f, won ? 6 : -6);
+  out.push(...decide(c, cp, m, won ? f.id : oppId, 'ring'));
   cupAdvance(c);
   out.push(...settleIfDone(c));
+  if (!won && !cp.done && m !== cp.third && cp.rounds.indexOf(cp.rounds.find((R) => R.includes(m))!) < CUP_NIGHTS - 2)
+    out.push('Ты выбыл. Следующий Кубок — через две недели после этого');
   save(c);
   return [`${won ? 'Победа' : 'Поражение'}: ${short(opp)}${k ? ` (${k.name})` : ''}`, ...out];
 }
@@ -370,67 +492,62 @@ export function cupFought(c: Career, f: CareerFighter, m: CupMatch, won: boolean
 function settleIfDone(c: Career): string[] {
   const L = ladder(c);
   const cp = L.cup!;
-  if (cp.done || !cp.final?.w || !cp.third?.w) return [];
+  const fin = cp.rounds[CUP_NIGHTS - 1]?.[0];
+  if (cp.done || !fin?.w || !cp.third?.w) return [];
   cp.done = true;
   const out: string[] = [];
-  const places = [cp.final.w, loserOf(cp.final), cp.third.w];
-  const champ = findIn(c, cp, places[0]);
-  L.history.unshift(`Неделя ${Math.ceil(cp.day / 7)}: победил ${short(champ)}${clubOf(c, champ.id) ? ` (${clubOf(c, champ.id)!.name})` : ''}`);
+  const places = [fin.w, loserOf(fin), cp.third.w];
+  const champ = cupPerson(c, cp, places[0]);
+  L.history.unshift(`Кубок №${cp.n}: победил ${short(champ)}${clubOf(c, champ.id) ? ` (${clubOf(c, champ.id)!.name})` : ''}`);
   L.history.length = Math.min(L.history.length, 12);
   const i = cp.ours ? places.indexOf(cp.ours) : -1;
   if (i >= 0) {
     c.money += CUP_PRIZE[i];
     const f = c.roster.find((x) => x.id === cp.ours)!;
-    f.fame += [5, 3, 1][i];
+    f.fame += [8, 4, 2][i];
     if (i === 0) L.cupWins++;
-    out.push(`${['🥇 Первое место', '🥈 Второе место', '🥉 Третье место'][i]}: +$${CUP_PRIZE[i]}`);
-  } else if (cp.ours) out.push('Без призов. Платят только за 1–3 место');
+    out.push(`${['🥇 Кубок «Подковы» твой', '🥈 Второе место', '🥉 Третье место'][i]}: +$${CUP_PRIZE[i]}`);
+  }
   out.push(...checkStage(c));
-  // The clubs' men get a little better every week.
-  for (const k of L.clubs) for (const m of k.members) for (const s of Object.keys(m.stats) as StatKey[]) m.stats[s] = Math.min(m.caps[s], m.stats[s] + 0.004);
+  // The clubs' men get a little better after every cup.
+  for (const k of L.clubs) for (const m of k.members) for (const s of Object.keys(m.stats) as StatKey[]) m.stats[s] = Math.min(m.caps[s], m.stats[s] + 0.01);
   c.log.unshift(...out.map((x) => `🏆 ${x}`));
   return out;
 }
 
-/** Midnight: day 1 over — maybe a club sends a man to the door before our final; day 2
- *  over — whatever we did not fight is lost. Called after the date moved on. */
+/** Midnight: last night's fights not fought are counted (ours = forfeit); the ambush before the final. */
 export function cupDay(c: Career): string[] {
   const L = ladder(c);
-  const cp = L.cup;
-  if (!cp || cp.done) return [];
+  if (!L.open) return [];
+  const cp = cup(c);
+  if (cp.done) return [];
+  cupAdvance(c);
   const out: string[] = [];
-  if (c.day > cp.day && cp.qf.length) {
-    // Day 1 fights left unfought are lost.
-    for (const m of [...cp.qf, ...cp.sf]) if (ours(cp, m) && !m.w) {
-      m.w = m.a === cp.ours ? m.b : m.a;
-      out.push('Не вышел на бой турнира — техническое поражение');
+  for (let r = 0; r < CUP_NIGHTS; r++) {
+    if (c.day <= nightDay(cp, r)) break;
+    const ms = [...(cp.rounds[r] ?? []), ...(r === CUP_NIGHTS - 1 && cp.third ? [cp.third] : [])];
+    for (const m of ms) {
+      if (m.w) continue;
+      if (isOurs(cp, m)) {
+        out.push(...decide(c, cp, m, m.a === cp.ours ? m.b : m.a, 'forfeit'));
+        out.push('Не вышел на бой Кубка — техническое поражение');
+      } else coin(c, cp, m);
     }
     cupAdvance(c);
   }
+  out.push(...settleIfDone(c));
   // At war with «Железные кони» (act 1): they come far more often, and it is them.
   const war = !!c.act1?.flags.bkWar && !c.act1.flags.bkRespect && !c.act1.flags.bkJoin;
-  if (c.day === cp.day + 1 && cp.ours && cp.final && ours(cp, cp.final) && !cp.ambush && Math.random() < (war ? 0.75 : 0.4)) {
-    // Before the final: the club of the man we beat in the semi, or of the finalist, sends someone.
-    const opp = cp.final.a === cp.ours ? cp.final.b : cp.final.a;
-    const semi = cp.sf.find((m) => ours(cp, m));
-    const k = (war ? L.clubs.find((x) => x.id === 'horses') : null) ?? clubOf(c, opp) ?? (semi ? clubOf(c, semi.a === cp.ours ? semi.b : semi.a) : null) ?? L.clubs[0];
+  const fin = cp.rounds[CUP_NIGHTS - 1]?.[0];
+  if (c.day === nightDay(cp, CUP_NIGHTS - 1) - 1 && fin && isOurs(cp, fin) && !cp.ambush && Math.random() < (war ? 0.75 : 0.4)) {
+    const opp = fin.a === cp.ours ? fin.b : fin.a;
+    const k = (war ? L.clubs.find((x) => x.id === 'horses') : null) ?? clubOf(c, opp) ?? L.clubs[0];
     const pool = ranked(k).filter((m) => m.id !== opp);
     const thug = pool[Math.floor(Math.random() * pool.length)] ?? k.members[0];
     cp.ambush = { club: k.id, man: thug, settled: false };
-    out.push(`Утром у подъезда ждёт ${short(thug)} из ${k.name}`);
+    out.push(`Вечером у подъезда ждёт ${short(thug)} из ${k.name}`);
   }
-  if (c.day > cp.day + 1) {
-    for (const m of [cp.third, cp.final]) if (m && ours(cp, m) && !m.w) {
-      m.w = m.a === cp.ours ? m.b : m.a;
-      out.push('Не вышел на бой турнира — техническое поражение');
-    }
-    cupAdvance(c);
-    out.push(...settleIfDone(c));
-  }
-  if (!cp.ours && c.day > cp.day + 1) {
-    cupAdvance(c);
-    out.push(...settleIfDone(c));
-  }
+  if (c.day === cp.day - 1 && cp.ours) out.push('Завтра — первый вечер Кубка «Подковы»');
   return out;
 }
 

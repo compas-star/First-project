@@ -28,6 +28,7 @@ import {
 import { MAP_BY_ID } from './maps';
 import { PREPS, PREP_BY_ID, type PrepId } from './prep';
 import { mapSvg, PLACE_BY_ID, type PlaceId } from './cityMap';
+import { placeSvg } from './placeArt';
 import type { SceneSpec } from './cutscenes';
 import { homeSvg, APPARATUS, type HomeObj } from './homeArt';
 import {
@@ -35,7 +36,7 @@ import {
   cupTier, cupTonight, cupNight, cupResult, cupCountRest, cupBet, cupPerson, coef, isOurs, nightDay,
   STREET_TIER, CUP_PRIZE, CUP_FEE, CUP_NIGHTS, CUP_ROUND_NAME, STAGE_NAME, type Club, type CupMatch,
 } from './clubs';
-import { callDue, callScene, callDone, trainTip, act1Pay, watchLesson, basementLost, act, type A1Fight } from './act1';
+import { callDue, callScene, callDone, trainTip, streetRep, act1Pay, watchLesson, basementLost, act, type A1Fight } from './act1';
 import { actCheck, actCard, actFilm, actSeen, actChoose, actFightDone, actGoal, forcedNow } from './acts';
 import { act2Fee, inSewer } from './act2';
 
@@ -89,6 +90,8 @@ export class CareerUi {
   /** The fight about to start (cup, story...): preparation first, then `go`. */
   private prep: { me: CareerFighter; opp: CareerFighter; tier: Tier; title: string; note?: string; bet?: { r: number; i: number }; go: (tweak: (p: FighterParams) => void) => void } | null = null;
   private prepPick: PrepId = 'none';
+  /** The open thing in a place's interior. */
+  private pSheet: string | null = null;
   /** A bet being placed in the cup: which fight and on whom. */
   private betSel: { r: number; i: number; on: string } | null = null;
 
@@ -497,6 +500,37 @@ export class CareerUi {
         <b>${j.name}</b><span class="gain">+$${j.pay}</span><span>${j.parts === 2 ? '2 части дня' : '1 часть дня'} · −${j.e}⚡</span><small>${why ?? j.desc}</small></button></div>`;
     };
     const restBtn = (label: string) => `<button type="button" data-act="rest" ${partsLeft(c, f) ? '' : 'disabled'}>${label}</button>`;
+    // Pixel interiors (user: every building like the home): tap a thing, a sheet opens.
+    const art = p.id === 'flat' ? '' : placeSvg(p.id, { cupOn: !!(ladder(c).open && cupTonight(c)) });
+    if (art) {
+      const g = (id: GymId) => {
+        const gm = GYMS.find((x) => x.id === id)!;
+        const why = gymOpen(c, gm);
+        const mine = gymOf(c).id === id;
+        return `<div class="fnote">${esc(gm.desc)}</div><div class="fmeta">${gm.price ? `$${gm.price}/неделю` : 'бесплатно'} · тренажёры до ${Math.round(gm.level * 100)}% таланта</div>
+          ${mine ? `<div class="pill green">Команда ходит сюда</div><button type="button" class="primary" data-act="gymgo" data-t="stats">🥊 Тренироваться</button>` : `<button type="button" class="primary" data-act="gymmove" data-g="${id}" ${why || c.money < gm.price ? 'disabled' : ''}>Перейти${why ? ` · ${why}` : c.money < gm.price ? ' · мало денег' : ''}</button>`}`;
+      };
+      const SHEETS: Record<string, [string, () => string]> = {
+        counter: ['Обед', () => food(['cafe'])],
+        sport: ['Спортпит', () => food(['sport'])],
+        stall: ['Прилавок', () => food(['cheap'])],
+        crates: ['Ящики', () => job('market')],
+        bags: ['Цемент', () => job('site')],
+        beer: ['Стойка', () => `<button type="button" data-act="beer" ${partsLeft(c, f) && (c.money >= 8 || streetRep(c) >= 2) ? '' : 'disabled'}>🍺 Пиво с мужиками · 1 часть · ${streetRep(c) >= 2 ? 'за счёт заведения' : '$8'} · настроение +10</button>`],
+        door: ['Дверь', () => job('bouncer')],
+        desk: ['Приёмная', () => {
+          const cost = treatCost(c, f);
+          return cost
+            ? `<button type="button" class="primary" data-act="treat" ${c.money >= cost ? '' : 'disabled'}>💊 Лечиться · $${cost} · вдвое быстрее</button>`
+            : `<div class="fnote">${short(f)} здоров${f.treated ? ' (уже лечится)' : ''}. Сюда — после тяжёлого боя или травмы.</div>`;
+        }],
+        g_boxing: ['Клуб «Перчатка»', () => g('boxing')], g_thai: ['Лагерь «Сиам»', () => g('thai')], g_power: ['Атлетический центр', () => g('power')],
+        g_mind: ['Академия реакции', () => g('mind')], g_elite: ['Центр «Олимп»', () => g('elite')],
+      };
+      const sh = this.pSheet ? SHEETS[this.pSheet] : undefined;
+      const sheet = sh ? `<div class="sheetbg" data-act="psheetx"></div><div class="sheet"><div class="sheethead"><b>${sh[0]}</b><button type="button" class="qx" data-act="psheetx">✕</button></div>${sh[1]()}</div>` : '';
+      return `<div class="h1">${p.icon} ${esc(p.name)}</div>${this.dayBar()}${this.status(f)}${art}<div class="fnote">${esc(p.desc)} Тапай по вещам и людям.</div>${p.id === 'gyms' ? `<div class="fnote">Команда сейчас ходит в «${esc(gymOf(c).name)}».</div>` : ''}${sheet}`;
+    }
     let body = '';
     switch (p.id) {
       case 'flat':
@@ -1314,6 +1348,20 @@ export class CareerUi {
       case 'sheetx':
         this.sheet = null;
         return say(null);
+      case 'pobj': {
+        const o = b.dataset.o!;
+        const go: Record<string, Screen> = { cellar: 'cup', cup: 'cup', ring: 'cal', board: 'rank', flags: 'clubs' };
+        if (go[o]) {
+          this.pSheet = null;
+          if (go[o] === 'cup' && this.cupIntro()) return;
+          return this.go(go[o]);
+        }
+        this.pSheet = o;
+        return say(null);
+      }
+      case 'psheetx':
+        this.pSheet = null;
+        return say(null);
       case 'appsel':
         this.appSel = Number(b.dataset.i);
         return say(null);
@@ -1391,18 +1439,22 @@ export class CareerUi {
         return say(r.ok ? `${short(me)}: ${r.text}` : r.text);
       }
       case 'eat': {
+        this.pSheet = null;
         const r = eat(c, me, FOODS.find((x) => x.id === b.dataset.f)!);
         return say(r.text);
       }
       case 'work': {
+        this.pSheet = null;
         const r = work(c, me, JOBS.find((x) => x.id === b.dataset.j)!);
         return say(r.text);
       }
       case 'rest':
         return say(rest(c, me).text);
       case 'beer':
+        this.pSheet = null;
         return say(beer(c, me).text);
       case 'treat':
+        this.pSheet = null;
         return say(treat(c, me).text);
       case 'a1film':
         this.sheet = null;
@@ -1541,6 +1593,7 @@ export class CareerUi {
         return;
       }
       case 'place':
+        this.pSheet = null;
         this.placeId = b.dataset.p as PlaceId;
         this.visited = this.placeId;
         return this.go('place');

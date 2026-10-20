@@ -474,6 +474,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   evasion+reaction; a fight works all, via `fightToll(f, tour, day)`); after `FADE_AFTER` 4
   idle days it loses `FADE` 0.003 of its range a day, down to 15% of the way to talent
   (midnight in `endDay`). The apparatus sheet shows the gym's ceiling and idle days.
+- Place interiors (`placeArt.ts` `placeSvg`, user: every building in the home's pixel style
+  with little people): 160x120 SVGs for cafe, market, site, «Подкова», hospital, arena,
+  sport quarter (alley/roofs "скоро"); things are `data-act="pobj"` groups: food/job/beer/
+  treat/gym open a bottom sheet (`CareerUi.pSheet`, `psheetx`), the cellar/poster go to the
+  cup, the ring to the calendar, the board to rankings, the flags to clubs.
 - Forced fights (user: story must not be skippable): `forcedNow` (cup ambush, act 1 's4h',
   act 2 cards with `forced`) replaces every career screen with the card (no nav, no sheet)
   and 'nextday' refuses until it is fought.

@@ -77,6 +77,26 @@ export function kirpich(c: Career, f: CareerFighter): CareerFighter {
     return m;
   }, f);
 }
+/** «Железные кони» in the story: made at our level (the cup has its own, grown-up copies). */
+export function glush(c: Career, f: CareerFighter): CareerFighter {
+  return npc(c, story(c), 'a1glush', () => {
+    const m = heavy(f, 0.01, 'Глушитель «Без тормозов» Рябов', 'street', 'biker', 0.16);
+    m.aggression = 0.95;
+    return m;
+  }, f);
+}
+export function shatun(c: Career, f: CareerFighter): CareerFighter {
+  return npc(c, story(c), 'a1shatun', () => {
+    const m = heavy(f, 0.06, 'Шатун «Хозяин дороги» Громов', 'street', 'biker', 0.25);
+    m.height = 1.88;
+    m.weight = 104;
+    return m;
+  }, f);
+}
+function rusty(c: Career, f: CareerFighter): CareerFighter {
+  return npc(c, story(c), 'a1rusty', () => heavy(f, -0.02, 'Ржавый «Бывший» Котельников', 'boxing', 'biker', 0.13), f);
+}
+
 export function scar(c: Career, f: CareerFighter): CareerFighter {
   const s = story(c);
   return npc(c, s, 'a1scar', () => heavy(f, 0.2, 'Шрам «Хозяин» Железнов', 'muaythai', 'clerk'), f);
@@ -207,27 +227,119 @@ function scene8(c: Career, f: CareerFighter, a: Act1): SceneSpec {
         { who: 1, text: 'Я этого не говорил. А теперь — для души. Разомнёмся? Без ставок.', shot: 'group' },
       ]
     : [
-        { who: null, text: 'Бар «Подкова». Столы сдвинуты к стенам', shot: 'wide', act: (s) => (s.scene!.dist = 1.9) },
-        { who: 1, text: `Двадцатое число через ${Math.max(1, a.start + 19 - c.day)} дн. А у вас, сколько я знаю, не хватает $${a.debt}.`, shot: 'group' },
-        { who: 1, text: 'Предлагаю по-старому. Я двадцать лет не выходил. Победишь — долга нет. Нет — ключи на стол.', shot: 'group' },
-        { who: null, text: 'Гусь снимает кожанку и вешает на стул', shot: 'close0', dur: 2.2 },
+        { who: null, text: 'Бар «Подкова». Гусь пьёт чай за дальним столом', shot: 'wide', act: (s) => (s.scene!.dist = 1.9) },
+        { who: 1, text: `Двадцатое через ${Math.max(1, a.start + 19 - c.day)} дн. А у вас, сколько я знаю, не хватает $${a.debt}.`, shot: 'group' },
+        { who: 1, text: 'Я человек вежливый. Предупреждаю один раз. Двадцатого я приду не один.', shot: 'group' },
+        { who: 2, text: 'Хе.', shot: 'group', dur: 1.6 },
       ];
   return { map: MAP_BY_ID.bar, a: P(f, 0), b: P(g, 1), dist: 3, extra: { p: P(kirpich(c, f), 1), side: 0.8 }, names: { extra: 'Кирпич' }, lines };
 }
 
-function sceneGusDown(c: Career, f: CareerFighter, a: Act1): SceneSpec {
+function sceneGusDown(c: Career, f: CareerFighter, a: Act1, map = MAP_BY_ID.bar): SceneSpec {
   const lines: SceneLine[] = [
     { who: null, text: 'Гусь сидит на полу, вытирает рот', shot: 'top' },
     { who: 1, text: 'Квиты. И вот что, парень. Не Михалыч был должен. Долг купил Шрам. За старика. Чтобы подвал достался ему.', shot: 'low' },
   ];
   if (a.plan === 'bold') lines.push({ who: 1, text: 'Ты мне сразу понравился. Если Шрам полезет ещё — позвони.', shot: 'over1' });
   return {
-    map: MAP_BY_ID.bar, a: P(f, 0), b: P(gus(c, f), 1), dist: 1.5,
+    map, a: P(f, 0), b: P(gus(c, f), 1), dist: 1.5,
     start: (s) => {
       s.fighters[1].out = true;
       s.knockDown(s.fighters[1], 'нокаут', 'back', 'l');
     },
     lines,
+  };
+}
+
+// --- «Железные кони» (the biker line) ---
+
+function sceneB1(c: Career, f: CareerFighter): SceneSpec {
+  return {
+    map: MAP_BY_ID.bar, a: P(f, 0), b: P(glush(c, f), 1), dist: 2.6, extra: { p: P(shatun(c, f), 1), side: 0.9 }, names: { extra: 'Шатун' },
+    lines: [
+      { who: null, text: 'Бар «Подкова». У стойки — кожаные жилетки с конём на спине', shot: 'wide', act: (s) => (s.scene!.dist = 1.4) },
+      { who: 1, text: 'О. Наследник Михалыча. Это наш стол, подвальный.', shot: 'over1' },
+      { who: null, text: 'Глушитель смахивает твою кружку на пол', shot: 'close0', act: (s) => s.gesture(s.fighters[1], 'beckon', 1) },
+      { who: 2, text: 'Глушитель, не шуми. Хотя… давай посмотрим, что он умеет.', shot: 'group' },
+    ],
+  };
+}
+
+function sceneB2(c: Career, f: CareerFighter): SceneSpec {
+  return {
+    map: B, a: P(f, 0), b: P(f, 1), dist: 2.4, hide: [false, true],
+    lines: [
+      { who: null, text: 'Утро. На двери подвала — красный конь из баллончика', shot: 'wide' },
+      { who: null, text: 'Внутри порезан мешок. Опилки по всему полу', shot: 'low' },
+      { who: 0, text: 'Ну всё.', shot: 'close0', act: (s) => s.gesture(s.fighters[0], 'shake', 1) },
+    ],
+  };
+}
+
+function sceneB3(c: Career, f: CareerFighter, a: Act1): SceneSpec {
+  const lines: SceneLine[] = [
+    { who: null, text: 'Рёв моторов. В подвал спускается Шатун, за ним — Глушитель', shot: 'low', act: (s) => (s.scene!.dist = 1.9) },
+    { who: 1, text: 'Тесно у тебя. Михалыч тоже был упрямый.', shot: 'group' },
+  ];
+  if (a.flags.bkWin) lines.push({ who: 2, text: 'Это он меня тогда…', shot: 'group' }, { who: 1, text: 'Помолчи.', shot: 'over1' });
+  lines.push(
+    { who: 1, text: 'Предлагаю раз. Надевай жилетку. Гусю скажем — он отстанет на пятьсот. Будешь драться за «Коней».', shot: 'over1' },
+    { who: 1, text: 'Не наденешь — значит, ты сам по себе. А сам по себе на нашей улице долго не живут.', shot: 'close1' },
+  );
+  return { map: B, a: P(f, 0), b: P(shatun(c, f), 1), dist: 3.2, extra: { p: P(glush(c, f), 1) }, names: { extra: 'Глушитель' }, lines };
+}
+
+function sceneB4(c: Career, f: CareerFighter): SceneSpec {
+  return {
+    map: MAP_BY_ID.alley, a: P(f, 0), b: P(glush(c, f), 1), dist: 3.4, extra: { p: P(shatun(c, f), 1), side: 0.9 }, names: { extra: 'Шатун' },
+    lines: [
+      { who: null, text: 'Ночь. Фары бьют в глаза. Мотоциклы кругом у подъезда', shot: 'low', act: (s) => (s.scene!.dist = 2.2) },
+      { who: 2, text: 'Ты сказал «нет». У нас за «нет» отвечают.', shot: 'group' },
+      { who: 1, text: 'Я первый. Я давно хотел.', shot: 'over1' },
+      { who: 0, text: 'Ну давай.', shot: 'close0' },
+    ],
+  };
+}
+
+// --- The 20th ---
+
+/** Who stays out of the 20th: Кирпич, if he owes us respect or the bikers took him outside. */
+const kirpichOut = (a: Act1) => !!(a.flags.kirpichRespect || a.flags.bkJoin || a.flags.bkRespect);
+
+function scene20(c: Career, f: CareerFighter, a: Act1): SceneSpec {
+  const lines: SceneLine[] = [
+    { who: null, text: 'Двадцатое. Полночь. Дверь подвала вылетает с одного удара', shot: 'low', act: (s) => (s.scene!.dist = 2.0) },
+    { who: 1, text: 'Двадцатое число. Я пунктуальный человек.', shot: 'group' },
+    { who: 1, text: `Не хватает $${a.debt}. Ключи на стол — или по-плохому.`, shot: 'group' },
+    { who: 0, text: 'Это дом Михалыча. Не отдам.', shot: 'close0' },
+  ];
+  if (a.flags.bkJoin || a.flags.bkRespect)
+    lines.push(
+      { who: null, text: 'С улицы — рёв моторов. В проёме Шатун и «Железные кони»', shot: 'wide' },
+      { who: null, text: a.flags.bkJoin ? 'Шатун: «Это наш человек. Кирпич, пойдём покурим. Пусть разберутся один на один»' : 'Шатун: «Подвальный своё отбил честно. Кирпич, пойдём покурим. Один на один — по-нашему»', shot: 'group' },
+      { who: 1, text: 'Ну что ж. Двадцать лет не выходил.', shot: 'over1' },
+    );
+  else if (a.flags.kirpichRespect)
+    lines.push(
+      { who: 2, text: 'Гусь, я пас. Я ему руку жал.', shot: 'group' },
+      { who: 1, text: 'Тогда сам. Двадцать лет не выходил.', shot: 'over1' },
+    );
+  else
+    lines.push(
+      { who: 1, text: 'Кирпич, разомни его. Что останется — моё.', shot: 'group' },
+      { who: 2, text: 'Хе.', shot: 'group', dur: 1.6 },
+    );
+  return { map: B, a: P(f, 0), b: P(gus(c, f), 1), dist: 3.4, extra: { p: P(kirpich(c, f), 1) }, names: { extra: 'Кирпич' }, lines };
+}
+
+function scene20b(c: Career, f: CareerFighter): SceneSpec {
+  return {
+    map: B, a: P(f, 0), b: P(gus(c, f), 1), dist: 2.4,
+    lines: [
+      { who: null, text: 'Кирпич лежит у стены. Гусь медленно снимает кожанку', shot: 'low', act: (s) => (s.scene!.dist = 1.8) },
+      { who: 1, text: 'Михалыч бы гордился. Жаль, что зря.', shot: 'over1' },
+      { who: 0, text: 'Ещё не зря.', shot: 'close0', act: (s) => s.gesture(s.fighters[0], 'wipe', 1) },
+    ],
   };
 }
 
@@ -356,6 +468,45 @@ function gusFight(c: Career, a: Act1, f: CareerFighter, friendly: boolean): A1Fi
   };
 }
 
+/** A biker of «Железные кони» in the story. */
+function bikerFight(opp: CareerFighter, map: 'bar' | 'alley' | 'basement', title: string, pre: SceneSpec | undefined, after: A1Fight['after']): A1Fight {
+  return { opp, tier: { ...place(map, 0), name: map === 'bar' ? 'Бар' : map === 'alley' ? 'Улица' : 'Подвал' }, title, pre, after };
+}
+
+/** The 20th: Кирпич first (unless he stays out), then Гусь. Win both and the basement stays. */
+function fight20Kirpich(c: Career, a: Act1, f: CareerFighter): A1Fight {
+  return {
+    opp: kirpich(c, f), tier: { ...place('basement', 0), name: 'Подвал' }, title: `Двадцатое: ${short(f)} против Кирпича`,
+    after: (c2, f2, r) => {
+      if (!a.done.includes('d20')) a.done.push('d20');
+      if (r.won) {
+        a.pending = 'd20b';
+        f2.fame += 2;
+        return { lines: ['Кирпич у стены. Но это ещё не всё: Гусь снимает кожанку'] };
+      }
+      a.done.push('d20b');
+      return finish(c2, a, 'lost', ['Кирпич оказался сильнее. Гусь поднимает ключи с пола']);
+    },
+  };
+}
+
+function fight20Gus(c: Career, a: Act1, f: CareerFighter): A1Fight {
+  return {
+    opp: gus(c, f), tier: { ...place('basement', 0), name: 'Подвал' }, title: `Двадцатое: ${short(f)} против Гуся`,
+    after: (c2, f2, r) => {
+      for (const id of ['d20', 'd20b']) if (!a.done.includes(id)) a.done.push(id);
+      if (r.won) {
+        f2.fame += 6;
+        a.flags.scarTruth = 1;
+        if (a.plan === 'bold') a.flags.gusAlly = 1;
+        const res = finish(c2, a, 'ours', ['Гусь на полу. Подвал отбит! Долг списан, известность +6']);
+        return { lines: res.lines, scene: sceneGusDown(c2, f2, a, B) };
+      }
+      return finish(c2, a, 'lost', ['Гусь оказался сильнее. Ключи у него']);
+    },
+  };
+}
+
 // ---------- Cards ----------
 
 interface Opt {
@@ -373,10 +524,37 @@ interface Card {
   when(c: Career, a: Act1): boolean;
   text(c: Career, a: Act1, f: CareerFighter): string;
   scene?(c: Career, f: CareerFighter, a: Act1): SceneSpec;
+  /** Cannot be put off: the screen is blocked until it is dealt with. */
+  forced?: boolean;
   opts: Opt[];
 }
 
 const CARDS: Card[] = [
+  // The 20th comes before anything else that day.
+  {
+    id: 'd20', title: 'Двадцатое', who: 'Гусь и Кирпич',
+    when: (c, a) => actDay(c, a) >= 20 && a.debt > 0,
+    forced: true,
+    text: (_c, a) => `Полночь двадцатого. Гусь${kirpichOut(a) ? '' : ' и Кирпич'} в подвале. Не хватает $${a.debt}. Отдать ключи — или драться${kirpichOut(a) ? ' с Гусем' : ': сначала Кирпич, потом Гусь'}. Победишь — подвал твой.`,
+    scene: scene20,
+    opts: [
+      { id: 'fight', label: 'Драться за подвал', run: (c, a, f) => ({ lines: [], fight: kirpichOut(a) ? fight20Gus(c, a, f) : fight20Kirpich(c, a, f) }) },
+      { id: 'pay', label: 'Отдать деньги', no: (c, a) => (c.money < a.debt ? `нужно $${a.debt}` : null), run: (c, a) => {
+        c.money -= a.debt;
+        a.debt = 0;
+        return finish(c, a, 'ours', ['Гусь пересчитал до купюры: «Успел. Квиты»']);
+      } },
+      { id: 'keys', label: 'Отдать ключи', run: (c, a) => finish(c, a, 'lost', ['Ключи легли на пол. Гусь даже не посмотрел']) },
+    ],
+  },
+  {
+    id: 'd20b', title: 'Гусь снимает кожанку', who: 'Гусь',
+    when: () => false,
+    forced: true,
+    text: () => 'Кирпич лежит у стены. Гусь снимает кожанку: «Ну, раз так — я сам». Последний бой за подвал.',
+    scene: (c, f) => scene20b(c, f),
+    opts: [{ id: 'fight', label: 'Драться', run: (c, a, f) => ({ lines: [], fight: fight20Gus(c, a, f) }) }],
+  },
   {
     id: 's1', title: 'Ключи', who: 'Михалыч (кассета)',
     when: () => true,
@@ -531,10 +709,14 @@ const CARDS: Card[] = [
   {
     id: 's8', title: 'Гусь приходит сам', who: 'Гусь',
     when: (c, a) => c.day >= a.gusDay,
-    text: (_c, a) => (a.debt > 0 ? `Гусь ждёт в «Подкове». Долг ещё $${a.debt}. Он предлагает решить по-старому — на кулаках.` : 'Долг отдан, но Гусь всё равно зовёт в «Подкову»: поговорить.'),
+    text: (_c, a) => (a.debt > 0 ? `Гусь ждёт в «Подкове». Долг ещё $${a.debt}. Предупреждает: двадцатого он придёт не один.` : 'Долг отдан, но Гусь всё равно зовёт в «Подкову»: поговорить.'),
     scene: (c, f, a) => scene8(c, f, a),
     opts: [
-      { id: 'fight', label: '«Дерёмся»', no: (c, a, f) => (a.debt <= 0 ? 'долг уже отдан' : f.busyUntil > c.day ? `${short(f)} ещё не готов` : null), run: (c, a, f) => ({ lines: [], fight: gusFight(c, a, f, false) }) },
+      { id: 'wait', label: '«Приходи. Встречу»', no: (_c, a) => (a.debt <= 0 ? 'долг уже отдан' : null), run: (_c, a, f) => {
+        a.flags.gusWarned = 1;
+        addMood(f, 5);
+        return { lines: ['Гусь допивает чай: «Как скажешь». Двадцатого — разборка в подвале'] };
+      } },
       { id: 'pay', label: '«Отдам всё сейчас»', no: (c, a) => (a.debt <= 0 ? 'долг уже отдан' : c.money < a.debt ? `нужно $${a.debt}` : null), run: (c, a) => {
         c.money -= a.debt;
         a.debt = 0;
@@ -544,6 +726,131 @@ const CARDS: Card[] = [
       { id: 'friendly', label: '«Давай» (без ставок)', no: (c, a, f) => (a.debt > 0 ? 'сначала долг' : f.busyUntil > c.day ? `${short(f)} ещё не готов` : null), run: (c, a, f) => ({ lines: [], fight: gusFight(c, a, f, true) }) },
       { id: 'later', label: '«В другой раз»', no: (_c, a) => (a.debt > 0 ? 'сначала долг' : null), run: (c, a) => finish(c, a, 'ours', ['Гусь пожимает плечами: «Как знаете»']) },
     ],
+  },
+
+  // --- «Железные кони»: the bikers who run the street ---
+  {
+    id: 'b1', title: 'Чужой стол', who: '«Железные кони»',
+    when: (c, a) => actDay(c, a) >= 3 && did(a, 's2'),
+    text: () => 'В «Подкове» байкеры «Железных коней». Глушитель смахнул твою кружку: «Это наш стол, подвальный». Шатун смотрит и ухмыляется.',
+    scene: sceneB1,
+    opts: [
+      { id: 'out', label: '«Выйдем»', run: (c, a, f) => ({ lines: [], fight: bikerFight(glush(c, f), 'alley', `За «Подковой»: ${short(f)} против Глушителя`, undefined, (c2, f2, r) => {
+        a.done.push('b1');
+        a.flags.bkWar = 1;
+        a.flags.bkNext = c2.day + 3;
+        if (r.won) {
+          a.flags.bkWin = 1;
+          f2.fame += 2;
+          addMood(f2, 8);
+          return { lines: ['Глушитель в луже. Шатун перестал ухмыляться. Известность +2. «Кони» этого не забудут'] };
+        }
+        addMood(f2, -8);
+        return { lines: ['Глушитель сильнее. Байкеры ржут вслед'] };
+      }) }) },
+      { id: 'leave', label: 'Уйти', run: (c, a, f) => {
+        a.flags.bkMock = 1;
+        a.flags.bkNext = c.day + 3;
+        addMood(f, -8);
+        return { lines: ['Ушёл. В спину свистят. На районе говорят: подвальный струсил'] };
+      } },
+      { id: 'joke', label: '«Сначала научись пить»', run: (c, a, f) => {
+        a.flags.bkWar = 1;
+        a.flags.bkNext = c.day + 3;
+        f.fame += 1;
+        return { lines: ['Бар хохочет. Глушитель багровеет. Известность +1, «Коням» не смешно'] };
+      } },
+    ],
+  },
+  {
+    id: 'b2', title: 'Конь на двери', who: '«Железные кони»',
+    when: (c, a) => did(a, 'b1') && c.day >= (a.flags.bkNext ?? 0) && actDay(c, a) >= 6,
+    text: () => 'На двери подвала нарисован красный конь. Внутри порезан мешок. Метка «Коней»: это их улица.',
+    scene: sceneB2,
+    opts: [
+      { id: 'garage', label: 'Пойти к ним в гаражи', no: (c, _a, f) => (partsLeft(c, f) < 1 ? 'сегодня уже поздно' : null), run: (c, a, f) => ({ lines: [], fight: bikerFight(rusty(c, f), 'alley', `Гаражи: ${short(f)} против Ржавого`, {
+        map: MAP_BY_ID.alley, a: P(f, 0), b: P(rusty(c, f), 1), dist: 3,
+        lines: [
+          { who: null, text: 'Гаражи «Коней». Пахнет бензином', shot: 'wide', act: (s) => (s.scene!.dist = 2.2) },
+          { who: 1, text: 'Шатуна нет. Есть я. Бывший КМС, между прочим.', shot: 'over1' },
+        ],
+      }, (c2, f2, r) => {
+        a.done.push('b2');
+        a.flags.bkWar = 1;
+        a.flags.bkNext = c2.day + 3;
+        if (r.won) {
+          c2.money += 80;
+          f2.fame += 2;
+          a.flags.bkWin = (a.flags.bkWin ?? 0) + 1;
+          return { lines: ['Ржавый сдался. В гараже нашёлся новый мешок — забрал как компенсацию (+$80). Известность +2'] };
+        }
+        addMood(f2, -6);
+        return { lines: ['Ржавый оказался крепче. Ушёл ни с чем'] };
+      }) }) },
+      { id: 'paint', label: 'Закрасить и зашить мешок ($20)', no: (c) => (c.money < 20 ? 'нужно $20' : null), run: (c, a) => {
+        c.money -= 20;
+        a.flags.bkNext = c.day + 3;
+        return { lines: ['Закрасил. Конь проступает сквозь краску'] };
+      } },
+      { id: 'over', label: 'Нарисовать поверх кулак', run: (c, a, f) => {
+        a.flags.bkWar = 1;
+        a.flags.bkNext = c.day + 3;
+        addMood(f, 6);
+        return { lines: ['Поверх коня — кулак. Теперь это война'] };
+      } },
+    ],
+  },
+  {
+    id: 'b3', title: 'Предложение Шатуна', who: 'Шатун',
+    when: (c, a) => did(a, 'b2') && c.day >= (a.flags.bkNext ?? 0) && actDay(c, a) >= 10,
+    text: () => 'Шатун сам спустился в подвал: «Надевай жилетку «Коней» — Гусь скинет пятьсот. Не наденешь — ты сам по себе».',
+    scene: sceneB3,
+    opts: [
+      { id: 'join', label: 'Надеть жилетку', run: (c, a, f) => {
+        a.flags.bkJoin = 1;
+        a.debt = Math.max(0, a.debt - 500);
+        f.skin = 'biker';
+        addMood(f, -5);
+        return { lines: [`Теперь ты «Конь». Гусь скинул $500: долг $${a.debt}. Двадцатого «Кони» будут рядом. «Цех №5» тебе этого не простит`] };
+      } },
+      { id: 'duel', label: '«Один на один. Здесь»', run: (c, a, f) => ({ lines: [], fight: bikerFight(shatun(c, f), 'basement', `Подвал: ${short(f)} против Шатуна`, undefined, (c2, f2, r) => {
+        a.done.push('b3');
+        if (r.won) {
+          a.flags.bkRespect = 1;
+          a.flags.bkWar = 0;
+          f2.fame += 4;
+          return { lines: ['Шатун поднимается, сплёвывает: «Уважаю. Двадцатого приду посмотреть». Известность +4'] };
+        }
+        a.flags.bkWar = 1;
+        out(c2, f2, 2, 'отходит после Шатуна');
+        return { lines: ['Шатун уходит не оглядываясь. Война продолжается. 2 дня лечения'] };
+      }) }) },
+      { id: 'no', label: '«Я сам по себе»', run: (_c, a) => {
+        a.flags.bkWar = 1;
+        return { lines: ['Шатун кивает: «Как скажешь». Жди гостей'] };
+      } },
+    ],
+  },
+  {
+    id: 'b4', title: 'Фары у подъезда', who: '«Железные кони»',
+    when: (c, a) => did(a, 'b3') && !!a.flags.bkWar && !a.flags.bkRespect && !a.flags.bkJoin && actDay(c, a) >= 14,
+    forced: true,
+    text: () => 'Ночь. У подъезда кругом мотоциклы. Глушитель выходит в свет фар — драться придётся.',
+    scene: (c, f) => sceneB4(c, f),
+    opts: [{ id: 'fight', label: 'Драться', run: (c, a, f) => ({ lines: [], fight: bikerFight(glush(c, f), 'alley', `У подъезда: ${short(f)} против Глушителя`, undefined, (c2, f2, r) => {
+      a.done.push('b4');
+      if (r.won) {
+        a.flags.bkRespect = 1;
+        a.flags.bkWar = 0;
+        f2.fame += 3;
+        return { lines: ['Глушитель на асфальте. Шатун глушит мотор: «Ладно, подвальный. Живи». Известность +3'] };
+      }
+      const lost = Math.min(c2.money, 100);
+      c2.money -= lost;
+      addMood(f2, -10);
+      out(c2, f2, 2, 'отходит после драки у подъезда');
+      return { lines: [`Глушитель сильнее. «Кони» забрали из кассы $${lost}. 2 дня лечения`] };
+    }) }) }],
   },
 ];
 
@@ -646,11 +953,17 @@ export function act1Day(c: Career): string[] {
     a.kirpichDay = c.day;
     out.push('Не пришёл в подворотню. Утром в дверь стучит Кирпич');
   }
-  // The 20th has passed and nothing was settled: the basement goes.
-  if (actDay(c, a) > 20 && !a.ending) {
-    const r = finish(c, a, a.debt > 0 ? 'lost' : 'ours', [a.debt > 0 ? 'Двадцатое прошло. Долг не отдан — подвал забирают' : 'Двадцатое прошло. Долг отдан']);
-    if (a.pending && a.pending !== 'end') a.pending = 'end';
-    out.push(...r.lines);
+  // The 20th: paid up = the basement is ours; not = Гусь and Кирпич come (the 'd20' card,
+  // which cannot be skipped) and it goes to the fists.
+  if (actDay(c, a) >= 20 && !a.ending) {
+    if (a.debt <= 0) {
+      const r = finish(c, a, 'ours', ['Двадцатое. Долг отдан']);
+      if (a.pending && a.pending !== 'end') a.pending = 'end';
+      out.push(...r.lines);
+    } else if (a.pending !== 'd20' && a.pending !== 'd20b' && !did(a, 'd20')) {
+      a.pending = 'd20';
+      out.push('🎬 Двадцатое. В дверь подвала стучат');
+    }
   }
   out.push(...act1Check(c));
   return out;
@@ -686,7 +999,7 @@ export function act1Card(c: Career): Act1Card | null {
   const card = BY[a.pending];
   return {
     id: card.id, title: card.title, who: card.who, text: card.text(c, a, f),
-    film: !!card.scene, watched: a.seen.includes(card.id), forced: card.id === 's4h',
+    film: !!card.scene, watched: a.seen.includes(card.id), forced: !!card.forced || card.id === 's4h',
     opts: card.opts.map((o) => ({ id: o.id, label: o.label, no: o.no?.(c, a, f) ?? null })),
   };
 }
@@ -728,7 +1041,8 @@ export function act1Choose(c: Career, opt: string): { lines: string[]; fight?: A
   // The roof fight comes back every few nights: never marked done.
   if (!r.fight && !a.done.includes(id) && id !== 's7') a.done.push(id);
   c.log.unshift(...r.lines.map((x) => `🎬 ${x}`));
-  if (!a.pending) act1Check(c);
+  // A fight: the next card waits for its result (act1FightDone).
+  if (!a.pending && !r.fight) act1Check(c);
   save(c);
   return r;
 }
@@ -737,6 +1051,7 @@ export function act1FightDone(c: Career, f: CareerFighter, fight: A1Fight, r: Fi
   const a = act(c)!;
   fightToll(f);
   const res = fight.after(c, f, r);
+  if (a.pending && a.pending !== 'end' && did(a, a.pending)) a.pending = null;
   if (!a.pending) act1Check(c);
   c.log.unshift(...res.lines.map((x) => `🎬 ${x}`));
   save(c);

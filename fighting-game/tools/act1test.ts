@@ -11,7 +11,7 @@ for (let run = 0; run < RUNS; run++) {
   const log: string[] = [];
   for (let d = 0; d < 26; d++) {
     c.incidents = [];
-    for (let k = 0; k < 4; k++) {
+    for (let k = 0; k < 6; k++) {
       const card = act1Card(c);
       if (!card) break;
       if (card.film) { if (!act1Film(c)) log.push('NO FILM ' + card.id); act1Seen(c); }
@@ -36,7 +36,7 @@ for (let run = 0; run < RUNS; run++) {
   const a = act(c)!;
   const e = a.ending ?? 'none';
   ends[e] = (ends[e] ?? 0) + 1;
-  if (run === 0 || (e === 'none' && sample.length === 0)) sample = log;
+  if ((log.some((l) => l.includes('d20'))) || (e === 'none' && sample.length === 0)) sample = log;
 }
 console.log(ends);
 console.log(sample.join('\n'));

@@ -407,11 +407,13 @@ export function cupDay(c: Career): string[] {
     }
     cupAdvance(c);
   }
-  if (c.day === cp.day + 1 && cp.ours && cp.final && ours(cp, cp.final) && !cp.ambush && Math.random() < 0.4) {
+  // At war with «Железные кони» (act 1): they come far more often, and it is them.
+  const war = !!c.act1?.flags.bkWar && !c.act1.flags.bkRespect && !c.act1.flags.bkJoin;
+  if (c.day === cp.day + 1 && cp.ours && cp.final && ours(cp, cp.final) && !cp.ambush && Math.random() < (war ? 0.75 : 0.4)) {
     // Before the final: the club of the man we beat in the semi, or of the finalist, sends someone.
     const opp = cp.final.a === cp.ours ? cp.final.b : cp.final.a;
     const semi = cp.sf.find((m) => ours(cp, m));
-    const k = clubOf(c, opp) ?? (semi ? clubOf(c, semi.a === cp.ours ? semi.b : semi.a) : null) ?? L.clubs[0];
+    const k = (war ? L.clubs.find((x) => x.id === 'horses') : null) ?? clubOf(c, opp) ?? (semi ? clubOf(c, semi.a === cp.ours ? semi.b : semi.a) : null) ?? L.clubs[0];
     const pool = ranked(k).filter((m) => m.id !== opp);
     const thug = pool[Math.floor(Math.random() * pool.length)] ?? k.members[0];
     cp.ambush = { club: k.id, man: thug, settled: false };

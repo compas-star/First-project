@@ -363,6 +363,17 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   Monday payments, the 20th forces an ending (`act1Day` from endDay). Goal card with "Отдать"
   buttons on home; card shows "▶ Смотреть сцену" first, then the choices. Ending lost/deal:
   basement training x0.8 (`gymK`, "двор"). Kirpich is 1.96 m / 112 kg. Tool `act1test`.
+  The 20th (user: losing the basement was silent; make it dramatic): s8 (Гусь in the bar) only
+  warns now ("двадцатого приду не один") or takes the money; on the 20th with debt left the
+  forced card 'd20' (`scene20`: midnight, the door kicked in) = fight Кирпич, then forced 'd20b'
+  (`scene20b`) Гусь, both in the basement; win both = 'ours' (`sceneGusDown` in the basement),
+  lose either = 'lost'; or pay / give the keys. Кирпич stays out (`kirpichOut`) if he got our
+  hand or the bikers are with us. Biker line «Железные кони» (cards b1-b4, story-level copies
+  `glush`/`shatun`/`rusty` made by `heavy`): b1 bar (fight Глушитель / leave / joke), b2 horse
+  on the door (garage fight Ржавый / paint $20 / paint a fist), b3 Шатун's offer (join: debt −500,
+  skin biker; duel Шатун in the basement; refuse = war), b4 forced night ambush by Глушитель if
+  still at war (win = respect, lose = −$100). War = cup ambush 75% and from the horses.
+  `act1Choose` no longer re-opens the card during its fight (cards reappeared after a fight).
   Engine for it: map 'basement' (`arena.ts basement()`: bricks, pipes, bag on chain, belt,
   photo, bulb; old TV + VCR whose 64x48 canvas plays Михалыч's tape when `TV.on`, mouth moves
   while `TV.talk`, snow and rolling bar); `storyCut` in cutscenes.ts (a shot per line: wide,

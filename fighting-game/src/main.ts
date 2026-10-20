@@ -600,7 +600,10 @@ function frame(now: number): void {
   let worldDt = 0;
   const frozen = view.hitStop > 0;
   view.hitStop -= realDt;
-  if (!paused && !training && !frozen) {
+  // The career screen covers the arena: the sandbox fight waits behind it (user: the sandbox men
+  // kept fighting in the background), and the arena is only redrawn now and then.
+  const careerUp = !$('career').hidden && !cutState;
+  if (!paused && !training && !frozen && !careerUp) {
     // On a slow phone the physics may not keep up; then time simply runs slower.
     worldDt = sim.advance(realDt * viewScale * (sim.winner ? 1 : speed) * (lab.active ? lab.slow : 1));
   }
@@ -643,10 +646,14 @@ function frame(now: number): void {
   if (lab.active) lab.update();
   recorder.watch(sim);
   $('btnRec').hidden = !paused || lab.active || !$('career').hidden;
-  view.render(realDt, worldDt, viewScale);
-  updateHud();
+  if (!careerUp || now - lastCovered > 500) {
+    if (careerUp) lastCovered = now;
+    view.render(realDt, worldDt, viewScale);
+    updateHud();
+  }
   requestAnimationFrame(frame);
 }
+let lastCovered = 0;
 
 // ---------- Setup sheet ----------
 

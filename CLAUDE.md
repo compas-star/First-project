@@ -143,7 +143,10 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   cycles маски / комикс / тени (`arena-figure-v2`). `view.debugCam` lets tests place the camera.
 - `main.ts`: HUD, time scale ("eyes"), setup sheet, presets. KO / draw / round cards wait while
   the setup sheet or the career is open (`covered` in `frame`): the KO overlay took the sheet's
-  taps and the game looked frozen (user).
+  taps and the game looked frozen (user). While the career screen is up (and no cutscene
+  plays) the sandbox fight does not advance and the arena is redrawn only every 0.5 s
+  (`careerUp` in `frame`; user: sandbox men kept fighting behind the career, e.g. the fight
+  `startFight()` starts after a career film).
 - `career.ts` + `careerUi.ts`: manager mode ("Карьера" button; the sandbox stays as is).
   Fighters with a story, stats (`bodySpeed, strength, mindSpeed, skill, evasion, cardio`)
   and hidden caps (talent). **Calendar** (user's request): the career runs by days

@@ -78,6 +78,8 @@ export interface CareerFighter {
   trainedDay?: number;
   /** Day each quality was last worked (training, or a fight); unworked ones fade. */
   worked?: Partial<Record<StatKey, number>>;
+  /** How much each quality has lost since it was last worked. */
+  faded?: Partial<Record<StatKey, number>>;
   /** The hospital took this recovery (pays once per injury). */
   treated?: boolean;
 }
@@ -471,10 +473,25 @@ export function gainOf(f: CareerFighter, k: StatKey, it: Intensity, c?: Career):
 export const FADE_AFTER = 4;
 export const FADE = 0.003;
 
-/** He worked these qualities today (a session, a fight = all of them). */
+/** How much this quality loses tonight if not worked (0 at the floor). */
+export function fadeOf(f: CareerFighter, k: StatKey): number {
+  const info = STAT_INFO[k];
+  const floor = fadeFloor(f, k);
+  return Math.max(0, Math.min(f.stats[k] - floor, FADE * (f.caps[k] - info.lo)));
+}
+/** It never fades below 15% of the way to his talent. */
+export const fadeFloor = (f: CareerFighter, k: StatKey) => STAT_INFO[k].lo + 0.15 * (f.caps[k] - STAT_INFO[k].lo);
+/** A change of a quality as the game shows it: percent for technique/evasion, else ×0.000. */
+export const fmtDelta = (k: StatKey, d: number) => (k === 'skill' || k === 'evasion' ? `${(d * 100).toFixed(1)}%` : `×${d.toFixed(3)}`);
+
+/** He worked these qualities today (a session, a fight = all of them): the fade stops. */
 export function worked(f: CareerFighter, day: number, keys: StatKey[] = STAT_KEYS): void {
   f.worked ??= {};
-  for (const k of keys) f.worked[k] = day;
+  f.faded ??= {};
+  for (const k of keys) {
+    f.worked[k] = day;
+    f.faded[k] = 0;
+  }
 }
 
 /** Busy today (training, getting over a fight); `busyUntil` is the first day he is free. */
@@ -692,22 +709,22 @@ function endDay(c: Career): string[] {
       f.busyWhat = '';
     }
   }
-  // Qualities not worked for a few days fade (user: stats should drop without training), down
-  // to 15% of the way to his talent; a fight or any session on it keeps it.
+  // Qualities not worked for a few days fade (user: stats should drop without training; show how
+  // much and why), down to 15% of the way to his talent; a fight or a session on it keeps it.
   for (const f of c.roster) {
     const w = (f.worked ??= {});
+    const fd = (f.faded ??= {});
     const lost: string[] = [];
     for (const k of STAT_KEYS) {
       w[k] ??= today;
-      const idle = today - w[k]!;
-      if (idle < FADE_AFTER) continue;
-      const info = STAT_INFO[k];
-      const floor = info.lo + 0.15 * (f.caps[k] - info.lo);
-      if (f.stats[k] <= floor) continue;
-      f.stats[k] = Math.max(floor, f.stats[k] - FADE * (f.caps[k] - info.lo));
-      if (idle === FADE_AFTER) lost.push(STAT_INFO[k].name.toLowerCase());
+      if (today - w[k]! < FADE_AFTER) continue;
+      const d = fadeOf(f, k);
+      if (d <= 0) continue;
+      f.stats[k] -= d;
+      fd[k] = (fd[k] ?? 0) + d;
+      lost.push(`${STAT_INFO[k].name.toLowerCase()} −${fmtDelta(k, d)}`);
     }
-    if (lost.length) out.push(`${short(f)}: без тренировок уходит ${lost.join(', ')}`);
+    if (lost.length) out.push(`📉 ${short(f)} без тренировок: ${lost.join(', ')}`);
   }
   // A day without the gym: he goes soft (slower while getting over a fight).
   for (const f of c.roster) {

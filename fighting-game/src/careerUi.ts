@@ -3,7 +3,7 @@
 // their own screens with a way back. Before a fight you see who you meet; after it,
 // what you got.
 import {
-  STAT_KEYS, STAT_INFO, FADE_AFTER, INTENSITY, TIERS, TIER_BY_ID, MAX_ROSTER,
+  STAT_KEYS, STAT_INFO, FADE_AFTER, fadeOf, fmtDelta, INTENSITY, TIERS, TIER_BY_ID, MAX_ROSTER,
   load, save, reset, newCareer, tick, busy, refreshMarket, buy, sell,
   rating, talentWord, value, opponent, toParams, afterFight, tourFight, roundName, roundTier, short, odds,
   person, current, myMatch, settle, settleOthers, finished, closeTour,
@@ -362,7 +362,10 @@ export class CareerUi {
         ? `<div class="pill red">Здешние тренажёры больше не дают роста: ${fmtStat(k, gymCap(c, f, k))}. Нужен зал получше (Город → Спортквартал)</div>`
         : `<div class="fnote">Потолок этого зала: ${fmtStat(k, gymCap(c, f, k))}</div>`;
       const idle = c.day - (f.worked?.[k] ?? c.day);
-      const fade = !opt.craft && idle >= FADE_AFTER - 1 ? `<div class="fnote">Не тренировал ${idle} дн.${idle >= FADE_AFTER ? ' — уже уходит' : ' — завтра начнёт уходить'}</div>` : '';
+      const lostK = f.faded?.[k] ?? 0;
+      const fade = !opt.craft && idle >= FADE_AFTER - 1
+        ? `<div class="fade ${idle >= FADE_AFTER ? 'on' : 'warn'}">Не тренировал ${idle} дн.${idle >= FADE_AFTER ? ` — уходит −${fmtDelta(k, fadeOf(f, k))} за ночь${lostK > 0 ? `, уже ушло −${fmtDelta(k, lostK)}` : ''}. Тренировка сейчас остановит` : ' — с завтрашней ночи начнёт уходить'}</div>`
+        : '';
       return `${head(ap.name)}${lost}${tabs}<div class="fmeta">${opt.name} сейчас: <b>${cur}</b>${satOf(f) < HUNGRY ? ' · <b>голодный — вполсилы</b>' : ''}</div>${capNote}${fade}<div class="ibtns">${its}</div>`;
     }
     switch (o) {
@@ -599,7 +602,8 @@ export class CareerUi {
       <div class="traits">${(f.traits ?? []).map((t) => `<span class="trait" title="${esc(TRAITS[t].desc)}">${TRAITS[t].icon} ${TRAITS[t].name}</span>`).join('')}${this.c.roster.includes(f) ? `<span class="trait mood">${moodWord(f).icon} ${moodWord(f).text}</span>` : ''}</div>
       ${compact || !this.c.roster.includes(f) ? '' : `<div class="fnote">${(f.traits ?? []).map((t) => TRAITS[t].desc).join(' ')}</div>`}
       ${this.status(f)}
-      ${statsTable(f)}
+      ${statsTable(f, this.c.roster.includes(f) ? this.c.day : undefined)}
+      ${this.c.roster.includes(f) && !compact ? `<div class="fnote">${FADE_RULE}</div>` : ''}
       ${this.c.roster.includes(f) ? tonusRow(f) : ''}
       <div class="fnote">Полоса — уровень сейчас, белая чёрточка — его потолок (примерно). Тренер: <b>${talentWord(f)}</b>. Известность <b>${f.fame}</b>.</div>
     </div>`;
@@ -710,6 +714,7 @@ export class CareerUi {
         <div class="trow-top"><b>${info.name}</b><span>${fmtStat(k, f.stats[k])} <em>→ до ~${fmtStat(k, roundCap(k, f.caps[k]))}</em></span></div>
         ${bar(f, k)}
         <small>${info.drill}. ${info.desc}${room < 0.005 ? ' <b>Упёрся в потолок.</b>' : ''}</small>
+        ${statsFade(f, k, c.day)}
       </button>`;
     }).join('');
     const its = INTENSITY.map((it) => {
@@ -722,7 +727,7 @@ export class CareerUi {
         <small>${it.injury ? `травма ${Math.round(it.injury * 100)}%` : 'без риска'}${no ? ` · ${no}` : ''}</small>
       </button>`;
     }).join('');
-    return `<div class="fnote">Выбери качество и жми тренировку — она сразу идёт и занимает часть дня. Чем ближе к потолку, тем меньше даёт. ${satOf(f) < HUNGRY ? '<b>Голодный: прирост вдвое меньше — сначала поешь.</b>' : ''}</div>
+    return `<div class="fnote">${FADE_RULE}</div><div class="fnote">Выбери качество и жми тренировку — она сразу идёт и занимает часть дня. Чем ближе к потолку, тем меньше даёт. ${satOf(f) < HUNGRY ? '<b>Голодный: прирост вдвое меньше — сначала поешь.</b>' : ''}</div>
       <div class="trows">${rows}</div>
       <div class="h2">${STAT_INFO[this.stat].name}: тренировать</div>
       <div class="ibtns">${its}</div>`;
@@ -1630,7 +1635,10 @@ export class CareerUi {
         const done = (err: string | null) => {
           if (err) return say(err);
           this.calDay = c.day;
-          this.toast = `Новый день: ${dayName(c.day)}, ${weekday(c.day)}`;
+          // Tonight's losses from going without training, with numbers (user: show how much and why).
+          const night: string[] = [];
+          for (let i = 1; i < c.log.length && !c.log[i].startsWith('—'); i++) if (c.log[i].startsWith('📉')) night.push(c.log[i]);
+          this.toast = [`Новый день: ${dayName(c.day)}, ${weekday(c.day)}`, ...night].join(' · ');
           if (callDue(c)) return this.playCall();
           return this.go(this.screen === 'cal' || this.screen === 'gym' ? this.screen : 'home');
         };
@@ -1832,9 +1840,26 @@ async function saveFile(code: string): Promise<string> {
 }
 
 /** Current level against how far he can go, for each quality. */
-function statsTable(f: CareerFighter): string {
-  return `<div class="stats">${STAT_KEYS.map((k) => `<div class="stat"><span>${STAT_INFO[k].name}</span>${bar(f, k)}<b>${fmtStat(k, f.stats[k])}</b></div>`).join('')}</div>`;
+/** How long a quality has gone without work and what it loses (his own fighters). */
+function statsFade(f: CareerFighter, k: StatKey, day?: number): string {
+  {
+    if (day === undefined || !f.worked) return '';
+    const idle = day - (f.worked[k] ?? day);
+    const lost = f.faded?.[k] ?? 0;
+    const d = fadeOf(f, k);
+    if (idle >= FADE_AFTER && d > 0) return `<div class="fade on">▼ уходит −${fmtDelta(k, d)} за ночь · без тренировки ${idle} дн.${lost > 0 ? ` · уже −${fmtDelta(k, lost)}` : ''}</div>`;
+    if (idle >= FADE_AFTER) return `<div class="fade">без тренировки ${idle} дн. · ниже уже не упадёт${lost > 0 ? ` · ушло −${fmtDelta(k, lost)}` : ''}</div>`;
+    if (idle === FADE_AFTER - 1) return `<div class="fade warn">без тренировки ${idle} дн. · с завтрашней ночи начнёт уходить</div>`;
+    return '';
+  }
 }
+
+function statsTable(f: CareerFighter, day?: number): string {
+  return `<div class="stats">${STAT_KEYS.map((k) => `<div class="stat"><span>${STAT_INFO[k].name}</span>${bar(f, k)}<b>${fmtStat(k, f.stats[k])}</b></div>${statsFade(f, k, day)}`).join('')}</div>`;
+}
+
+/** The rule behind the fade, in one place. */
+const FADE_RULE = `Форма держится ${FADE_AFTER} дня после тренировки или боя. Дальше каждую ночь качество теряет 0,3% своего диапазона, но не ниже 15% пути к таланту. Бой держит всё сразу; скакалка — скорость и выносливость, маятник — уклоны и реакцию, мешок, гантели и покрышки — силу, зеркало — технику.`;
 
 function bar(f: CareerFighter, k: StatKey): string {
   const info = STAT_INFO[k];

@@ -474,6 +474,10 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   evasion+reaction; a fight works all, via `fightToll(f, tour, day)`); after `FADE_AFTER` 4
   idle days it loses `FADE` 0.003 of its range a day, down to 15% of the way to talent
   (midnight in `endDay`). The apparatus sheet shows the gym's ceiling and idle days.
+  Shown with numbers (user: show how much and why): `fadeOf`/`fadeFloor`/`fmtDelta`,
+  `CareerFighter.faded` (lost since last worked, reset by `worked`), `statsFade` lines under
+  each quality in the hero card and the gym (idle days, loss per night, lost so far, "с завтрашней
+  ночи начнёт уходить"), `FADE_RULE` text, and the night's `📉` lines in the new-day toast.
 - Place interiors (`placeArt.ts` `placeSvg`, user: every building in the home's pixel style
   with little people): 160x120 SVGs for cafe, market, site, «Подкова», hospital, arena,
   sport quarter (alley/roofs "скоро"); things are `data-act="pobj"` groups: food/job/beer/

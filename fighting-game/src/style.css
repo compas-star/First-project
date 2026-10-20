@@ -2503,3 +2503,8 @@ body.cutting #btnRec {
   display: flex;
   justify-content: space-between;
 }
+
+/* A quality going without work: how long, and how much it loses (careerUi statsTable). */
+#career .fade { font-family: 'Pixelify Sans', sans-serif; text-transform: none; letter-spacing: 0; font-size: 12px; margin: 2px 0 4px; color: #b8b0c8; }
+#career .fade.warn { color: #f2c14e; }
+#career .fade.on { color: #ff5d73; }

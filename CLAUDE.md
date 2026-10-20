@@ -450,7 +450,7 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   Saturdays (`nightDay`): 1/8 (1 round), 1/4 and 1/2 (3), final (5) + bout for third (3)
   (`cupTier(r)`); seeded bracket (`SEED`, drawn on the first night, ours in a free place);
   fee $50, prizes $1000/$400/$150; the next cup two weeks after the final (`cup()`; old v1
-  cups replaced, fee refunded). Bets (`cupBet`, `coef` = 0.93/p, odds() by rating) paid in
+  cups replaced, fee refunded). Bets (`cupBet`, `coef` = 0.93/p; `odds()` = rating/6 + 0.025 per kg, fitted by `tools/cupodds.ts` on 208 real cup fights) paid in
   `decide`; others' fights watched in the arena (`cupwatch` → `cupResult`) or counted
   (`cupCountRest`, midnight `cupDay`; ours unfought = forfeit). Winning the cup = ladder
   stage 2 (`checkStage`); act 2 starts only then (`ensureAct2`), between the acts `actGoal`

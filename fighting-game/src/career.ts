@@ -954,8 +954,10 @@ export function startTour(c: Career, f: CareerFighter, e: Ev): string | null {
 }
 
 /** Odds between two fighters we do not watch. */
+/** Chance that a beats b. Fitted on 208 real cup fights (tools/cupodds.ts): rating over 6, and
+ * weight counts on its own (+0.025 a kg: in open-weight fights 10+ kg heavier won 65%). */
 export function odds(a: CareerFighter, b: CareerFighter): number {
-  return 1 / (1 + Math.exp(-(rating(a) - rating(b)) / 7));
+  return 1 / (1 + Math.exp(-((rating(a) - rating(b)) / 6 + 0.025 * (a.weight - b.weight))));
 }
 
 /** Name of a round by how many fights are in it. */

@@ -118,9 +118,12 @@ export function work(c: Career, f: CareerFighter, j: Job): { ok: boolean; text: 
   const why = jobClosed(c, f, j);
   if (why) return { ok: false, text: why };
   spend(f, j.parts, j.e, j.s);
-  c.money += j.pay;
+  // Act 1 keeps count of shifts (the foreman, the racket); the market thanks its defender.
+  if (c.act1) c.act1.flags[`job_${j.id}`] = (c.act1.flags[`job_${j.id}`] ?? 0) + 1;
+  const pay = j.pay + (j.id === 'market' && c.act1?.flags.marketFriend ? 10 : 0);
+  c.money += pay;
   addMood(f, -2);
-  let text = `${j.name}: +$${j.pay}`;
+  let text = `${j.name}: +$${pay}`;
   if (j.id === 'bouncer' && Math.random() < 0.25) {
     // Step 1: the brawl is a coin by his strength; a real fight in the bar comes later.
     const p = 0.45 + 0.25 * Math.min(1, f.stats.strength - 0.6) + 0.15 * f.stats.skill;
@@ -254,10 +257,12 @@ export function treat(c: Career, f: CareerFighter): { ok: boolean; text: string 
 /** A beer in the bar: the evening goes, the mood comes back. */
 export function beer(c: Career, f: CareerFighter): { ok: boolean; text: string } {
   if (partsLeft(c, f) < 1) return { ok: false, text: 'день кончился — спать' };
-  if (c.money < 8) return { ok: false, text: 'не хватает денег' };
-  c.money -= 8;
+  // Known on the street (act 1 wins): the barman pours for free.
+  const free = (c.act1?.flags.rep ?? 0) >= 2;
+  if (!free && c.money < 8) return { ok: false, text: 'не хватает денег' };
+  if (!free) c.money -= 8;
   spend(f, 1, -5, -5);
   addMood(f, 10);
   save(c);
-  return { ok: true, text: 'Пиво с мужиками: настроение лучше' };
+  return { ok: true, text: free ? 'Бармен: «За счёт заведения. Слышали про тебя». Настроение лучше' : 'Пиво с мужиками: настроение лучше' };
 }

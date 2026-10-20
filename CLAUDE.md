@@ -374,6 +374,18 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   skin biker; duel Шатун in the basement; refuse = war), b4 forced night ambush by Глушитель if
   still at war (win = respect, lose = −$100). War = cup ambush 75% and from the horses.
   `act1Choose` no longer re-opens the card during its fight (cards reappeared after a fight).
+  Side scenes of act 1 (`Card.side`: at most one a day, `flags.sideDay`): Михалыч's tapes tp1
+  «Про Гуся» (evasion +1%), tp2 «Кони», tp3 «Пояс» (sets up Шрам, skill +1%) via `tape()`;
+  тётя Валя by notes only: v1 pies (satiety 100), v2 loan $200 (paid back automatically after
+  the act when money >= 300), v3 she threw Шрам's money back; jobs: j1 the foreman owes $135
+  (after 2 site shifts, fight), j2 the market racket (after a market shift; win = market +$10 a
+  shift, `flags.marketFriend`); Шрам watches: w1 black car, w2 his man poaches Тимоха; street
+  rep (`flags.rep`, `repUp` on story wins): >= 2 free beer in «Подкова», >= 3 card r1 pupils
+  (+$20 every Monday, for good). `trainTip`: Михалыч's line the first time each apparatus is
+  used. `work()` counts shifts in `act1.flags.job_<id>`. Act 2 bikers: k1 (if joined) the vest
+  for $300 or refuse = `bkWar2`; k2 (respect/joined) Шатун warns that Шрам hired «Химики» ->
+  forced k3 street fight vs Сёма; k4 forced revenge vs Шатун the night before the tournament if
+  still at war. Street losses there = energy −40 before the tournament.
   Engine for it: map 'basement' (`arena.ts basement()`: bricks, pipes, bag on chain, belt,
   photo, bulb; old TV + VCR whose 64x48 canvas plays Михалыч's tape when `TV.on`, mouth moves
   while `TV.talk`, snow and rolling bar); `storyCut` in cutscenes.ts (a shot per line: wide,

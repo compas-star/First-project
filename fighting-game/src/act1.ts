@@ -301,6 +301,43 @@ function sceneB4(c: Career, f: CareerFighter): SceneSpec {
   };
 }
 
+/** A tape of Михалыч: the TV and a few lines. */
+function tape(title: string, said: string[], after?: string): (c: Career, f: CareerFighter) => SceneSpec {
+  return (_c, f) => ({
+    map: B, a: P(f, 0), b: P(f, 1), dist: 2.4, hide: [false, true], names: { tv: 'Михалыч' },
+    lines: [
+      { who: null, text: `Кассета: «${title}»`, shot: 'wide', act: tvOn },
+      ...said.map((t, i) => ({ who: 'tv' as const, text: t, shot: (i % 2 ? 'close0' : 'tv') as 'tv' | 'close0' })),
+      ...(after ? [{ who: 0 as const, text: after, shot: 'close0' as const }] : []),
+    ],
+  });
+}
+
+/** A man of the district for a side fight, about our level. */
+function local(c: Career, f: CareerFighter, key: string, name: string, d: number, disc: CareerFighter['discipline'], skin: CareerFighter['skin']): CareerFighter {
+  return npc(c, story(c), key, () => heavy(f, d, name, disc, skin, 0.2), f);
+}
+
+/** The street knows him: wins over the district's men (Кирпич, bikers, the racket...). */
+const repUp = (a: Act1, n = 1) => (a.flags.rep = (a.flags.rep ?? 0) + n);
+export const streetRep = (c: Career) => c.act1?.flags.rep ?? 0;
+
+/** Михалыч's word the first time each apparatus is used (from his tapes). */
+const TIPS: Record<string, string> = {
+  bag: 'Михалыч (кассета): «Мешок не враг. Бей сквозь него, а не в него»',
+  rope: 'Михалыч (кассета): «Скакалка — это ноги. А ноги — это всё»',
+  dumbbell: 'Михалыч (кассета): «Сила без скорости — шкаф. Шкафы падают»',
+  mirror: 'Михалыч (кассета): «В зеркале видно, где ты открыт. Смотри честно»',
+  ball: 'Михалыч (кассета): «Маятник не ждёт. Соперник тоже»',
+  tires: 'Михалыч (кассета): «Покрышки дубят голень. Больно — значит, правильно»',
+};
+export function trainTip(c: Career, obj: string): string | null {
+  const a = act(c);
+  if (!a || !TIPS[obj] || a.flags[`tip_${obj}`]) return null;
+  a.flags[`tip_${obj}`] = 1;
+  return TIPS[obj];
+}
+
 // --- The 20th ---
 
 /** Who stays out of the 20th: Кирпич, if he owes us respect or the bikers took him outside. */
@@ -394,6 +431,7 @@ function kirpichFight(c: Career, a: Act1, f: CareerFighter): A1Fight {
       a.flags.kirpichHome = 0;
       if (r.won) {
         a.debt = Math.max(0, a.debt - 500);
+        repUp(a);
         a.pending = 's4b';
         f2.fame += 2;
         return { lines: [`Кирпич на земле. Гусь списывает $500: долг $${a.debt}`], scene: scene4down(c2, f2) };
@@ -526,6 +564,8 @@ interface Card {
   scene?(c: Career, f: CareerFighter, a: Act1): SceneSpec;
   /** Cannot be put off: the screen is blocked until it is dealt with. */
   forced?: boolean;
+  /** A side scene (tapes, тётя Валя, jobs...): at most one a day. */
+  side?: boolean;
   opts: Opt[];
 }
 
@@ -740,6 +780,7 @@ const CARDS: Card[] = [
         a.flags.bkWar = 1;
         a.flags.bkNext = c2.day + 3;
         if (r.won) {
+          repUp(a);
           a.flags.bkWin = 1;
           f2.fame += 2;
           addMood(f2, 8);
@@ -779,6 +820,7 @@ const CARDS: Card[] = [
         a.flags.bkWar = 1;
         a.flags.bkNext = c2.day + 3;
         if (r.won) {
+          repUp(a);
           c2.money += 80;
           f2.fame += 2;
           a.flags.bkWin = (a.flags.bkWin ?? 0) + 1;
@@ -816,6 +858,7 @@ const CARDS: Card[] = [
       { id: 'duel', label: '«Один на один. Здесь»', run: (c, a, f) => ({ lines: [], fight: bikerFight(shatun(c, f), 'basement', `Подвал: ${short(f)} против Шатуна`, undefined, (c2, f2, r) => {
         a.done.push('b3');
         if (r.won) {
+          repUp(a, 2);
           a.flags.bkRespect = 1;
           a.flags.bkWar = 0;
           f2.fame += 4;
@@ -840,6 +883,7 @@ const CARDS: Card[] = [
     opts: [{ id: 'fight', label: 'Драться', run: (c, a, f) => ({ lines: [], fight: bikerFight(glush(c, f), 'alley', `У подъезда: ${short(f)} против Глушителя`, undefined, (c2, f2, r) => {
       a.done.push('b4');
       if (r.won) {
+        repUp(a);
         a.flags.bkRespect = 1;
         a.flags.bkWar = 0;
         f2.fame += 3;
@@ -851,6 +895,199 @@ const CARDS: Card[] = [
       out(c2, f2, 2, 'отходит после драки у подъезда');
       return { lines: [`Глушитель сильнее. «Кони» забрали из кассы $${lost}. 2 дня лечения`] };
     }) }) }],
+  },
+  // --- Михалыч's tapes ---
+  {
+    id: 'tp1', title: 'Кассета: «Про Гуся»', who: 'Михалыч (кассета)', side: true,
+    when: (c, a) => actDay(c, a) >= 5 && did(a, 's2'),
+    text: () => 'Под видиком нашлась ещё кассета. На наклейке: «Про Гуся».',
+    scene: tape('Про Гуся', [
+      'Гусь — не злой. Он аккуратный. Берёт ровно столько, сколько ты позволишь взять.',
+      'Если дойдёт до кулаков — он бьёт снизу, по печени. Локоть держи у рёбер.',
+    ], 'Локоть у рёбер. Понял.'),
+    opts: [{ id: 'ok', label: 'Запомнить', run: (_c, _a, f) => {
+      f.stats.evasion = Math.min(f.caps.evasion, f.stats.evasion + 0.01);
+      return { lines: ['Совет Михалыча: Уклоны +1%'] };
+    } }],
+  },
+  {
+    id: 'tp2', title: 'Кассета: «Кони»', who: 'Михалыч (кассета)', side: true,
+    when: (c, a) => did(a, 'b1') && actDay(c, a) >= 8,
+    text: () => 'Кассета с лошадкой, нарисованной фломастером.',
+    scene: tape('Кони', [
+      'Байкеры с «Подковы» — шпана, но честная шпана. Шатуна я ещё пацаном помню.',
+      'Они уважают одно: когда ты не отступаешь. Отступишь раз — будешь отступать всегда.',
+    ]),
+    opts: [{ id: 'ok', label: 'Не отступать', run: (_c, _a, f) => {
+      addMood(f, 6);
+      return { lines: ['Настроение лучше'] };
+    } }],
+  },
+  {
+    id: 'tp3', title: 'Кассета: «Пояс»', who: 'Михалыч (кассета)', side: true,
+    when: (c, a) => actDay(c, a) >= 15,
+    text: () => 'Последняя кассета из коробки. На ней: «Пояс».',
+    scene: tape('Пояс', [
+      'Этот пояс — восемьдесят девятый год. Финал. Говорят, я выиграл его нечестно.',
+      'Неправда. Но есть человек, который в это верит всю жизнь. Ты его скоро встретишь, если уже не встретил.',
+    ], 'Шрам…'),
+    opts: [{ id: 'ok', label: 'Дальше', run: (_c, a, f) => {
+      a.flags.beltTape = 1;
+      f.stats.skill = Math.min(f.caps.skill, f.stats.skill + 0.01);
+      return { lines: ['Техника +1%. Пояс на стене теперь выглядит иначе'] };
+    } }],
+  },
+
+  // --- Тётя Валя (only notes) ---
+  {
+    id: 'v1', title: 'Записка сверху', who: 'Тётя Валя', side: true,
+    when: (c, a) => actDay(c, a) >= 3,
+    text: () => '«Ребятки, я наверху, в прачечной. Если что — стучите по трубе. Пирожки на подоконнике. Михалыча жалко. В.»',
+    opts: [{ id: 'eat', label: 'Съесть пирожки', run: (_c, _a, f) => {
+      f.sat = 100;
+      addMood(f, 5);
+      return { lines: ['Пирожки с капустой. Сытость полная, настроение лучше'] };
+    } }],
+  },
+  {
+    id: 'v2', title: 'Опять бух-бух', who: 'Тётя Валя', side: true,
+    when: (c, a) => actDay(c, a) >= 9,
+    text: () => '«Всю ночь бух-бух по вашему мешку! Ладно, Михалыч тоже бухал. Если совсем туго с деньгами — дам двести. Вернёшь, когда сможешь. В.»',
+    opts: [
+      { id: 'borrow', label: 'Взять $200', run: (c, a) => {
+        c.money += 200;
+        a.flags.valyaLoan = 1;
+        return { lines: ['+$200. Тётя Валя: «Только Гусю не говори, что от меня»'] };
+      } },
+      { id: 'thanks', label: '«Спасибо, справимся»', run: (_c, a, f) => {
+        a.flags.valyaProud = 1;
+        addMood(f, 4);
+        return { lines: ['Тётя Валя довольна: «Вот это по-мужски»'] };
+      } },
+    ],
+  },
+  {
+    id: 'v3', title: 'Тётя Валя видела', who: 'Тётя Валя', side: true,
+    when: (c, a) => actDay(c, a) >= 16 && !!a.flags.scarEnemy,
+    text: () => '«Вчера тот, в пиджаке, спрашивал меня, сколько вы должны. Я сказала — не знаю. Он сунул мне сто долларов. Я их ему в машину кинула. В.»',
+    opts: [{ id: 'ok', label: 'Улыбнуться', run: (_c, a, f) => {
+      a.flags.valyaAlly = 1;
+      addMood(f, 8);
+      return { lines: ['Настроение лучше. Тётя Валя на нашей стороне'] };
+    } }],
+  },
+
+  // --- Jobs with a story ---
+  {
+    id: 'j1', title: 'Прораб не платит', who: 'Стройка', side: true,
+    when: (_c, a) => (a.flags.job_site ?? 0) >= 2,
+    text: () => 'Прораб Толик третий раз говорит «в пятницу». Он должен тебе $135. Бригада шепчется, но молчит.',
+    opts: [
+      { id: 'press', label: 'Потребовать при всех', run: (c, a, f) => {
+        const opp = local(c, f, 'a1foreman', 'Толик «Прораб» Пилипенко', -0.02, 'street', 'zombie');
+        return { lines: [], fight: bikerFight(opp, 'alley', `Стройка: ${short(f)} против прораба`, {
+          map: MAP_BY_ID.alley, a: P(f, 0), b: P(opp, 1), dist: 2.6,
+          lines: [
+            { who: null, text: 'Вечер. Бытовка на стройке', shot: 'wide' },
+            { who: 1, text: 'Денег нет. Хочешь — забери.', shot: 'over1' },
+          ],
+        }, (c2, f2, r) => {
+          a.done.push('j1');
+          if (r.won) {
+            c2.money += 135;
+            repUp(a);
+            return { lines: ['Прораб достал конверт из-под матраса: +$135. Бригада хлопает'] };
+          }
+          addMood(f2, -6);
+          return { lines: ['Прораб оказался крепким. Денег нет'] };
+        }) };
+      } },
+      { id: 'forget', label: 'Забыть', run: (_c, _a, f) => {
+        addMood(f, -5);
+        return { lines: ['Деньги пропали. Настроение хуже'] };
+      } },
+    ],
+  },
+  {
+    id: 'j2', title: 'Рэкет на рынке', who: 'Рынок', side: true,
+    when: (_c, a) => (a.flags.job_market ?? 0) >= 1,
+    text: () => 'Двое в спортивках трясут бабушку с соленьями: «За место плати». Бабушка плачет.',
+    opts: [
+      { id: 'help', label: 'Вступиться', run: (c, a, f) => {
+        const opp = local(c, f, 'a1racket', 'Бык «Рэкет» Сазонов', 0, 'street', 'gopnik');
+        return { lines: [], fight: bikerFight(opp, 'alley', `Рынок: ${short(f)} против рэкетира`, undefined, (c2, f2, r) => {
+          a.done.push('j2');
+          if (r.won) {
+            a.flags.marketFriend = 1;
+            f2.fame += 2;
+            repUp(a);
+            return { lines: ['Рэкетиры ушли. Рынок теперь платит тебе на $10 больше за смену. Известность +2'] };
+          }
+          out(c2, f2, 1, 'отходит после рынка');
+          return { lines: ['Бык сильнее. Бабушка прикладывает к синяку капусту. День отлежаться'] };
+        }) };
+      } },
+      { id: 'walk', label: 'Пройти мимо', run: (_c, _a, f) => {
+        addMood(f, -6);
+        return { lines: ['Прошёл мимо. Самому противно'] };
+      } },
+    ],
+  },
+
+  // --- Шрам watches ---
+  {
+    id: 'w1', title: 'Чёрная машина', who: 'Человек Шрама', side: true,
+    when: (c, a) => actDay(c, a) >= 12 && !!a.flags.scarEnemy,
+    text: () => 'У подвала третий день стоит чёрная машина. Водитель что-то записывает.',
+    opts: [
+      { id: 'knock', label: 'Постучать в стекло', run: (_c, a) => {
+        a.flags.scarWatch = 1;
+        return { lines: ['Стекло опускается: «Шрам просил передать: двадцатого он будет смотреть»'] };
+      } },
+      { id: 'tyre', label: 'Проколоть колесо', run: (_c, a, f) => {
+        a.flags.scarTyre = 1;
+        f.fame += 1;
+        addMood(f, 6);
+        return { lines: ['Шипение. Водитель матерится. Район смеётся. Известность +1'] };
+      } },
+    ],
+  },
+  {
+    id: 'w2', title: 'Тимоху переманивают', who: 'Человек Шрама', side: true,
+    when: (c, a) => actDay(c, a) >= 14 && !!a.flags.kid && c.roster.some((x) => x.name.includes('Тимоха')),
+    text: () => 'Человек Шрама предлагает Тимохе зал с кондиционером и $100 в неделю. Тимоха мнётся у двери.',
+    opts: [
+      { id: 'talk', label: 'Поговорить с Тимохой', run: (c) => {
+        const k = c.roster.find((x) => x.name.includes('Тимоха'));
+        if (k) addMood(k, 20);
+        return { lines: ['«Михалыч бы сказал: кондиционер в бою не поможет». Тимоха остаётся'] };
+      } },
+      { id: 'let', label: '«Решай сам»', run: (c, a) => {
+        const i = c.roster.findIndex((x) => x.name.includes('Тимоха'));
+        if (i >= 0 && Math.random() < 0.5) {
+          c.roster.splice(i, 1);
+          if (c.pick && !c.roster.some((x) => x.id === c.pick)) c.pick = c.roster[0].id;
+          a.flags.kidScar = 1;
+          a.flags.kid = 0;
+          return { lines: ['Тимоха ушёл к Шраму. Не попрощался'] };
+        }
+        return { lines: ['Тимоха подумал и остался'] };
+      } },
+    ],
+  },
+
+  // --- The street knows him ---
+  {
+    id: 'r1', title: 'Ученики', who: 'Район', side: true,
+    when: (c, a) => (a.flags.rep ?? 0) >= 3 && actDay(c, a) >= 8,
+    text: () => 'Двое пацанов с района просятся заниматься в подвале: «Мы видели, как ты Кирпича…». Готовы платить $20 в неделю.',
+    opts: [
+      { id: 'take', label: 'Взять', run: (_c, a) => {
+        a.flags.pupils = 1;
+        return { lines: ['Ученики. Каждый понедельник +$20'] };
+      } },
+      { id: 'no', label: 'Не до того', run: () => ({ lines: ['Пацаны ушли к «Химикам»'] }) },
+    ],
   },
 ];
 
@@ -919,9 +1156,10 @@ export function act1Check(c: Career): string[] {
     a.pending = 'end';
     return [];
   }
-  const card = CARDS.find((x) => !did(a, x.id) && x.when(c, a));
+  const card = CARDS.find((x) => !did(a, x.id) && (!x.side || a.flags.sideDay !== c.day) && x.when(c, a));
   if (!card) return [];
   a.pending = card.id;
+  if (card.side) a.flags.sideDay = c.day;
   return [`🎬 Сюжет: «${card.title}»`];
 }
 
@@ -931,8 +1169,19 @@ export function act1Day(c: Career): string[] {
   // The morning after the act ends with no basement (or nobody told him about the cup): the
   // fight club calls. Played by the career screen (`callDue`).
   if (a?.ending && !a.flags.called && (a.flags.lost || !ladder(c).open)) a.flags.callDue = 1;
-  if (!a || a.ending) return act1Check(c);
   const out: string[] = [];
+  // Pupils pay on Mondays, for the rest of the game.
+  if (a?.flags.pupils && (c.day - 1) % 7 === 0) {
+    c.money += 20;
+    out.push('Ученики заплатили за неделю: +$20');
+  }
+  // Тётя Валя's $200 goes back once the act is over and there is money.
+  if (a?.ending && a.flags.valyaLoan === 1 && c.money >= 300) {
+    c.money -= 200;
+    a.flags.valyaLoan = 2;
+    out.push('Вернул тёте Вале $200. В ответ — банка варенья');
+  }
+  if (!a || a.ending) return [...out, ...act1Check(c)];
   if (a.plan === 'pay' && a.debt > 0 && (c.day - 1) % 7 === 0 && c.day > a.start) {
     const due = Math.min(150, a.debt);
     if (c.money >= due) {
@@ -1039,7 +1288,7 @@ export function act1Choose(c: Career, opt: string): { lines: string[]; fight?: A
   const r = o.run(c, a, f);
   // A fight keeps the card's scene open until the fight is over (its result sets what's next).
   // The roof fight comes back every few nights: never marked done.
-  if (!r.fight && !a.done.includes(id) && id !== 's7') a.done.push(id);
+  if (!r.fight && !a.done.includes(id) && id !== 's7' && id !== 's7pay') a.done.push(id);
   c.log.unshift(...r.lines.map((x) => `🎬 ${x}`));
   // A fight: the next card waits for its result (act1FightDone).
   if (!a.pending && !r.fight) act1Check(c);

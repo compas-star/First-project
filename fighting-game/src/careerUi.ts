@@ -33,7 +33,7 @@ import {
   ladder, clubStage, cup, cupCanJoin, cupJoin, cupMyMatch, cupAdvance, cupFought, ambushFight, ambushDone, clubOf, ranked, nextStageNeeds,
   CUP_TIER, STREET_TIER, CUP_PRIZE, CUP_FEE, STAGE_NAME, type Club, type CupMatch,
 } from './clubs';
-import { callDue, callScene, callDone, act1Pay, watchLesson, basementLost, act, type A1Fight } from './act1';
+import { callDue, callScene, callDone, trainTip, act1Pay, watchLesson, basementLost, act, type A1Fight } from './act1';
 import { actCheck, actCard, actFilm, actSeen, actChoose, actFightDone, actGoal, forcedNow } from './acts';
 import { act2Fee, inSewer } from './act2';
 
@@ -1196,7 +1196,8 @@ export class CareerUi {
         const w = ap.what[Math.min(this.appSel, ap.what.length - 1)];
         const it = INTENSITY.find((x) => x.id === b.dataset.it)!;
         const r = trainNow(c, me, w.k as StatKey, it, w.craft);
-        return say(r.ok ? `${short(me)}: ${r.text}` : r.text);
+        const tip = r.ok && this.sheet ? trainTip(c, this.sheet) : null;
+        return say(r.ok ? `${short(me)}: ${r.text}${tip ? ` · ${tip}` : ''}` : r.text);
       }
       case 'helpagain':
         c.seenHelp = false;

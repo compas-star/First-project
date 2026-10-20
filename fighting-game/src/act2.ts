@@ -12,7 +12,7 @@ import { MAP_BY_ID } from './maps';
 import { TV } from './arena';
 import { partsLeft, fightToll } from './city';
 import { ladder, clubOf } from './clubs';
-import { kirpich, scar, kid, gus, P, type A1Fight } from './act1';
+import { kirpich, scar, kid, gus, shatun, P, type A1Fight } from './act1';
 import type { SceneSpec, SceneLine } from './cutscenes';
 
 export type Ending2 = 'champ' | 'final' | 'out';
@@ -470,7 +470,78 @@ const CARDS: Card[] = [
     text: () => 'Финал. Сталь. Шрам у его угла.',
     opts: [{ id: 'go', label: 'На бой', run: (c, a, f) => ({ lines: [], fight: tourFight(c, a, f, 3) }) }],
   },
+
+  // --- «Железные кони» after act 1 ---
+  {
+    id: 'k1', title: 'Жилетка «Коней»', who: 'Шатун',
+    when: (c, a) => !!c.act1?.flags.bkJoin && day2(c, a) >= 5,
+    text: () => 'Шатун: «Ты наш. Выйди на Турнир района в жилетке «Коней» — $300 сразу и пиво до конца жизни».',
+    opts: [
+      { id: 'yes', label: 'Выйти в жилетке', run: (c, a) => {
+        c.money += 300;
+        a.flags.vest = 1;
+        return { lines: ['+$300. «Кони» будут орать громче всех. Шрам морщится'] };
+      } },
+      { id: 'no', label: '«Я выйду сам за себя»', run: (_c, a) => {
+        a.flags.bkWar2 = 1;
+        return { lines: ['Шатун долго молчит: «Ну смотри». «Кони» обиделись'] };
+      } },
+    ],
+  },
+  {
+    id: 'k2', title: 'Предупреждение', who: 'Шатун',
+    when: (c, a) => !!(c.act1?.flags.bkRespect || (c.act1?.flags.bkJoin && !a.flags.bkWar2)) && c.day >= a.tourDay - 3,
+    text: () => 'Ночью у подвала глушит мотор Шатун: «Шрам заплатил «Химикам», чтоб тебя покалечили до турнира. Завтра. Мы будем рядом, но драться — тебе».',
+    opts: [{ id: 'ok', label: 'Готовиться', run: (c, a) => {
+      a.flags.chemDay = c.day + 1;
+      return { lines: ['Завтра придут «Химики». «Кони» прикроют, если что'] };
+    } }],
+  },
+  {
+    id: 'k3', title: '«Химики»', who: 'Сёма «Хим»',
+    when: (c, a) => !!a.flags.chemDay && c.day >= a.flags.chemDay,
+    forced: true,
+    text: () => 'У подъезда пацаны в чёрных спортивках. Впереди Сёма «Хим»: «Ничего личного. Заказ».',
+    opts: [{ id: 'fight', label: 'Драться', run: (c, a, f) => ({ lines: [], fight: streetFight(c, a, f, 'k3', chem(c, f), [
+      { who: null, text: 'Вечер. Чёрные спортивки с полосками. За углом рычат «Кони»', shot: 'low', act: (s) => (s.scene!.dist = 2.2) },
+      { who: 1, text: 'Ничего личного, подвальный. Заказ.', shot: 'over1' },
+    ], 'Сёма лежит. «Кони» выкатываются из-за угла: «Передайте Шраму — заказ не выполнен»', 'Сёма сильнее. «Кони» отогнали «Химиков», но ты весь в синяках') }) }],
+  },
+  {
+    id: 'k4', title: 'Реванш «Коней»', who: 'Шатун',
+    when: (c, a) => !!((c.act1?.flags.bkWar && !c.act1.flags.bkRespect && !c.act1.flags.bkJoin) || a.flags.bkWar2) && c.day >= a.tourDay - 2,
+    forced: true,
+    text: () => 'Ночь перед турниром. Мотоциклы кругом. Шатун снимает шлем: «Шрам тут ни при чём. Это наше. Один на один».',
+    opts: [{ id: 'fight', label: 'Драться', run: (c, a, f) => ({ lines: [], fight: streetFight(c, a, f, 'k4', shatun(c, f), [
+      { who: null, text: 'Ночь перед турниром. Фары бьют в глаза', shot: 'low', act: (s) => (s.scene!.dist = 2.2) },
+      { who: 1, text: 'Шрам тут ни при чём. Это наше.', shot: 'over1' },
+      { who: 0, text: 'Давно пора.', shot: 'close0' },
+    ], 'Шатун на асфальте. Протягивает руку: «Всё. Мир. Удачи на турнире»', 'Шатун сильнее. «Кони» уезжают. До турнира — с синяками') }) }],
+  },
 ];
+
+/** A street fight of act 2 (the bikers, the hired «Химики»): a loss leaves him tired before the tournament. */
+function streetFight(c: Career, a: Act2, f: CareerFighter, id: string, opp: CareerFighter, lines: SceneLine[], win: string, lose: string): A1Fight {
+  return {
+    opp, tier: { ...place('alley', 0), name: 'Улица' }, title: `${short(f)} против ${short(opp)}`,
+    pre: { map: MAP_BY_ID.alley, a: P(f, 0), b: P(opp, 1), dist: 3.2, lines },
+    after: (_c2, f2, r) => {
+      a.done.push(id);
+      if (r.won) {
+        f2.fame += 3;
+        addMood(f2, 8);
+        if (id === 'k4') a.flags.bkWar2 = 0;
+        return { lines: [`${win}. Известность +3`] };
+      }
+      f2.energy = Math.max(0, (f2.energy ?? 80) - 40);
+      addMood(f2, -10);
+      return { lines: [`${lose}. Энергия −40`] };
+    },
+  };
+}
+function chem(c: Career, f: CareerFighter): CareerFighter {
+  return npc(c, story(c), 'a2chem', () => heavy(f, 0.03, 'Сёма «Хим» Химичев', 'street', 'gopnik'), f);
+}
 
 const BY = Object.fromEntries(CARDS.map((x) => [x.id, x]));
 
@@ -602,6 +673,7 @@ export function act2FightDone(c: Career, f: CareerFighter, fight: A1Fight, r: Fi
   const a = act2(c)!;
   fightToll(f);
   const res = fight.after(c, f, r);
+  if (a.pending && a.pending !== 'end' && a.done.includes(a.pending)) a.pending = null;
   if (!a.pending) act2Check(c);
   c.log.unshift(...res.lines.map((x) => `🎬 ${x}`));
   save(c);

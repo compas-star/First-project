@@ -1,6 +1,7 @@
 // Act 1 played through many times with random choices (fights by a weighted coin):
 // which endings come out, and a sample log. run.sh act1test [runs]
 import { newCareer, nextDay, rating } from '../src/career';
+import { work, JOBS } from '../src/city';
 import { ensureAct1, act1Card, act1Choose, act1FightDone, act1Seen, act1Pay, act, act1Film } from '../src/act1';
 const RUNS = Number(process.argv[2] ?? 200);
 const ends: Record<string, number> = {};
@@ -28,6 +29,7 @@ for (let run = 0; run < RUNS; run++) {
       }
     }
     if (Math.random() < 0.3) act1Pay(c, 100);
+    if (Math.random() < 0.4) work(c, c.roster[0], JOBS[Math.floor(Math.random() * 2)]);
     c.money += 60; // a day's odd jobs, roughly
     for (const f of c.roster) f.busyUntil = Math.min(f.busyUntil, c.day + 1);
     const err = nextDay(c, true);
@@ -36,7 +38,7 @@ for (let run = 0; run < RUNS; run++) {
   const a = act(c)!;
   const e = a.ending ?? 'none';
   ends[e] = (ends[e] ?? 0) + 1;
-  if ((log.some((l) => l.includes('d20'))) || (e === 'none' && sample.length === 0)) sample = log;
+  if ((log.some((l) => l.includes('j1:')) && log.some((l) => l.includes('j2:'))) || (e === 'none' && sample.length === 0)) sample = log;
 }
 console.log(ends);
 console.log(sample.join('\n'));

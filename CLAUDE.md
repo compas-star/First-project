@@ -459,6 +459,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   with coefficients, 👁 Смотреть / 💵 Ставка inline stake box, past rounds), `cupIntro` film
   on the first look at a fight night, our fight via the prep screen with an announcer film,
   `cupChampScene` (belt) after winning the final. Tool `cuptest [weeks]`.
+  Reminder (user: a phone reminder 2 days before to sign up): `cupDay` sets `Cup.call` = 1 two
+  days before the first night if ours is not signed; `playCupCall` (barman's voice through the
+  phone filter, after "Спать" or on opening the career; `cupCallDone`), a home banner
+  "📞 Кубок … — записаться" (data-act cupjoin) for the last 2 days, a card in the phone sheet
+  and a count on the phone badge.
 - Preparation before a fight (`prep.ts`, `PREPS`: как есть / разминка (speed +3%, energy −10)
   / изучить записи (mind +6%, a part of the day) / беречь силы (cardio +12%) / завестись
   (strength +4%, aggression, skill −4%)): screen 'prep' (`toPrep`) for cup and story (act)

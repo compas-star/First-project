@@ -82,6 +82,8 @@ export interface Cup {
   bets: Bet[];
   /** Nights whose opening film was played. */
   seen: number[];
+  /** The reminder call two days before (1 = due, 2 = heard). */
+  call?: number;
   /** A club man waiting at the door before the final. */
   ambush?: { club: string; man: CareerFighter; settled: boolean };
 }
@@ -548,6 +550,11 @@ export function cupDay(c: Career): string[] {
     out.push(`Вечером у подъезда ждёт ${short(thug)} из ${k.name}`);
   }
   if (c.day === cp.day - 1 && cp.ours) out.push('Завтра — первый вечер Кубка «Подковы»');
+  // Two days before (user: a reminder by phone to sign up): the barman of «Подкова» calls.
+  if (c.day >= cp.day - 2 && c.day < cp.day && !cp.ours && !cp.call) {
+    cp.call = 1;
+    out.push(`📞 Звонил бармен «Подковы»: Кубок №${cp.n} через ${cp.day - c.day} дн., запись открыта`);
+  }
   return out;
 }
 
@@ -574,3 +581,10 @@ export function ambushDone(c: Career, f: CareerFighter, won: boolean): string[] 
   return ['Избили у подъезда. На финал выйдешь помятым: энергии почти нет'];
 }
 
+
+/** The reminder call is waiting to be played (once per cup). */
+export const cupCallDue = (c: Career) => !!ladder(c).open && ladder(c).cup?.call === 1 && !ladder(c).cup?.ours;
+export function cupCallDone(c: Career): void {
+  if (ladder(c).cup) ladder(c).cup!.call = 2;
+  save(c);
+}

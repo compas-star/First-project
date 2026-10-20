@@ -383,7 +383,7 @@ function stepCut(): void {
 
 /** Voice pitch by who speaks: the story's people have their own, the rest by size. */
 function voiceOf(name: string, p: FighterParams): number {
-  const known: Record<string, number> = { Михалыч: 118, Кирпич: 72, Гусь: 96, Шрам: 108, Тимоха: 178, 'Голос сзади': 88, '📞 Голос': 150 };
+  const known: Record<string, number> = { Михалыч: 118, Кирпич: 72, Гусь: 96, Шрам: 108, Тимоха: 178, 'Голос сзади': 88, '📞 Голос': 150, Бармен: 128 };
   for (const [k, v] of Object.entries(known)) if (name.includes(k)) return v;
   let h = 0;
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) | 0;

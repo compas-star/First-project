@@ -33,7 +33,7 @@ import type { SceneSpec } from './cutscenes';
 import { homeSvg, APPARATUS, type HomeObj } from './homeArt';
 import {
   ladder, clubStage, cup, cupCanJoin, cupJoin, cupMyMatch, cupAdvance, cupFought, ambushFight, ambushDone, clubOf, ranked, nextStageNeeds,
-  cupTier, cupTonight, cupNight, cupResult, cupCountRest, cupBet, cupPerson, coef, isOurs, nightDay,
+  cupTier, cupCallDue, cupCallDone, cupTonight, cupNight, cupResult, cupCountRest, cupBet, cupPerson, coef, isOurs, nightDay,
   STREET_TIER, CUP_PRIZE, CUP_FEE, CUP_NIGHTS, CUP_ROUND_NAME, STAGE_NAME, type Club, type CupMatch,
 } from './clubs';
 import { callDue, callScene, callDone, trainTip, streetRep, act1Pay, watchLesson, basementLost, act, type A1Fight } from './act1';
@@ -138,6 +138,7 @@ export class CareerUi {
     const card = actCard(this.c);
     if (card?.id === 's1' && !card.watched) this.playFilm();
     else if (callDue(this.c)) this.playCall();
+    else if (cupCallDue(this.c)) this.playCupCall();
     clearInterval(this.timer);
     this.timer = window.setInterval(() => this.everySecond(), 1000);
   }
@@ -149,6 +150,29 @@ export class CareerUi {
     this.hooks.scene(callScene(this.c), () => {
       callDone(this.c);
       this.toast = 'Кубок «Подковы» открыт: Город → Арена → «Кубок»';
+      this.screen = 'home';
+      this.show();
+    });
+  }
+
+  /** Two days before a cup: the barman of «Подкова» rings (mumbled through the phone). */
+  private playCupCall(): void {
+    const c = this.c;
+    const f = this.me();
+    const cp = cup(c);
+    $('career').hidden = true;
+    clearInterval(this.timer);
+    this.hooks.scene({
+      map: MAP_BY_ID.basement, a: { ...toParams(f, 0), name: short(f) }, b: { ...toParams(f, 1), name: short(f) }, dist: 2.4, hide: [false, true],
+      lines: [
+        { who: null, text: 'Утро. Звонит телефон', shot: 'wide' },
+        { who: 2, name: '📞 Бармен «Подковы»', text: `Алло, чемпион! В субботу Кубок «Подковы», номер ${cp.n}. Шестнадцать человек, тысяча долларов победителю.`, shot: 'close0' },
+        { who: 2, name: '📞 Бармен «Подковы»', text: `Запись до субботы, взнос полтинник. Байкеры уже записались. Ты-то будешь?`, shot: 'close0' },
+        { who: 0, text: 'Буду.', shot: 'close0', act: (s) => s.gesture(s.fighters[0], 'nod', 1) },
+      ],
+    }, () => {
+      cupCallDone(c);
+      this.toast = `Кубок «Подковы» в ${weekday(cp.day)} — запишись (баннер на главной)`;
       this.screen = 'home';
       this.show();
     });
@@ -317,14 +341,18 @@ export class CareerUi {
           <button type="button" data-act="help">Понятно</button>
         </div>`;
     const a = act(c);
-    const calls = (c.incidents?.length ?? 0) + (pendingChapter(c) ? 1 : 0);
+    const cpc = ladder(c).open ? cup(c) : null;
+    const calls = (c.incidents?.length ?? 0) + (pendingChapter(c) ? 1 : 0) + (cpc && cpc.call && !cpc.ours && !cpc.rounds.length ? 1 : 0);
     const card = actCard(c);
     cupAdvance(c);
     const amb = ambushFight(c);
     const myCup = cupMyMatch(c);
     const tonightCup = ladder(c).open ? cupTonight(c) : null;
+    const cpSoon = ladder(c).open ? cup(c) : null;
+    const soon = cpSoon && !cpSoon.ours && !cpSoon.rounds.length && cpSoon.day - c.day <= 2 && cpSoon.day >= c.day ? cpSoon : null;
     const banners = [
       amb ? `<button type="button" class="banner hot" data-act="ambush">👊 У подъезда ждёт ${esc(short(amb.opp))} из ${esc(amb.club.name)} — разобраться</button>` : '',
+      soon ? `<button type="button" class="banner hot" data-act="cupjoin">📞 Кубок «Подковы» ${soon.day === c.day ? 'сегодня' : soon.day === c.day + 1 ? 'завтра' : 'послезавтра'} — записаться · $${CUP_FEE}</button>` : '',
       myCup ? `<button type="button" class="banner hot" data-act="to" data-s="cup">🏆 Вечер Кубка «Подковы» — твой бой</button>` : tonightCup ? `<button type="button" class="banner" data-act="to" data-s="cup">🏆 Сегодня вечер Кубка: ${CUP_ROUND_NAME[tonightCup.r].toLowerCase()} — смотреть и ставить</button>` : '',
       card ? `<button type="button" class="banner hot" data-act="obj" data-o="tv">🎬 ${esc(card.title)} — ${card.film && !card.watched ? 'включи телевизор' : 'выбери, что делать'}</button>` : '',
       calls ? `<button type="button" class="banner" data-act="obj" data-o="phone">📞 Звонков: ${calls}</button>` : '',
@@ -387,7 +415,11 @@ export class CareerUi {
           <div class="newsbox"><div class="h2">Новости боёв</div>${(c.news ?? []).slice(0, 4).map((x) => `<div>${esc(x)}</div>`).join('')}</div>`;
       }
       case 'phone': {
-        const list = this.storyCard() + this.incidents();
+        const cpp = ladder(c).open ? cup(c) : null;
+        const remind = cpp && !cpp.ours && !cpp.rounds.length && cpp.call
+          ? `<div class="incident"><div class="h2">📞 Бармен «Подковы»</div><div>Кубок №${cpp.n} — ${dayName(cpp.day)} (${weekday(cpp.day)}). 16 бойцов, $1000 победителю, взнос $${CUP_FEE}.</div><button type="button" class="primary" data-act="cupjoin">Записаться</button></div>`
+          : '';
+        const list = remind + this.storyCard() + this.incidents();
         return `${head('Телефон')}${list || '<div class="fnote">Тишина. Никто не звонит.</div>'}`;
       }
       case 'door':
@@ -1640,6 +1672,7 @@ export class CareerUi {
           for (let i = 1; i < c.log.length && !c.log[i].startsWith('—'); i++) if (c.log[i].startsWith('📉')) night.push(c.log[i]);
           this.toast = [`Новый день: ${dayName(c.day)}, ${weekday(c.day)}`, ...night].join(' · ');
           if (callDue(c)) return this.playCall();
+          if (cupCallDue(c)) return this.playCupCall();
           return this.go(this.screen === 'cal' || this.screen === 'gym' ? this.screen : 'home');
         };
         const err = nextDay(c);

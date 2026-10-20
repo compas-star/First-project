@@ -438,6 +438,19 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   ladder stage 3, basement back. Lost: `flags.sewer` = home is the sewer (`homeSvg` `sewer`,
   no rent, training −20%). `acts.ts` = one face for the UI (actCard/Film/Seen/Choose/FightDone/
   Goal dispatch to act 2 while it runs). Tool `act2test [runs]` (softlocks, old-save case).
+- Act 2 v2 (user: act 2 got lost; stretch it, start after the first cup, more fights, friends,
+  tie it together; `Act2.v` 2, `migrate` moves an old save's tournament to >= 21 days ahead):
+  starts after the cup win with s0 «После Кубка» (Шрам + Сталь at the bar); tournament at
+  `TOUR_AT` 39 days, three Saturdays a week apart (`nightOf`: QF, SF + Лис's tfix, final), a
+  missed night = out. Chapters (goal card text): «Новый уровень» (s1 poster d3, s2 Кирпич d5,
+  f1 Николаич d8 — old coach of «Красный Октябрь», mentor: hands +6%, skill +1%, in our corner
+  at the final; s3 Сталь d10), «Война с «Химиками»» (h1 market d12: fight Жека or pay $10 a
+  shift `chemTax`; s4 note d15; d1 «Десант» d15: sparring with Сапёр = ally; h2 the basement
+  wrecked d18: fight Толян in their yard / call «Десант» (`desHelp`: fair fight) / repair $80;
+  s5 Лис d22; s6 Тимоха d25; h3 forced fight with Сёма «Хим» d28: win = `chemOut` («Химики»
+  leave, no tax, no hired ambush before the tournament), «Перед турниром» (s7 tape d31, s8
+  weigh-in d36, k3 hired ambush only if not `chemOut`). The TV sheet has «📖 Что было» from
+  `Career.storyLog` (`storyNote`, every act choice and fight result with its date).
 - District clubs (stage 2, user: no wrestlers, Russian boxers etc., recognisable looks):
   «Железный кулак» (Шрам's, Thai, skin `ironfist`: black/gold), «Красный Октябрь» (Soviet
   boxing school, `sovboxer`: red vest + trunks, white boots), «Десант» (veterans, `vdv`:

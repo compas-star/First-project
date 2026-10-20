@@ -56,7 +56,7 @@ function play(c: Career, days: number, log: string[]): void {
 for (let run = 0; run < RUNS; run++) {
   const c = newCareer();
   const log: string[] = [];
-  play(c, 60, log);
+  play(c, 110, log);
   const e = c.act2?.ending ?? (c.act2 ? 'running' : 'no act2');
   ends[e] = (ends[e] ?? 0) + 1;
   if (inSewer(c) !== (e === 'final' || e === 'out')) log.push('!!! sewer flag wrong');
@@ -75,8 +75,8 @@ for (let run = 0; run < 30; run++) {
   delete c.act2;
   if (run % 2 && c.act1) { c.act1.done = c.act1.done.filter((x) => x !== 'end'); c.act1.pending = 'end'; }
   const day0 = c.day;
-  play(c, 40, log);
-  if (c.act2 && c.act2.start >= day0) ok++;
+  play(c, 70, log);
+  if (c.act2 && c.act2.start >= day0 && c.act2.ending) ok++;
   else console.log('old save did not start act 2', c.act1?.ending, c.act1?.pending, log.slice(-5));
 }
 console.log('old saves into act 2:', ok, '/ 30');

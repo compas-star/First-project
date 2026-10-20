@@ -6,6 +6,7 @@
 import {
   makeFighter, short, save, toParams, classOf, MAX_ROSTER, dayName,
   type Career, type CareerFighter, type FightResult, type Tier,
+  storyNote,
 } from './career';
 import { addMood } from './life';
 import { story, main, heavy, npc, place, levelOf } from './story';
@@ -1314,6 +1315,7 @@ export function act1Choose(c: Career, opt: string): { lines: string[]; fight?: A
   // The roof fight comes back every few nights: never marked done.
   if (!r.fight && !a.done.includes(id) && id !== 's7' && id !== 's7pay') a.done.push(id);
   c.log.unshift(...r.lines.map((x) => `🎬 ${x}`));
+  storyNote(c, r.lines);
   // A fight: the next card waits for its result (act1FightDone).
   if (!a.pending && !r.fight) act1Check(c);
   save(c);
@@ -1327,6 +1329,7 @@ export function act1FightDone(c: Career, f: CareerFighter, fight: A1Fight, r: Fi
   if (a.pending && a.pending !== 'end' && did(a, a.pending)) a.pending = null;
   if (!a.pending) act1Check(c);
   c.log.unshift(...res.lines.map((x) => `🎬 ${x}`));
+  storyNote(c, res.lines);
   save(c);
   return res;
 }

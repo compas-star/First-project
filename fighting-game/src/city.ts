@@ -126,7 +126,8 @@ export function work(c: Career, f: CareerFighter, j: Job): { ok: boolean; text: 
   spend(f, j.parts, j.e, j.s);
   // Act 1 keeps count of shifts (the foreman, the racket); the market thanks its defender.
   if (c.act1) c.act1.flags[`job_${j.id}`] = (c.act1.flags[`job_${j.id}`] ?? 0) + 1;
-  const pay = j.pay + (j.id === 'market' && c.act1?.flags.marketFriend ? 10 : 0);
+  // The market: +$10 for its defender (act 1), −$10 while «Химики» take their cut (act 2).
+  const pay = j.pay + (j.id === 'market' && c.act1?.flags.marketFriend ? 10 : 0) - (j.id === 'market' && c.act2?.flags.chemTax ? 10 : 0);
   c.money += pay;
   addMood(f, -2);
   let text = `${j.name}: +$${pay}`;

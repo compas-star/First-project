@@ -410,7 +410,10 @@ export class CareerUi {
       case 'tv': {
         const tape = act(c)?.done.includes('s3') && !act(c)?.flags.tape2;
         const card = this.act1CardHtml() || this.storyCard();
-        return `${head('Телевизор')}${card || '<div class="fnote">По телевизору ничего нового.</div>'}
+        // The story so far (user: act 2 got lost): the last story lines from the journal.
+        const past = (c.storyLog ?? []).slice(0, 12);
+        const recap = past.length ? `<details class="newsbox"><summary class="h2">📖 Что было</summary>${past.map((x) => `<div>${esc(x)}</div>`).join('')}</details>` : '';
+        return `${head('Телевизор')}${card || '<div class="fnote">По телевизору ничего нового.</div>'}${recap}
           ${tape ? '<button type="button" data-act="a1tape">📼 Кассета Михалыча «Урок 1» · часть дня</button>' : ''}
           <div class="newsbox"><div class="h2">Новости боёв</div>${(c.news ?? []).slice(0, 4).map((x) => `<div>${esc(x)}</div>`).join('')}</div>`;
       }

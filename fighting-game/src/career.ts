@@ -178,6 +178,8 @@ export interface Career {
   ladder?: Ladder;
   /** Act 2 of the main story (act2.ts). */
   act2?: Act2;
+  /** What happened in the story, newest first (the TV's «Что было»). */
+  storyLog?: string[];
 }
 
 export type EvKind = 'night' | 'tour' | 'title';
@@ -467,6 +469,14 @@ export function gainOf(f: CareerFighter, k: StatKey, it: Intensity, c?: Career):
   const top = gymCap(c, f, k);
   const room = (top - f.stats[k]) / Math.max(0.05, f.caps[k] - info.lo);
   return Math.max(0, info.base * it.k * trainK(f) * gymK(c, k) * Math.min(1, 0.15 + 1.6 * room) * (room > 0 ? 1 : 0));
+}
+
+/** Keeps the story's lines for «Что было» (the journal drops them among daily news). */
+export function storyNote(c: Career, lines: string[]): void {
+  const day = dayName(c.day);
+  const log = (c.storyLog ??= []);
+  log.unshift(...lines.filter(Boolean).map((x) => `${day}: ${x}`));
+  log.length = Math.min(log.length, 40);
 }
 
 /** Days a quality may go unworked before it fades, and how much it fades a day (of his range). */

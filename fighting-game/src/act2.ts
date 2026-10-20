@@ -5,6 +5,7 @@
 import {
   makeFighter, short, save, classOf, addRel, rating,
   type Career, type CareerFighter, type FightResult, type Tier,
+  storyNote,
 } from './career';
 import { addMood } from './life';
 import { story, main, heavy, npc, place, levelOf } from './story';
@@ -28,7 +29,13 @@ export interface Act2 {
   tourDay: number;
   /** Money staked with Лис on ourselves. */
   bet: number;
+  /** 2 = the long act (tournament ~40 days in, three Saturdays a week apart). */
+  v?: number;
 }
+
+/** Days from the start of the act to the quarter-final; semi and final a week apart each. */
+export const TOUR_AT = 39;
+export const nightOf = (a: Act2, round: 1 | 2 | 3) => a.tourDay + 7 * (round - 1);
 
 export const FEE2 = 300;
 export const PRIZE2 = 3000;
@@ -48,7 +55,7 @@ export function ensureAct2(c: Career): string[] {
   // The district comes after the cup of «Подкова» is won (user: you must win it to move on).
   if (ladder(c).stage < 2) return [];
   if (a1.flags.callDue && !a1.flags.called) return [];
-  c.act2 = { start: c.day, done: [], seen: [], pending: null, flags: {}, tourDay: c.day + 23, bet: 0 };
+  c.act2 = { start: c.day, done: [], seen: [], pending: null, flags: {}, tourDay: c.day + TOUR_AT, bet: 0, v: 2 };
   save(c);
   return ['🎬 Начинается акт 2: «Район»'];
 }
@@ -57,6 +64,26 @@ export function ensureAct2(c: Career): string[] {
 
 function stal(c: Career, f: CareerFighter): CareerFighter {
   return npc(c, story(c), 'a2stal', () => heavy(f, 0.08, 'Сталь «Наследник» Железнов', 'muaythai', 'nakmuay'), f);
+}
+/** Friends and foes of the district (story-level copies, at our level). */
+function nik(c: Career, f: CareerFighter): CareerFighter {
+  return npc(c, story(c), 'a2nik', () => {
+    const m = heavy(f, -0.04, 'Николаич «Старая школа» Орлов', 'boxing', 'sovboxer');
+    m.weight = 78;
+    return m;
+  }, f);
+}
+function batya(c: Career, f: CareerFighter): CareerFighter {
+  return npc(c, story(c), 'a2batya', () => heavy(f, 0.06, 'Батя «Второго августа» Корнеев', 'street', 'vdv'), f);
+}
+function saper(c: Career, f: CareerFighter): CareerFighter {
+  return npc(c, story(c), 'a2saper', () => heavy(f, 0.01, 'Сапёр «Без права на ошибку» Лужин', 'kickboxing', 'vdv'), f);
+}
+function zheka(c: Career, f: CareerFighter): CareerFighter {
+  return npc(c, story(c), 'a2zheka', () => heavy(f, -0.01, 'Жека «Семки» Пронин', 'street', 'gopnik'), f);
+}
+function tolyan(c: Career, f: CareerFighter): CareerFighter {
+  return npc(c, story(c), 'a2tolyan', () => heavy(f, 0.02, 'Толян «Барсетка» Кошкин', 'boxing', 'gopnik'), f);
 }
 function lis(c: Career, f: CareerFighter): CareerFighter {
   return npc(c, story(c), 'a2lis', () => heavy(f, -0.1, 'Лис «Букмекер» Лисин', 'street', 'clerk'), f);
@@ -160,7 +187,7 @@ function tape2(c: Career, f: CareerFighter): SceneSpec {
 function weighIn(c: Career, f: CareerFighter): SceneSpec {
   const a = c.act2!;
   const lines: SceneLine[] = [
-    { who: null, text: 'Взвешивание. Турнир района через три дня', shot: 'wide', act: (s) => (s.scene!.dist = 0.7) },
+    { who: null, text: `Взвешивание. Турнир района через ${Math.max(1, a.tourDay - c.day)} дн.`, shot: 'wide', act: (s) => (s.scene!.dist = 0.7) },
     { who: 1, text: 'Подвальный. Ты ещё здесь.', shot: 'over1' },
   ];
   if (a.flags.envelope) lines.push({ who: 1, text: 'Тебя купили дважды. Пояс тебе идёт меньше, чем мне.', shot: 'over1' });
@@ -221,6 +248,7 @@ function tourFight(c: Career, a: Act2, f: CareerFighter, round: 1 | 2 | 3): A1Fi
   const name = ['', 'Четвертьфинал', 'Полуфинал', 'Финал'][round];
   let pre: SceneSpec | undefined;
   if (round === 3) pre = finalFaceoff(c, f);
+  if (round === 3 && a.flags.mentor && pre) pre.lines.splice(1, 0, { who: null, text: 'В твоём углу — Николаич в красной майке «Октября». Шепчет: «Левое плечо. И не слушай их»', shot: 'close0' });
   else if (round === 2 && c.act1?.flags.kidScar)
     pre = { map: MAP_BY_ID.ring, a: P(f, 0), b: P(opp, 1), dist: 2.2, lines: [{ who: 1, text: 'Вы меня не взяли. А они взяли.', shot: 'over1' }, { who: 0, text: 'Тимоха…', shot: 'close0' }] };
   else if (round === 1 && a.flags.kirpichIn)
@@ -233,7 +261,7 @@ function tourFight(c: Career, a: Act2, f: CareerFighter, round: 1 | 2 | 3): A1Fi
       if (!r.won) return finish(c2, a, round === 3 ? 'final' : 'out', [`${name}: поражение от ${short(opp)}`]);
       f2.fame += round;
       if (round === 3) return finish(c2, a, 'champ', [`Финал: Сталь повержен!`]);
-      return { lines: [`${name}: победа над ${short(opp)}. ${round === 1 ? 'Сегодня же — полуфинал' : 'Завтра — финал против Стали'}`] };
+      return { lines: [`${name}: победа над ${short(opp)}. ${round === 1 ? 'Через неделю, в субботу, — полуфинал' : 'Через неделю — финал против Стали'}`] };
     },
   };
 }
@@ -279,15 +307,31 @@ interface Card {
 
 const CARDS: Card[] = [
   {
-    id: 's1', title: 'Афиша', who: 'Район',
+    id: 's0', title: 'После Кубка', who: 'Шрам и Сталь',
     when: () => true,
-    text: () => 'На стене афиша: Турнир района через 24 дня. Приз — пояс района и $3000. Взнос $300.',
+    text: () => 'Кубок «Подковы» твой. У стойки ждут Шрам и молодой парень с его глазами — сын, Сталь. Новый уровень: район.',
+    scene: (c, f) => ({
+      map: MAP_BY_ID.bar, a: P(f, 0), b: P(stal(c, f), 1), dist: 3, extra: { p: P(scar(c, f), 1) }, names: { extra: 'Шрам' },
+      lines: [
+        { who: null, text: 'Ночь после Кубка. Подвал «Подковы» пустеет', shot: 'wide', act: (s) => (s.scene!.dist = 1.8) },
+        { who: 2, text: 'Кубок «Подковы». Мило. Михалыч тоже начинал с этой дыры.', shot: 'group' },
+        { who: 2, text: 'Знакомься: мой сын. Через сорок дней Турнир района. Там не байкеры, там мои люди.', shot: 'group' },
+        { who: 1, text: 'Чемпион подвала. Звучит как диагноз.', shot: 'over1' },
+        { who: 0, text: 'Увидимся на турнире.', shot: 'close0' },
+      ],
+    }),
+    opts: [{ id: 'ok', label: 'Дальше', run: (c, a) => ({ lines: [`Акт 2 «Район». Цель — Турнир района через ${a.tourDay - c.day} дн. Шрам и его сын Сталь теперь главные враги`] }) }],
+  },
+  {
+    id: 's1', title: 'Афиша', who: 'Район',
+    when: (c, a) => day2(c, a) >= 3,
+    text: (c, a) => `На стене афиша: Турнир района через ${a.tourDay - c.day} дн. Три субботы: четвертьфинал, полуфинал, финал. Приз — пояс района и $3000. Взнос $300.`,
     scene: poster,
     opts: [{ id: 'ok', label: 'Дальше', run: () => ({ lines: ['Цель: выиграть Турнир района. Взнос $300 — до турнира. Проиграешь — Шрам выживет тебя из района'] }) }],
   },
   {
     id: 's2', title: 'Кирпич у двери', who: 'Кирпич',
-    when: (c, a) => day2(c, a) >= 3,
+    when: (c, a) => day2(c, a) >= 5,
     text: (c) => (c.act1?.flags.kirpichRespect ? 'Кирпич пришёл с сумкой лап: «Буду держать лапы. Бесплатно».' : 'На афише турнира среди восьми фамилий — Кирпичёв. Гусь передал через пацанов: «Кирпич хочет реванша».'),
     scene: (c, f) => (c.act1?.flags.kirpichRespect ? kirpichDoor(c, f) : (undefined as unknown as SceneSpec)),
     opts: [
@@ -307,7 +351,7 @@ const CARDS: Card[] = [
   },
   {
     id: 's3', title: 'Подвальный', who: 'Сталь и Шрам',
-    when: (c, a) => day2(c, a) >= 6,
+    when: (c, a) => day2(c, a) >= 10,
     text: () => 'Шрам привёл сына. Сталь — фаворит турнира и называет тебя «подвальным».',
     scene: stalVisit,
     opts: [
@@ -329,7 +373,7 @@ const CARDS: Card[] = [
   },
   {
     id: 's4', title: 'Записка', who: 'Тётя Валя',
-    when: (c, a) => day2(c, a) >= 9,
+    when: (c, a) => day2(c, a) >= 15,
     text: (c) =>
       c.act1?.ending === 'deal'
         ? 'Шрам прислал конверт: $500 и фото Михалыча с поясом. «Бонус. Чтобы ты не передумал».'
@@ -365,7 +409,7 @@ const CARDS: Card[] = [
   },
   {
     id: 's5', title: 'Лис', who: 'Лис',
-    when: (c, a) => day2(c, a) >= 12,
+    when: (c, a) => day2(c, a) >= 22,
     text: () => 'Букмекер Лис в «Подкове»: поставить на себя (выигрыш вшестеро) или лечь в полуфинале за $800.',
     scene: lisScene,
     opts: [
@@ -384,7 +428,7 @@ const CARDS: Card[] = [
   },
   {
     id: 's6', title: 'Первый бой Тимохи', who: 'Тимоха',
-    when: (c, a) => day2(c, a) >= 15 && c.roster.some((x) => x.name.includes('Тимоха')),
+    when: (c, a) => day2(c, a) >= 25 && c.roster.some((x) => x.name.includes('Тимоха')),
     text: () => 'Тимоха выходит на свой первый бой на крыше. Ты в его углу.',
     forced: true,
     opts: [{ id: 'go', label: 'В угол Тимохи', run: (c, a, f) => {
@@ -398,7 +442,7 @@ const CARDS: Card[] = [
   },
   {
     id: 's7', title: 'Кассета «Урок 2»', who: 'Михалыч (кассета)',
-    when: (c, a) => day2(c, a) >= 17,
+    when: (c, a) => day2(c, a) >= 31,
     text: () => 'Нашлась ещё одна кассета. Михалыч про удары по ногам — и про финал 1989 года.',
     scene: tape2,
     opts: [
@@ -418,10 +462,10 @@ const CARDS: Card[] = [
   },
   {
     id: 's8', title: 'Взвешивание', who: 'Сталь',
-    when: (c, a) => day2(c, a) >= 21,
+    when: (c, a) => day2(c, a) >= 36,
     text: (_c, a) => `Взвешивание перед турниром. ${a.flags.fee ? 'Ты в списках.' : 'Взнос ещё не заплачен — $300, иначе тебя не допустят!'}`,
     scene: weighIn,
-    opts: [{ id: 'ok', label: 'Дальше', run: () => ({ lines: ['Через три дня — турнир'] }) }],
+    opts: [{ id: 'ok', label: 'Дальше', run: (c, a) => ({ lines: [`Турнир через ${a.tourDay - c.day} дн.`] }) }],
   },
   {
     id: 't1', title: 'Турнир района: четвертьфинал', who: 'Арена района',
@@ -441,7 +485,7 @@ const CARDS: Card[] = [
   },
   {
     id: 'tfix', title: 'Лис в зале', who: 'Лис',
-    when: (c, a) => did(a, 't1') && !!a.flags.fix && !a.flags.fixDecided,
+    when: (c, a) => did(a, 't1') && !!a.flags.fix && !a.flags.fixDecided && c.day >= nightOf(a, 2),
     forced: true,
     text: () => 'Лис сидит в первом ряду и смотрит на тебя. Ты обещал лечь в полуфинале.',
     opts: [
@@ -459,23 +503,136 @@ const CARDS: Card[] = [
   },
   {
     id: 't2', title: 'Турнир района: полуфинал', who: 'Арена района',
-    when: (c, a) => did(a, 't1') && (!a.flags.fix || !!a.flags.fixDecided),
+    when: (c, a) => did(a, 't1') && (!a.flags.fix || !!a.flags.fixDecided) && c.day >= nightOf(a, 2),
     forced: true,
     text: (c, a, f) => `Полуфинал против ${who(c, rival(c, a, f, 2))}.`,
     opts: [{ id: 'go', label: 'На бой', run: (c, a, f) => ({ lines: [], fight: tourFight(c, a, f, 2) }) }],
   },
   {
     id: 't3', title: 'Турнир района: финал', who: 'Сталь',
-    when: (c, a) => did(a, 't2') && c.day > a.tourDay,
+    when: (c, a) => did(a, 't2') && c.day >= nightOf(a, 3),
     forced: true,
     text: () => 'Финал. Сталь. Шрам у его угла.',
     opts: [{ id: 'go', label: 'На бой', run: (c, a, f) => ({ lines: [], fight: tourFight(c, a, f, 3) }) }],
   },
 
+  // --- Friends and the war with «Химики» (act 2, long) ---
+  {
+    id: 'f1', title: 'Николаич', who: 'Старый тренер «Октября»',
+    when: (c, a) => day2(c, a) >= 8,
+    text: () => 'В подвал спустился старик в красной майке «Красного Октября». Знал Михалыча. Предлагает держать тебе лапы по вечерам.',
+    scene: (c, f) => ({
+      map: MAP_BY_ID.basement, a: P(f, 0), b: P(nik(c, f), 1), dist: 2.4,
+      lines: [
+        { who: null, text: 'Вечер. По лестнице спускается старик в красной майке', shot: 'low' },
+        { who: 1, text: 'Я Михалыча знал. Мы с ним полжизни на одном ринге проторчали.', shot: 'over1' },
+        { who: 1, text: 'Видел тебя на Кубке. Левое плечо открываешь, как он. Приходи в «Октябрь» по вечерам — подержу лапы. Бесплатно.', shot: 'over1' },
+        { who: 0, text: 'С чего такая доброта?', shot: 'close0' },
+        { who: 1, text: 'Шрам у меня когда-то лучшего ученика увёл. Хочу посмотреть, как ему прилетит.', shot: 'close1' },
+      ],
+    }),
+    opts: [
+      { id: 'learn', label: 'Учиться у Николаича', run: (_c, a, f) => {
+        a.flags.mentor = 1;
+        f.craft ??= { hands: 0, legs: 0 };
+        f.craft.hands = Math.min(1, f.craft.hands + 0.06);
+        f.stats.skill = Math.min(f.caps.skill, f.stats.skill + 0.01);
+        return { lines: ['Николаич теперь в твоём углу. Руки +6%, техника +1%. На финале он будет рядом'] };
+      } },
+      { id: 'no', label: '«Спасибо, я сам»', run: () => ({ lines: ['Николаич пожимает плечами: «Дверь открыта»'] }) },
+    ],
+  },
+  {
+    id: 'h1', title: '«Химики» на рынке', who: '«Химики»',
+    when: (c, a) => day2(c, a) >= 12,
+    text: () => 'На рынке появились пацаны в чёрных спортивках: каждый грузчик теперь платит им $10 со смены. Говорят, их кормит Шрам.',
+    scene: (c, f) => ({
+      map: MAP_BY_ID.alley, a: P(f, 0), b: P(zheka(c, f), 1), dist: 3,
+      lines: [
+        { who: null, text: 'Рынок. За ящиками сидят на корточках трое в спортивках', shot: 'wide', act: (s) => (s.scene!.dist = 2.0) },
+        { who: 1, text: 'О, чемпион подвала. С тебя десятка со смены. Рынок теперь наш.', shot: 'over1' },
+        { who: 1, text: 'Не нравится — иди жалуйся Шраму. Он нам и платит.', shot: 'close1' },
+      ],
+    }),
+    opts: [
+      { id: 'fight', label: '«Рынок не ваш»', run: (c, a, f) => ({ lines: [], fight: streetFight(c, a, f, 'h1', zheka(c, f), [
+        { who: 1, text: 'Ну, сам напросился.', shot: 'over1' },
+      ], 'Жека убегает, теряя кепку. Рынок аплодирует. Теперь «Химики» точат на тебя зуб', 'Жека сильнее. «Химики» смеются: десятка со смены остаётся') }) },
+      { id: 'pay', label: 'Платить десятку', run: (_c, a) => {
+        a.flags.chemTax = 1;
+        return { lines: ['Рынок платит тебе на $10 меньше за смену, пока «Химики» здесь'] };
+      } },
+    ],
+  },
+  {
+    id: 'd1', title: '«Десант»', who: 'Батя',
+    when: (c, a) => day2(c, a) >= 15,
+    text: () => 'В подвал зашёл Батя, лидер «Десанта», в тельняшке. Его мужики спорят, кто сильнее — ты или их Сапёр. Предлагает спарринг, без злобы.',
+    scene: (c, f) => ({
+      map: MAP_BY_ID.basement, a: P(f, 0), b: P(batya(c, f), 1), dist: 2.6,
+      lines: [
+        { who: null, text: 'Дверь распахивается. Тельняшка, берет, кулаки как кувалды', shot: 'low' },
+        { who: 1, text: 'Здорово, чемпион. Я Батя, «Десант». Мои мужики спорят на ящик пива — ты или наш Сапёр.', shot: 'over1' },
+        { who: 1, text: 'И ещё. «Химики» на нашей улице тоже борзеют. Шрамовы шавки. Нам такие соседи не нравятся.', shot: 'close1' },
+      ],
+    }),
+    opts: [
+      { id: 'spar', label: 'Спарринг с Сапёром', run: (c, a, f) => ({ lines: [], fight: streetFight(c, a, f, 'd1', saper(c, f), [
+        { who: 1, text: 'Без злобы. Но и без поддавков.', shot: 'over1' },
+      ], 'Сапёр жмёт руку: «Уважаю». Батя: «Если «Химики» полезут — свистни. «Десант» рядом»', 'Сапёр сильнее, но Батя доволен: «Не сдулся. Если «Химики» полезут — свистни»') }) },
+      { id: 'no', label: '«Не до того»', run: (_c, a) => {
+        a.flags.desCold = 1;
+        return { lines: ['Батя: «Ну, как знаешь». Уходит'] };
+      } },
+    ],
+  },
+  {
+    id: 'h2', title: 'Ночью в подвале', who: '«Химики»',
+    when: (c, a) => did(a, 'h1') && day2(c, a) >= 18,
+    text: (c) => `Ночью кто-то разгромил подвал: мешок срезан, зеркало разбито, на стене «ХИМ».${c.roster.some((x) => x.name.includes('Тимоха')) ? ' Тимоха с фингалом: «Их было трое. Я одного достал!»' : ''}`,
+    opts: [
+      { id: 'yard', label: 'Пойти к ним во двор', no: (c, _a, f) => (partsLeft(c, f) < 1 ? 'сегодня уже поздно' : null), run: (c, a, f) => ({ lines: [], fight: streetFight(c, a, f, 'h2', tolyan(c, f), [
+        { who: null, text: 'Двор у химзавода. Лавочка, семечки, Толян с барсеткой', shot: 'wide', act: (s) => (s.scene!.dist = 2.2) },
+        { who: 1, text: 'Чё, пришёл за зеркалом?', shot: 'over1' },
+      ], 'Толян лежит у лавочки. Двор затих. Сёма «Хим» теперь знает тебя в лицо', 'Толян отбился. Вернулся ни с чем') }) },
+      { id: 'desant', label: 'Позвать «Десант»', no: (_c, a) => (did(a, 'd1') && !a.flags.desCold ? null : '«Десант» тебе не друг'), run: (_c, a) => {
+        a.flags.desHelp = 1;
+        return { lines: ['Батя с мужиками сходил к «Химикам» поговорить. Вернулся довольный: «Будет у вас честный бой. Один на один. Без шавок»'] };
+      } },
+      { id: 'fix', label: 'Починить и терпеть ($80)', no: (c) => (c.money < 80 ? 'нужно $80' : null), run: (c, _a, f) => {
+        c.money -= 80;
+        addMood(f, -6);
+        return { lines: ['Новый мешок, новое зеркало. «Химики» решили, что ты испугался'] };
+      } },
+    ],
+  },
+  {
+    id: 'h3', title: 'Сёма «Хим»', who: 'Сёма «Хим»',
+    when: (c, a) => did(a, 'h2') && day2(c, a) >= 28,
+    forced: true,
+    text: (_c, a) => `Сёма «Хим», лидер «Химиков», вызвал тебя во двор у химзавода.${a.flags.desHelp ? ' «Десант» стоит кругом: бой будет честным.' : ''} Победишь — «Химики» уйдут из района.`,
+    opts: [{ id: 'fight', label: 'Во двор', run: (c, a, f) => ({ lines: [], fight: { ...streetFight(c, a, f, 'h3', chem(c, f), [
+      { who: null, text: 'Двор у химзавода. Кругом чёрные спортивки', shot: 'wide', act: (s) => (s.scene!.dist = 2.0) },
+      ...(a.flags.desHelp ? [{ who: null, text: 'За ними — тельняшки «Десанта». Батя курит: «Один на один, пацаны»', shot: 'low' as const }] : []),
+      { who: 1, text: 'Шрам сказал — ты сломаешься. Проверим.', shot: 'over1' },
+    ], 'Сёма сидит на асфальте и смеётся сквозь кровь: «Ладно. Уходим. Шраму сам скажешь»', 'Сёма сильнее. «Химики» остаются в районе'), after: (c2, f2, r) => {
+      a.done.push('h3');
+      if (r.won) {
+        a.flags.chemOut = 1;
+        a.flags.chemTax = 0;
+        f2.fame += 4;
+        addMood(f2, 10);
+        return { lines: ['«Химики» уходят из района: рынок снова платит полностью, заказа Шрама перед турниром не будет. Известность +4'] };
+      }
+      f2.energy = Math.max(0, (f2.energy ?? 80) - 40);
+      addMood(f2, -10);
+      return { lines: ['Сёма сильнее. «Химики» остаются — и перед турниром придут снова. Энергия −40'] };
+    } } }) }],
+  },
   // --- «Железные кони» after act 1 ---
   {
     id: 'k1', title: 'Жилетка «Коней»', who: 'Шатун',
-    when: (c, a) => !!c.act1?.flags.bkJoin && day2(c, a) >= 5,
+    when: (c, a) => !!c.act1?.flags.bkJoin && day2(c, a) >= 7,
     text: () => 'Шатун: «Ты наш. Выйди на Турнир района в жилетке «Коней» — $300 сразу и пиво до конца жизни».',
     opts: [
       { id: 'yes', label: 'Выйти в жилетке', run: (c, a) => {
@@ -491,7 +648,7 @@ const CARDS: Card[] = [
   },
   {
     id: 'k2', title: 'Предупреждение', who: 'Шатун',
-    when: (c, a) => !!(c.act1?.flags.bkRespect || (c.act1?.flags.bkJoin && !a.flags.bkWar2)) && c.day >= a.tourDay - 3,
+    when: (c, a) => !a.flags.chemOut && !!(c.act1?.flags.bkRespect || (c.act1?.flags.bkJoin && !a.flags.bkWar2)) && c.day >= a.tourDay - 3,
     text: () => 'Ночью у подвала глушит мотор Шатун: «Шрам заплатил «Химикам», чтоб тебя покалечили до турнира. Завтра. Мы будем рядом, но драться — тебе».',
     opts: [{ id: 'ok', label: 'Готовиться', run: (c, a) => {
       a.flags.chemDay = c.day + 1;
@@ -500,9 +657,9 @@ const CARDS: Card[] = [
   },
   {
     id: 'k3', title: '«Химики»', who: 'Сёма «Хим»',
-    when: (c, a) => !!a.flags.chemDay && c.day >= a.flags.chemDay,
+    when: (c, a) => !a.flags.chemOut && !did(a, 't1') && (a.flags.chemDay ? c.day >= a.flags.chemDay : c.day >= a.tourDay - 2),
     forced: true,
-    text: () => 'У подъезда пацаны в чёрных спортивках. Впереди Сёма «Хим»: «Ничего личного. Заказ».',
+    text: () => 'У подъезда пацаны в чёрных спортивках. Впереди Сёма «Хим»: «Ничего личного. Шрам заказал тебя до турнира».',
     opts: [{ id: 'fight', label: 'Драться', run: (c, a, f) => ({ lines: [], fight: streetFight(c, a, f, 'k3', chem(c, f), [
       { who: null, text: 'Вечер. Чёрные спортивки с полосками. За углом рычат «Кони»', shot: 'low', act: (s) => (s.scene!.dist = 2.2) },
       { who: 1, text: 'Ничего личного, подвальный. Заказ.', shot: 'over1' },
@@ -534,6 +691,9 @@ function streetFight(c: Career, a: Act2, f: CareerFighter, id: string, opp: Care
         if (id === 'k4') a.flags.bkWar2 = 0;
         return { lines: [`${win}. Известность +3`] };
       }
+      if (id === 'h1') a.flags.chemTax = 1;
+      // A friendly sparring costs nothing more than the fight itself.
+      if (id === 'd1') return { lines: [lose] };
       f2.energy = Math.max(0, (f2.energy ?? 80) - 40);
       addMood(f2, -10);
       return { lines: [`${lose}. Энергия −40`] };
@@ -578,6 +738,7 @@ function finish(c: Career, a: Act2, e: Ending2, lines: string[]): { lines: strin
 export function act2Check(c: Career): string[] {
   const out = ensureAct2(c);
   const a = act2(c);
+  if (a) migrate(c, a);
   if (!a || a.pending || (a.ending && did(a, 'end'))) return out;
   if (a.ending) {
     a.pending = 'end';
@@ -598,14 +759,29 @@ export function act2Check(c: Career): string[] {
 export function act2Day(c: Career): string[] {
   const a = act2(c);
   if (!a) return act2Check(c);
+  migrate(c, a);
   const out: string[] = [];
-  if (!a.ending && c.day > a.tourDay + 1 && !did(a, 't3')) out.push(...finish(c, a, 'out', ['Турнир района прошёл без тебя']).lines);
-  else if (!a.ending && c.day > a.tourDay && (a.pending === 't1' || a.pending === 't2' || a.pending === 'tfix')) {
-    a.pending = null;
-    out.push(...finish(c, a, 'out', ['Не вышел на бой турнира — техническое поражение']).lines);
+  // A tournament night passed without our fight: that is the end of it.
+  for (const r of [1, 2, 3] as const) {
+    if (a.ending || did(a, `t${r}`)) continue;
+    if (r > 1 && !did(a, `t${r - 1}`)) break;
+    if (c.day > nightOf(a, r)) {
+      if (a.pending === `t${r}` || a.pending === 'tfix') a.pending = null;
+      out.push(...finish(c, a, 'out', ['Не вышел на бой турнира — техническое поражение']).lines);
+    }
+    break;
   }
   out.push(...act2Check(c));
   return out;
+}
+
+/** Saves from the short act (tournament 23 days in, all in two days): the tournament moves on
+ * to leave room for the new chapters; nothing already played changes. */
+function migrate(c: Career, a: Act2): void {
+  if (a.v === 2) return;
+  a.v = 2;
+  if (!a.ending && !did(a, 't1')) a.tourDay = Math.max(a.tourDay, c.day + 21);
+  if (!did(a, 's0')) a.done.push('s0');
 }
 
 export function act2Card(c: Career) {
@@ -667,6 +843,7 @@ export function act2Choose(c: Career, opt: string): { lines: string[]; fight?: A
   if (!r.fight && !a.done.includes(id) && !(id === 't1' && opt === 'fee')) a.done.push(id);
   if (id === 't1' && opt === 'fee') a.pending = 't1';
   c.log.unshift(...r.lines.map((x) => `🎬 ${x}`));
+  storyNote(c, r.lines);
   // A fight: the next card waits for its result (act2FightDone).
   if (!a.pending && !r.fight) act2Check(c);
   save(c);
@@ -680,6 +857,7 @@ export function act2FightDone(c: Career, f: CareerFighter, fight: A1Fight, r: Fi
   if (a.pending && a.pending !== 'end' && a.done.includes(a.pending)) a.pending = null;
   if (!a.pending) act2Check(c);
   c.log.unshift(...res.lines.map((x) => `🎬 ${x}`));
+  storyNote(c, res.lines);
   save(c);
   return res;
 }
@@ -699,7 +877,9 @@ export function act2Fee(c: Career): string {
 export function act2Goal(c: Career): { text: string; debt: number; left: number; fee?: number } | null {
   const a = act2(c);
   if (!a || a.ending) return null;
-  return { text: 'Выиграть Турнир района', debt: 0, left: a.tourDay - c.day, fee: a.flags.fee ? 0 : FEE2 };
+  const next = [1, 2, 3].map((r) => nightOf(a, r as 1 | 2 | 3)).find((d, i) => !did(a, `t${i + 1}`) && d >= c.day) ?? a.tourDay;
+  const ch = c.day >= a.tourDay ? 'Турнир района' : did(a, 'h1') && !did(a, 'h3') ? 'Война с «Химиками»' : did(a, 'h3') ? 'Перед турниром' : 'Новый уровень';
+  return { text: `${ch} · следующий бой турнира`, debt: 0, left: next - c.day, fee: a.flags.fee ? 0 : FEE2 };
 }
 
 export { gus };

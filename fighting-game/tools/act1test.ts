@@ -10,7 +10,7 @@ for (let run = 0; run < RUNS; run++) {
   const c = newCareer();
   ensureAct1(c);
   const log: string[] = [];
-  for (let d = 0; d < 26; d++) {
+  for (let d = 0; d < 36; d++) {
     c.incidents = [];
     for (let k = 0; k < 6; k++) {
       const card = act1Card(c);
@@ -38,7 +38,7 @@ for (let run = 0; run < RUNS; run++) {
   const a = act(c)!;
   const e = a.ending ?? 'none';
   ends[e] = (ends[e] ?? 0) + 1;
-  if ((log.some((l) => l.includes('j1:')) && log.some((l) => l.includes('j2:'))) || (e === 'none' && sample.length === 0)) sample = log;
+  if (run === 0) sample = log;
 }
 console.log(ends);
 console.log(sample.join('\n'));

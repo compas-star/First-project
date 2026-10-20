@@ -386,6 +386,10 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   for $300 or refuse = `bkWar2`; k2 (respect/joined) Шатун warns that Шрам hired «Химики» ->
   forced k3 street fight vs Сёма; k4 forced revenge vs Шатун the night before the tournament if
   still at war. Street losses there = energy −40 before the tournament.
+  Pacing (user: scenes and fights every day was too much): act 1 stretched to 30 days (all
+  day thresholds x1.5, deadline «тридцатое», card id 'd20' kept), and `SCENE_GAP` 2: a new
+  card opens at most every other day (`flags.lastCard`) unless `forced`; act 2 the same gap
+  (s8 weigh-in and forced cards excepted).
   Engine for it: map 'basement' (`arena.ts basement()`: bricks, pipes, bag on chain, belt,
   photo, bulb; old TV + VCR whose 64x48 canvas plays Михалыч's tape when `TV.on`, mouth moves
   while `TV.talk`, snow and rolling bar); `storyCut` in cutscenes.ts (a shot per line: wide,

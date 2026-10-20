@@ -582,9 +582,12 @@ export function act2Check(c: Career): string[] {
     a.pending = 'end';
     return out;
   }
-  const card = CARDS.find((x) => !did(a, x.id) && x.when(c, a));
+  // Every 2-3 days at most, unless it cannot wait (the tournament, a fight at the door).
+  const rest = c.day - (a.flags.lastCard ?? -99) < 2;
+  const card = CARDS.find((x) => !did(a, x.id) && (!rest || x.forced || x.id === 's8') && x.when(c, a));
   if (card) {
     a.pending = card.id;
+    a.flags.lastCard = c.day;
     out.push(`🎬 Сюжет: «${card.title}»`);
   }
   return out;

@@ -37,6 +37,8 @@ export interface Act1 {
 }
 
 const DEBT = 1500;
+/** Days between two scenes of the act (forced ones excepted). */
+export const SCENE_GAP = 2;
 const CUP_TIP = 'Гусь: «Хочешь денег — по субботам турнир в подвале «Подковы». Записывайся на арене. Только подготовься как следует»';
 
 export const act = (c: Career): Act1 | null => c.act1 ?? null;
@@ -56,7 +58,7 @@ export function ensureAct1(c: Career): void {
   if (s.pending && /^(debt|kid|gym)/.test(s.pending)) s.pending = undefined;
   s.flags.debt = 0;
   s.flags.debtPay = 0;
-  c.act1 = { start: c.day, debt: DEBT, plan: null, done: [], seen: [], pending: null, flags: {}, kirpichDay: c.day + 6, gusDay: c.day + 17, roofNext: c.day + 11 };
+  c.act1 = { start: c.day, debt: DEBT, plan: null, done: [], seen: [], pending: null, flags: {}, kirpichDay: c.day + 8, gusDay: c.day + 26, roofNext: c.day + 16 };
   act1Check(c);
   save(c);
 }
@@ -146,7 +148,7 @@ function scene2(c: Career, f: CareerFighter): SceneSpec {
     lines: [
       { who: null, text: 'День 2. По лестнице в подвал спускаются гости', shot: 'wide', act: (s) => (s.scene!.dist = 1.7) },
       { who: 1, text: 'Добрый вечер. Соболезную. Прекрасный был человек. Платил плохо.', shot: 'group' },
-      { who: 1, text: 'Тысяча пятьсот. До двадцатого числа. Не будет денег — будет новый хозяин. Я даже знаю, кто.', shot: 'group' },
+      { who: 1, text: 'Тысяча пятьсот. До тридцатого числа. Не будет денег — будет новый хозяин. Я даже знаю, кто.', shot: 'group' },
       { who: 2, text: 'Хе.', shot: 'group', dur: 1.6 },
       { who: null, text: 'Что ответить Гусю?', shot: 'close0', dur: 2.2 },
     ],
@@ -199,7 +201,7 @@ function scene5(c: Career, f: CareerFighter): SceneSpec {
       { who: 1, text: 'Я закрою твой долг Гусю. Весь. И сверху две тысячи тебе. А ты отдашь мне ключи.', shot: 'over1' },
       { who: 0, text: 'Зачем тебе подвал? У тебя целый зал.', shot: 'over0' },
       { who: null, text: 'Шрам молча оборачивается к стене. Там висит старый тёмный пояс', shot: 'close1' },
-      { who: 1, text: 'Ностальгия. Думай до двадцатого.', shot: 'close1' },
+      { who: 1, text: 'Ностальгия. Думай до тридцатого.', shot: 'close1' },
     ],
   };
 }
@@ -228,8 +230,8 @@ function scene8(c: Career, f: CareerFighter, a: Act1): SceneSpec {
       ]
     : [
         { who: null, text: 'Бар «Подкова». Гусь пьёт чай за дальним столом', shot: 'wide', act: (s) => (s.scene!.dist = 1.9) },
-        { who: 1, text: `Двадцатое через ${Math.max(1, a.start + 19 - c.day)} дн. А у вас, сколько я знаю, не хватает $${a.debt}.`, shot: 'group' },
-        { who: 1, text: 'Я человек вежливый. Предупреждаю один раз. Двадцатого я приду не один.', shot: 'group' },
+        { who: 1, text: `Тридцатое через ${Math.max(1, a.start + 29 - c.day)} дн. А у вас, сколько я знаю, не хватает $${a.debt}.`, shot: 'group' },
+        { who: 1, text: 'Я человек вежливый. Предупреждаю один раз. Тридцатого я приду не один.', shot: 'group' },
         { who: 2, text: 'Хе.', shot: 'group', dur: 1.6 },
       ];
   return { map: MAP_BY_ID.bar, a: P(f, 0), b: P(g, 1), dist: 3, extra: { p: P(kirpich(c, f), 1), side: 0.8 }, names: { extra: 'Кирпич' }, lines };
@@ -345,8 +347,8 @@ const kirpichOut = (a: Act1) => !!(a.flags.kirpichRespect || a.flags.bkJoin || a
 
 function scene20(c: Career, f: CareerFighter, a: Act1): SceneSpec {
   const lines: SceneLine[] = [
-    { who: null, text: 'Двадцатое. Полночь. Дверь подвала вылетает с одного удара', shot: 'low', act: (s) => (s.scene!.dist = 2.0) },
-    { who: 1, text: 'Двадцатое число. Я пунктуальный человек.', shot: 'group' },
+    { who: null, text: 'Тридцатое. Полночь. Дверь подвала вылетает с одного удара', shot: 'low', act: (s) => (s.scene!.dist = 2.0) },
+    { who: 1, text: 'Тридцатое число. Я пунктуальный человек.', shot: 'group' },
     { who: 1, text: `Не хватает $${a.debt}. Ключи на стол — или по-плохому.`, shot: 'group' },
     { who: 0, text: 'Это дом Михалыча. Не отдам.', shot: 'close0' },
   ];
@@ -385,7 +387,7 @@ export function endingScene(c: Career, f: CareerFighter, e: Ending): SceneSpec {
     return {
       map: B, a: P(f, 0), b: P(f, 1), dist: 2.4, hide: [false, true], names: { tv: 'Михалыч' },
       lines: [
-        { who: null, text: 'Двадцатое. Третья кассета: «Если подвал выстоял»', shot: 'orbit0', act: tvOn },
+        { who: null, text: 'Тридцатое. Третья кассета: «Если подвал выстоял»', shot: 'orbit0', act: tvOn },
         { who: 'tv', text: 'Ну вот. А я в тебя верил. Теперь слушай: пояс на стене — не для красоты. Забери настоящий.', shot: 'tv' },
         { who: null, text: 'Акт 1 пройден. Подвал ваш', shot: 'orbit0' },
       ],
@@ -514,7 +516,7 @@ function bikerFight(opp: CareerFighter, map: 'bar' | 'alley' | 'basement', title
 /** The 20th: Кирпич first (unless he stays out), then Гусь. Win both and the basement stays. */
 function fight20Kirpich(c: Career, a: Act1, f: CareerFighter): A1Fight {
   return {
-    opp: kirpich(c, f), tier: { ...place('basement', 0), name: 'Подвал' }, title: `Двадцатое: ${short(f)} против Кирпича`,
+    opp: kirpich(c, f), tier: { ...place('basement', 0), name: 'Подвал' }, title: `Тридцатое: ${short(f)} против Кирпича`,
     after: (c2, f2, r) => {
       if (!a.done.includes('d20')) a.done.push('d20');
       if (r.won) {
@@ -530,7 +532,7 @@ function fight20Kirpich(c: Career, a: Act1, f: CareerFighter): A1Fight {
 
 function fight20Gus(c: Career, a: Act1, f: CareerFighter): A1Fight {
   return {
-    opp: gus(c, f), tier: { ...place('basement', 0), name: 'Подвал' }, title: `Двадцатое: ${short(f)} против Гуся`,
+    opp: gus(c, f), tier: { ...place('basement', 0), name: 'Подвал' }, title: `Тридцатое: ${short(f)} против Гуся`,
     after: (c2, f2, r) => {
       for (const id of ['d20', 'd20b']) if (!a.done.includes(id)) a.done.push(id);
       if (r.won) {
@@ -572,10 +574,10 @@ interface Card {
 const CARDS: Card[] = [
   // The 20th comes before anything else that day.
   {
-    id: 'd20', title: 'Двадцатое', who: 'Гусь и Кирпич',
-    when: (c, a) => actDay(c, a) >= 20 && a.debt > 0,
+    id: 'd20', title: 'Тридцатое', who: 'Гусь и Кирпич',
+    when: (c, a) => actDay(c, a) >= 30 && a.debt > 0,
     forced: true,
-    text: (_c, a) => `Полночь двадцатого. Гусь${kirpichOut(a) ? '' : ' и Кирпич'} в подвале. Не хватает $${a.debt}. Отдать ключи — или драться${kirpichOut(a) ? ' с Гусем' : ': сначала Кирпич, потом Гусь'}. Победишь — подвал твой.`,
+    text: (_c, a) => `Полночь тридцатого. Гусь${kirpichOut(a) ? '' : ' и Кирпич'} в подвале. Не хватает $${a.debt}. Отдать ключи — или драться${kirpichOut(a) ? ' с Гусем' : ': сначала Кирпич, потом Гусь'}. Победишь — подвал твой.`,
     scene: scene20,
     opts: [
       { id: 'fight', label: 'Драться за подвал', run: (c, a, f) => ({ lines: [], fight: kirpichOut(a) ? fight20Gus(c, a, f) : fight20Kirpich(c, a, f) }) },
@@ -600,39 +602,39 @@ const CARDS: Card[] = [
     when: () => true,
     text: () => 'Тебе достался подвал под прачечной. На тумбе — старый телевизор и кассета «Новому хозяину».',
     scene: scene1,
-    opts: [{ id: 'ok', label: 'Дальше', run: (_c, a) => ({ lines: [`Цель: закрыть долг $${a.debt} до 20-го дня. Иначе подвал отберут`] }) }],
+    opts: [{ id: 'ok', label: 'Дальше', run: (_c, a) => ({ lines: [`Цель: закрыть долг $${a.debt} до 30-го дня. Иначе подвал отберут`] }) }],
   },
   {
     id: 's2', title: 'Гусь', who: 'Гусь и Кирпич',
     when: (c, a) => actDay(c, a) >= 2,
-    text: () => 'Коллектор Гусь пришёл за долгом Михалыча: $1500 до двадцатого. За его плечом молчит здоровенный Кирпич.',
+    text: () => 'Коллектор Гусь пришёл за долгом Михалыча: $1500 до тридцатого. За его плечом молчит здоровенный Кирпич.',
     scene: (c, f) => scene2(c, f),
     opts: [
       { id: 'pay', label: '«Дай время, отдадим»', run: (c, a) => {
         a.plan = 'pay';
         a.flags.gusView = 1;
         ladder(c).open = true;
-        return { lines: ['Гусь: «Разумно. По понедельникам, сто пятьдесят. Остальное — двадцатого». Каждый понедельник $150', CUP_TIP] };
+        return { lines: ['Гусь: «Разумно. По понедельникам, сто пятьдесят. Остальное — тридцатого». Каждый понедельник $150', CUP_TIP] };
       } },
       { id: 'bold', label: '«Михалыч тебе ничего не должен»', run: (c, a) => {
         a.plan = 'bold';
         a.debt += 200;
         a.flags.gusView = 3;
         ladder(c).open = true;
-        return { lines: [`Гусь улыбается: «Тогда двадцатого — вся сумма. И процент за дерзость». Долг $${a.debt}`, CUP_TIP] };
+        return { lines: [`Гусь улыбается: «Тогда тридцатого — вся сумма. И процент за дерзость». Долг $${a.debt}`, CUP_TIP] };
       } },
       { id: 'sport', label: '«Давай решим по-спортивному»', run: (c, a) => {
         a.plan = 'sport';
         a.flags.gusView = 2;
-        a.kirpichDay = a.start + 4;
+        a.kirpichDay = a.start + 6;
         ladder(c).open = true;
-        return { lines: ['Гусь оглядывается: «Кирпич, слышал? В пятницу, в подворотне». Бой с Кирпичом — на 5-й день', CUP_TIP] };
+        return { lines: ['Гусь оглядывается: «Кирпич, слышал? В пятницу, в подворотне». Бой с Кирпичом — на 7-й день', CUP_TIP] };
       } },
     ],
   },
   {
     id: 's3', title: 'Вторая кассета', who: 'Михалыч (кассета)',
-    when: (c, a) => actDay(c, a) >= 4,
+    when: (c, a) => actDay(c, a) >= 6,
     text: () => 'За раздевалкой нашлась вторая кассета. На ней: «Урок 1».',
     scene: scene3,
     opts: [
@@ -656,6 +658,7 @@ const CARDS: Card[] = [
   },
   {
     id: 's4h', title: 'Стук в дверь', who: 'Кирпич',
+    forced: true,
     when: (c, a) => !!a.flags.kirpichHome && c.day >= a.kirpichDay,
     text: () => 'Утро. В дверь колотят. На пороге Кирпич: «Не пришёл в подворотню — подворотня пришла к тебе». Драться придётся прямо в подвале.',
     opts: [{ id: 'fight', label: 'Драться', run: (c, a, f) => ({ lines: [], fight: { ...kirpichFight(c, a, f), tier: place('basement', 0), title: `Подвал: ${short(f)} против Кирпича`, pre: undefined } }) }],
@@ -673,21 +676,21 @@ const CARDS: Card[] = [
       { id: 'taunt', label: '«Передай Гусю: следующий — он»', run: (c, a, f) => {
         f.fame += 3;
         a.flags.taunt = 1;
-        a.gusDay = a.start + 14;
+        a.gusDay = a.start + 21;
         return { lines: ['Известность +3. Гусь придёт раньше — и злее'] };
       } },
     ],
   },
   {
     id: 's5', title: 'Человек в пиджаке', who: 'Шрам',
-    when: (c, a) => actDay(c, a) >= 8,
+    when: (c, a) => actDay(c, a) >= 12,
     text: () => 'В подвал зашёл Шрам, хозяин «Железного кулака». Предлагает закрыть долг и дать $2000 сверху — за ключи от подвала.',
     scene: scene5,
     opts: [
       { id: 'deal', label: '«Договорились»', run: (c, a) => finish(c, a, 'deal', ['Шрам закрыл долг и отсчитал $2000. Ключи у него']) },
       { id: 'no', label: '«Нет»', run: (_c, a) => {
         a.flags.scarEnemy = 1;
-        return { lines: ['Шрам: «Тогда двадцатого я всё равно приду. Уже как хозяин»'] };
+        return { lines: ['Шрам: «Тогда тридцатого я всё равно приду. Уже как хозяин»'] };
       } },
       { id: 'ask', label: '«Что ты сделал Михалычу?»', no: (_c, a) => (a.flags.tape2 ? null : 'сначала послушай вторую кассету'), run: (_c, a) => {
         a.flags.scarEnemy = 1;
@@ -698,7 +701,7 @@ const CARDS: Card[] = [
   },
   {
     id: 's6', title: 'Пацан у окна', who: 'Тимоха',
-    when: (c, a) => actDay(c, a) >= 10,
+    when: (c, a) => actDay(c, a) >= 15,
     text: () => 'Худой пацан неделю стоит у окна подвала и повторяет удары. Просится в команду и знает, где ночью дерутся за деньги.',
     scene: (c, f) => scene6(c, f),
     opts: [
@@ -721,7 +724,7 @@ const CARDS: Card[] = [
   },
   {
     id: 's7', title: 'Ночной бой на крыше', who: 'Тимоха',
-    when: (c, a) => !!a.flags.roofsOpen && a.debt > 0 && c.day >= a.roofNext && actDay(c, a) >= 12,
+    when: (c, a) => !!a.flags.roofsOpen && a.debt > 0 && c.day >= a.roofNext && actDay(c, a) >= 18,
     text: () => 'Сегодня ночью на крыше бой за деньги: один раунд, победителю $300. Проигравшему — $50 и синяки.',
     opts: [
       { id: 'go', label: 'Драться', no: (c, _a, f) => (f.busyUntil > c.day ? `${short(f)} ещё не готов` : partsLeft(c, f) < 1 ? 'сегодня уже поздно' : null), run: (c, a, f) => ({ lines: [], fight: roofFight(c, a, f) }) },
@@ -749,13 +752,13 @@ const CARDS: Card[] = [
   {
     id: 's8', title: 'Гусь приходит сам', who: 'Гусь',
     when: (c, a) => c.day >= a.gusDay,
-    text: (_c, a) => (a.debt > 0 ? `Гусь ждёт в «Подкове». Долг ещё $${a.debt}. Предупреждает: двадцатого он придёт не один.` : 'Долг отдан, но Гусь всё равно зовёт в «Подкову»: поговорить.'),
+    text: (_c, a) => (a.debt > 0 ? `Гусь ждёт в «Подкове». Долг ещё $${a.debt}. Предупреждает: тридцатого он придёт не один.` : 'Долг отдан, но Гусь всё равно зовёт в «Подкову»: поговорить.'),
     scene: (c, f, a) => scene8(c, f, a),
     opts: [
       { id: 'wait', label: '«Приходи. Встречу»', no: (_c, a) => (a.debt <= 0 ? 'долг уже отдан' : null), run: (_c, a, f) => {
         a.flags.gusWarned = 1;
         addMood(f, 5);
-        return { lines: ['Гусь допивает чай: «Как скажешь». Двадцатого — разборка в подвале'] };
+        return { lines: ['Гусь допивает чай: «Как скажешь». Тридцатого — разборка в подвале'] };
       } },
       { id: 'pay', label: '«Отдам всё сейчас»', no: (c, a) => (a.debt <= 0 ? 'долг уже отдан' : c.money < a.debt ? `нужно $${a.debt}` : null), run: (c, a) => {
         c.money -= a.debt;
@@ -771,7 +774,7 @@ const CARDS: Card[] = [
   // --- «Железные кони»: the bikers who run the street ---
   {
     id: 'b1', title: 'Чужой стол', who: '«Железные кони»',
-    when: (c, a) => actDay(c, a) >= 3 && did(a, 's2'),
+    when: (c, a) => actDay(c, a) >= 4 && did(a, 's2'),
     text: () => 'В «Подкове» байкеры «Железных коней». Глушитель смахнул твою кружку: «Это наш стол, подвальный». Шатун смотрит и ухмыляется.',
     scene: sceneB1,
     opts: [
@@ -805,7 +808,7 @@ const CARDS: Card[] = [
   },
   {
     id: 'b2', title: 'Конь на двери', who: '«Железные кони»',
-    when: (c, a) => did(a, 'b1') && c.day >= (a.flags.bkNext ?? 0) && actDay(c, a) >= 6,
+    when: (c, a) => did(a, 'b1') && c.day >= (a.flags.bkNext ?? 0) && actDay(c, a) >= 9,
     text: () => 'На двери подвала нарисован красный конь. Внутри порезан мешок. Метка «Коней»: это их улица.',
     scene: sceneB2,
     opts: [
@@ -844,7 +847,7 @@ const CARDS: Card[] = [
   },
   {
     id: 'b3', title: 'Предложение Шатуна', who: 'Шатун',
-    when: (c, a) => did(a, 'b2') && c.day >= (a.flags.bkNext ?? 0) && actDay(c, a) >= 10,
+    when: (c, a) => did(a, 'b2') && c.day >= (a.flags.bkNext ?? 0) && actDay(c, a) >= 15,
     text: () => 'Шатун сам спустился в подвал: «Надевай жилетку «Коней» — Гусь скинет пятьсот. Не наденешь — ты сам по себе».',
     scene: sceneB3,
     opts: [
@@ -853,7 +856,7 @@ const CARDS: Card[] = [
         a.debt = Math.max(0, a.debt - 500);
         f.skin = 'biker';
         addMood(f, -5);
-        return { lines: [`Теперь ты «Конь». Гусь скинул $500: долг $${a.debt}. Двадцатого «Кони» будут рядом. «Цех №5» тебе этого не простит`] };
+        return { lines: [`Теперь ты «Конь». Гусь скинул $500: долг $${a.debt}. Тридцатого «Кони» будут рядом. «Цех №5» тебе этого не простит`] };
       } },
       { id: 'duel', label: '«Один на один. Здесь»', run: (c, a, f) => ({ lines: [], fight: bikerFight(shatun(c, f), 'basement', `Подвал: ${short(f)} против Шатуна`, undefined, (c2, f2, r) => {
         a.done.push('b3');
@@ -862,7 +865,7 @@ const CARDS: Card[] = [
           a.flags.bkRespect = 1;
           a.flags.bkWar = 0;
           f2.fame += 4;
-          return { lines: ['Шатун поднимается, сплёвывает: «Уважаю. Двадцатого приду посмотреть». Известность +4'] };
+          return { lines: ['Шатун поднимается, сплёвывает: «Уважаю. Тридцатого приду посмотреть». Известность +4'] };
         }
         a.flags.bkWar = 1;
         out(c2, f2, 2, 'отходит после Шатуна');
@@ -876,7 +879,7 @@ const CARDS: Card[] = [
   },
   {
     id: 'b4', title: 'Фары у подъезда', who: '«Железные кони»',
-    when: (c, a) => did(a, 'b3') && !!a.flags.bkWar && !a.flags.bkRespect && !a.flags.bkJoin && actDay(c, a) >= 14,
+    when: (c, a) => did(a, 'b3') && !!a.flags.bkWar && !a.flags.bkRespect && !a.flags.bkJoin && actDay(c, a) >= 21,
     forced: true,
     text: () => 'Ночь. У подъезда кругом мотоциклы. Глушитель выходит в свет фар — драться придётся.',
     scene: (c, f) => sceneB4(c, f),
@@ -899,7 +902,7 @@ const CARDS: Card[] = [
   // --- Михалыч's tapes ---
   {
     id: 'tp1', title: 'Кассета: «Про Гуся»', who: 'Михалыч (кассета)', side: true,
-    when: (c, a) => actDay(c, a) >= 5 && did(a, 's2'),
+    when: (c, a) => actDay(c, a) >= 8 && did(a, 's2'),
     text: () => 'Под видиком нашлась ещё кассета. На наклейке: «Про Гуся».',
     scene: tape('Про Гуся', [
       'Гусь — не злой. Он аккуратный. Берёт ровно столько, сколько ты позволишь взять.',
@@ -912,7 +915,7 @@ const CARDS: Card[] = [
   },
   {
     id: 'tp2', title: 'Кассета: «Кони»', who: 'Михалыч (кассета)', side: true,
-    when: (c, a) => did(a, 'b1') && actDay(c, a) >= 8,
+    when: (c, a) => did(a, 'b1') && actDay(c, a) >= 12,
     text: () => 'Кассета с лошадкой, нарисованной фломастером.',
     scene: tape('Кони', [
       'Байкеры с «Подковы» — шпана, но честная шпана. Шатуна я ещё пацаном помню.',
@@ -925,7 +928,7 @@ const CARDS: Card[] = [
   },
   {
     id: 'tp3', title: 'Кассета: «Пояс»', who: 'Михалыч (кассета)', side: true,
-    when: (c, a) => actDay(c, a) >= 15,
+    when: (c, a) => actDay(c, a) >= 22,
     text: () => 'Последняя кассета из коробки. На ней: «Пояс».',
     scene: tape('Пояс', [
       'Этот пояс — восемьдесят девятый год. Финал. Говорят, я выиграл его нечестно.',
@@ -941,7 +944,7 @@ const CARDS: Card[] = [
   // --- Тётя Валя (only notes) ---
   {
     id: 'v1', title: 'Записка сверху', who: 'Тётя Валя', side: true,
-    when: (c, a) => actDay(c, a) >= 3,
+    when: (c, a) => actDay(c, a) >= 4,
     text: () => '«Ребятки, я наверху, в прачечной. Если что — стучите по трубе. Пирожки на подоконнике. Михалыча жалко. В.»',
     opts: [{ id: 'eat', label: 'Съесть пирожки', run: (_c, _a, f) => {
       f.sat = 100;
@@ -951,7 +954,7 @@ const CARDS: Card[] = [
   },
   {
     id: 'v2', title: 'Опять бух-бух', who: 'Тётя Валя', side: true,
-    when: (c, a) => actDay(c, a) >= 9,
+    when: (c, a) => actDay(c, a) >= 14,
     text: () => '«Всю ночь бух-бух по вашему мешку! Ладно, Михалыч тоже бухал. Если совсем туго с деньгами — дам двести. Вернёшь, когда сможешь. В.»',
     opts: [
       { id: 'borrow', label: 'Взять $200', run: (c, a) => {
@@ -968,7 +971,7 @@ const CARDS: Card[] = [
   },
   {
     id: 'v3', title: 'Тётя Валя видела', who: 'Тётя Валя', side: true,
-    when: (c, a) => actDay(c, a) >= 16 && !!a.flags.scarEnemy,
+    when: (c, a) => actDay(c, a) >= 24 && !!a.flags.scarEnemy,
     text: () => '«Вчера тот, в пиджаке, спрашивал меня, сколько вы должны. Я сказала — не знаю. Он сунул мне сто долларов. Я их ему в машину кинула. В.»',
     opts: [{ id: 'ok', label: 'Улыбнуться', run: (_c, a, f) => {
       a.flags.valyaAlly = 1;
@@ -1037,12 +1040,12 @@ const CARDS: Card[] = [
   // --- Шрам watches ---
   {
     id: 'w1', title: 'Чёрная машина', who: 'Человек Шрама', side: true,
-    when: (c, a) => actDay(c, a) >= 12 && !!a.flags.scarEnemy,
+    when: (c, a) => actDay(c, a) >= 18 && !!a.flags.scarEnemy,
     text: () => 'У подвала третий день стоит чёрная машина. Водитель что-то записывает.',
     opts: [
       { id: 'knock', label: 'Постучать в стекло', run: (_c, a) => {
         a.flags.scarWatch = 1;
-        return { lines: ['Стекло опускается: «Шрам просил передать: двадцатого он будет смотреть»'] };
+        return { lines: ['Стекло опускается: «Шрам просил передать: тридцатого он будет смотреть»'] };
       } },
       { id: 'tyre', label: 'Проколоть колесо', run: (_c, a, f) => {
         a.flags.scarTyre = 1;
@@ -1054,7 +1057,7 @@ const CARDS: Card[] = [
   },
   {
     id: 'w2', title: 'Тимоху переманивают', who: 'Человек Шрама', side: true,
-    when: (c, a) => actDay(c, a) >= 14 && !!a.flags.kid && c.roster.some((x) => x.name.includes('Тимоха')),
+    when: (c, a) => actDay(c, a) >= 21 && !!a.flags.kid && c.roster.some((x) => x.name.includes('Тимоха')),
     text: () => 'Человек Шрама предлагает Тимохе зал с кондиционером и $100 в неделю. Тимоха мнётся у двери.',
     opts: [
       { id: 'talk', label: 'Поговорить с Тимохой', run: (c) => {
@@ -1079,7 +1082,7 @@ const CARDS: Card[] = [
   // --- The street knows him ---
   {
     id: 'r1', title: 'Ученики', who: 'Район', side: true,
-    when: (c, a) => (a.flags.rep ?? 0) >= 3 && actDay(c, a) >= 8,
+    when: (c, a) => (a.flags.rep ?? 0) >= 3 && actDay(c, a) >= 12,
     text: () => 'Двое пацанов с района просятся заниматься в подвале: «Мы видели, как ты Кирпича…». Готовы платить $20 в неделю.',
     opts: [
       { id: 'take', label: 'Взять', run: (_c, a) => {
@@ -1156,10 +1159,13 @@ export function act1Check(c: Career): string[] {
     a.pending = 'end';
     return [];
   }
-  const card = CARDS.find((x) => !did(a, x.id) && (!x.side || a.flags.sideDay !== c.day) && x.when(c, a));
+  // Scenes come every 2-3 days, not every day (user); forced ones (a knock at the door, the
+  // 30th) do not wait.
+  const rest = c.day - (a.flags.lastCard ?? -99) < SCENE_GAP;
+  const card = CARDS.find((x) => !did(a, x.id) && (!rest || x.forced) && x.when(c, a));
   if (!card) return [];
   a.pending = card.id;
-  if (card.side) a.flags.sideDay = c.day;
+  a.flags.lastCard = c.day;
   return [`🎬 Сюжет: «${card.title}»`];
 }
 
@@ -1204,14 +1210,14 @@ export function act1Day(c: Career): string[] {
   }
   // The 20th: paid up = the basement is ours; not = Гусь and Кирпич come (the 'd20' card,
   // which cannot be skipped) and it goes to the fists.
-  if (actDay(c, a) >= 20 && !a.ending) {
+  if (actDay(c, a) >= 30 && !a.ending) {
     if (a.debt <= 0) {
-      const r = finish(c, a, 'ours', ['Двадцатое. Долг отдан']);
+      const r = finish(c, a, 'ours', ['Тридцатое. Долг отдан']);
       if (a.pending && a.pending !== 'end') a.pending = 'end';
       out.push(...r.lines);
     } else if (a.pending !== 'd20' && a.pending !== 'd20b' && !did(a, 'd20')) {
       a.pending = 'd20';
-      out.push('🎬 Двадцатое. В дверь подвала стучат');
+      out.push('🎬 Тридцатое. В дверь подвала стучат');
     }
   }
   out.push(...act1Check(c));
@@ -1238,7 +1244,7 @@ export function act1Card(c: Career): Act1Card | null {
   if (a.pending === 'end') {
     const e = a.ending!;
     return {
-      id: 'end', title: e === 'ours' ? 'Двадцатое. Зал наш' : e === 'lost' ? 'Двадцатое. Зал потерян' : 'Сделка',
+      id: 'end', title: e === 'ours' ? 'Тридцатое. Зал наш' : e === 'lost' ? 'Тридцатое. Зал потерян' : 'Сделка',
       who: e === 'ours' ? 'Михалыч (кассета)' : 'Шрам',
       text: e === 'ours' ? 'Подвал выстоял. На третьей кассете Михалыч говорит последнее.' : e === 'lost' ? 'Замок на двери подвала поменяли. Шрам доволен.' : 'Шрам забирает пояс Михалыча.',
       film: true, watched: a.seen.includes('end'),
@@ -1323,8 +1329,8 @@ export function act1Pay(c: Career, amount: number): string {
 export function act1Goal(c: Career): { text: string; debt: number; left: number } | null {
   const a = act(c);
   if (!a || a.ending) return null;
-  const left = a.start + 19 - c.day;
-  return { text: a.debt > 0 ? `Закрыть долг Гусю до 20-го дня` : 'Долг отдан. Дождаться двадцатого', debt: a.debt, left };
+  const left = a.start + 29 - c.day;
+  return { text: a.debt > 0 ? `Закрыть долг Гусю до 30-го дня` : 'Долг отдан. Дождаться тридцатого', debt: a.debt, left };
 }
 
 /** Training in the yard once the basement is gone. */

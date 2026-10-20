@@ -37,6 +37,8 @@ export interface Act1 {
 }
 
 const DEBT = 1500;
+/** A won roof fight pays this (user: $300 for a one-minute fight was far too much). */
+const ROOF_PAY = 120;
 /** Days between two scenes of the act (forced ones excepted). */
 export const SCENE_GAP = 2;
 const CUP_TIP = 'Гусь: «Хочешь денег — по субботам турнир в подвале «Подковы». Записывайся на арене. Только подготовься как следует»';
@@ -450,7 +452,7 @@ function kirpichFight(c: Career, a: Act1, f: CareerFighter): A1Fight {
 function roofFight(c: Career, a: Act1, f: CareerFighter): A1Fight {
   const opp = makeFighter(Math.max(0.02, levelOf(f) + (Math.random() - 0.5) * 0.06), 0.5, classOf(f));
   const first = !a.flags.roofs;
-  const tier: Tier = { ...place('roof', 1, [0, 0]), name: 'Крыша' };
+  const tier: Tier = { ...place('roof', 3, [0, 0]), name: 'Крыша' };
   return {
     opp, tier, title: `Ночь на крыше: ${short(f)} против ${short(opp)}`,
     pre: {
@@ -466,11 +468,11 @@ function roofFight(c: Career, a: Act1, f: CareerFighter): A1Fight {
       if (r.won) {
         f2.fame += 1;
         a.pending = 's7pay';
-        return { lines: ['Победа на крыше: $300 наличными. Отдать сразу Гусю?'] };
+        return { lines: [`Победа на крыше: $${ROOF_PAY} наличными. Отдать сразу Гусю?`] };
       }
-      c2.money += 50;
+      c2.money += 20;
       out(c2, f2, 3, 'отходит после крыши');
-      return { lines: ['Поражение на крыше. $50 за выход, 3 дня лечения'] };
+      return { lines: ['Поражение на крыше. $20 за выход, 3 дня лечения'] };
     },
   };
 }
@@ -725,7 +727,7 @@ const CARDS: Card[] = [
   {
     id: 's7', title: 'Ночной бой на крыше', who: 'Тимоха',
     when: (c, a) => !!a.flags.roofsOpen && a.debt > 0 && c.day >= a.roofNext && actDay(c, a) >= 18,
-    text: () => 'Сегодня ночью на крыше бой за деньги: один раунд, победителю $300. Проигравшему — $50 и синяки.',
+    text: () => `Сегодня ночью на крыше бой за деньги: три раунда, победителю $${ROOF_PAY}. Проигравшему — $20 и синяки.`,
     opts: [
       { id: 'go', label: 'Драться', no: (c, _a, f) => (f.busyUntil > c.day ? `${short(f)} ещё не готов` : partsLeft(c, f) < 1 ? 'сегодня уже поздно' : null), run: (c, a, f) => ({ lines: [], fight: roofFight(c, a, f) }) },
       { id: 'skip', label: 'Не сегодня', run: (c, a) => {
@@ -737,15 +739,15 @@ const CARDS: Card[] = [
   {
     id: 's7pay', title: 'Деньги с крыши', who: 'Тимоха',
     when: () => false,
-    text: (_c, a) => `$300 наличными. Долг Гусю: $${a.debt}.`,
+    text: (_c, a) => `$${ROOF_PAY} наличными. Долг Гусю: $${a.debt}.`,
     opts: [
       { id: 'debt', label: 'Сразу Гусю', run: (_c, a) => {
-        a.debt = Math.max(0, a.debt - 300);
+        a.debt = Math.max(0, a.debt - ROOF_PAY);
         return { lines: [`Гусь пересчитал: «Приятно иметь с вами дело». Долг $${a.debt}`] };
       } },
       { id: 'keep', label: 'Себе', run: (c) => {
-        c.money += 300;
-        return { lines: ['+$300 в кассу'] };
+        c.money += ROOF_PAY;
+        return { lines: [`+$${ROOF_PAY} в кассу`] };
       } },
     ],
   },

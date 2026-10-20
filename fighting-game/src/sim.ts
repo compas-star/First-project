@@ -54,6 +54,8 @@ const CHECK_BACK = 0.2;
 /** Low kicks do this much more to the leg than a stray blow. */
 const LOW_K = 2.4;
 
+/** A fight without rounds stops after this many seconds of fight time: twice a career round. */
+export const NO_ROUND_LIMIT = 120;
 export const QUICK: Rules = { roundLen: 0, rounds: 0, tough: 1 };
 export const bout = (rounds: number): Rules => ({ roundLen: 300, rounds, tough: 3 });
 export const ARENA_R = 12;
@@ -915,7 +917,7 @@ export class Sim {
     if (this.rules.roundLen && !this.winner) {
       this.roundT += h * (this.rules.clock ?? 1);
       if (this.roundT >= this.rules.roundLen) this.endRound();
-    }
+    } else if (!this.winner && !this.draw && !this.scene && !this.lab && this.t >= NO_ROUND_LIMIT) this.timeUp();
     for (const f of this.fighters) this.preStep(f, h);
     if (this.grapple) this.groundStep();
     else if (this.contactOff) {
@@ -1863,6 +1865,20 @@ export class Sim {
       return;
     }
     this.betweenRounds = true;
+  }
+
+  /** A fight without rounds ran out of time (user: endless fights took too long): whoever did
+   * more wins, as judges would see it; a dead heat is a draw. */
+  private timeUp(): void {
+    const [da, db] = this.roundDealt;
+    const [fa, fb] = this.fighters;
+    if (Math.abs(da - db) < 0.05 * Math.max(da, db, 1)) {
+      this.draw = true;
+      return;
+    }
+    const w = da > db ? fa : fb;
+    this.winner = w;
+    w.enemy.koReason = 'время вышло — решение по очкам';
   }
 
   /** Totals on the judges' cards. */

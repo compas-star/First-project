@@ -16,7 +16,8 @@ import { MAP_BY_ID } from './maps';
 import { TV } from './arena';
 import { partsLeft, fightToll, cannot, DOW, energyOf } from './city';
 import { ladder } from './clubs';
-import { kid, gus, kirpich, shatun, P, type A1Fight, type Act1Card } from './act1';
+import { kid, gus, kirpich, shatun, scar as scarOf, P, type A1Fight, type Act1Card } from './act1';
+import { makeBracket, brMine, brPerson, brDecide, brDay, brTonight, type Bracket } from './bracket';
 import type { SceneSpec, SceneLine } from './cutscenes';
 
 export type Ending3 = 'city' | 'final' | 'sold';
@@ -42,6 +43,9 @@ export interface Act3 {
   /** Career day of the poster (the city championship announced), 0 = not yet. */
   m: number;
   ending?: Ending3;
+  /** Кубок Бархата and the city championship. */
+  bk?: Bracket;
+  ch?: Bracket;
 }
 
 /** Days between two story scenes (user: something every 5-6 days, not every other day). */
@@ -49,6 +53,10 @@ export const GAP3 = 5;
 /** A rich save is robbed down to this (his stash behind the pipe). */
 export const STASH = 300;
 export const ROB_OVER = 2000;
+/** Кубок Бархата: fee and prizes; the city championship's prize. */
+export const BK_FEE = 200;
+export const BK_PRIZE = [3000, 1000];
+export const CH_PRIZE = 8000;
 /** Days from the poster to the championship's final; the poster comes no sooner than this act day. */
 export const COUNTDOWN = 45;
 export const POSTER_AT = 45;
@@ -758,12 +766,227 @@ const CARDS: Card[] = [
     forced: true,
     text: (c, a) => (a.wins >= need(a) ? 'После боя Бархат выходит в ринг с микрофоном: «Чемпионат города! Первый с восемьдесят девятого года!» И называет твоё имя.' : 'Николаич пробил тебе место через старые связи: «Чемпионат города. Первый с восемьдесят девятого. Ты в списке. Последним».'),
     scene: (c, f) => posterScene(c, f),
-    opts: [{ id: 'ok', label: 'Дальше', run: (c, a) => {
+    opts: [{ id: 'ok', label: 'Дальше', run: (c, a, f) => {
       a.m = c.day;
       if (a.wins < need(a)) a.flags.lastSeed = 1;
+      a.bk = makeBk(c, a, f);
       return { lines: [`Объявлен Чемпионат города: финал через ${finalDay(a) - c.day} дн. Восемь бойцов без весовых категорий, приз $8000. Чемпион — Титан`] };
     } }],
   },
+  // --- Chapter 2 «Пояс 89-го» (days count from the poster) ---
+  {
+    id: 'bk1', title: 'Кубок Бархата', who: 'Бархат',
+    when: (c, a) => !!a.bk && !a.bk.ours && c.day >= a.bk.nights[0] - 3 && c.day <= a.bk.nights[0],
+    follow: true,
+    text: (c, a) => `Бархат собирает свой кубок: восемь бойцов города, две субботы (${a.bk!.nights[0] - c.day <= 0 ? 'первая — сегодня' : `первая — через ${a.bk!.nights[0] - c.day} дн.`}). Взнос $${BK_FEE}, призы $${BK_PRIZE[0]} / $${BK_PRIZE[1]}. Победитель получит в чемпионате слабого соперника.`,
+    opts: [
+      { id: 'join', label: `Записаться ($${BK_FEE})`, no: (c) => (c.money < BK_FEE ? `нужно $${BK_FEE}` : null), run: (c, a, f) => {
+        c.money -= BK_FEE;
+        joinBk(a, f);
+        return { lines: ['Ты в сетке Кубка Бархата. В четвертьфинале — его человек'] };
+      } },
+      { id: 'skip', label: 'Пропустить', run: () => ({ lines: ['Без Кубка Бархата. Посев в чемпионате — как есть'] }) },
+    ],
+  },
+  {
+    id: 'c1', title: 'Финал восемьдесят девятого', who: 'Николаич и Шрам',
+    when: (c, a) => mday(c, a) >= 5,
+    text: () => 'Николаич: «Перед финалом-89 Михалыч сказал Железнову одну фразу. Знают только они двое». Вечером Шрам зовёт к себе: «Он сказал мне — я знаю про ставку. Значит, был в доле. А мой отец сел за долги Лису».',
+    scene: (c, f) => scarOffice(c, f),
+    opts: [
+      { id: 'not', label: '«Михалыч не такой»', run: (_c, a) => {
+        a.flags.stood = 1;
+        return { lines: ['Шрам усмехается: «Все так говорят». Сталь смотрит на тебя иначе'] };
+      } },
+      { id: 'quiet', label: 'Промолчать', run: () => ({ lines: ['Шрам кивает: «Вот и молчи»'] }) },
+      { id: 'prove', label: '«Докажу»', run: (_c, a) => {
+        a.flags.stood = 1;
+        a.flags.prove = 1;
+        return { lines: ['Шрам: «Докажешь — отдам пояс Михалыча». Цель главы: правда о 1989-м'] };
+      } },
+    ],
+  },
+  {
+    id: 'c2', title: 'Осада «Подковы»', who: 'Мясник',
+    when: (c, a) => mday(c, a) >= 10,
+    text: (c, a) => `Звонит бармен: люди Бархата выкупают «Подкову», громилы у двери.${a.flags.chain ? ' На шее у Мясника — твоя цепь.' : ''}${(a.flags.kidHurt ?? 0) >= 2 ? ' Мясник смеётся над Тимохой.' : ''}`,
+    scene: (c, f, a) => siegeScene(c, f, a),
+    opts: [
+      { id: 'fight', label: 'Защитить бар (два боя)', run: (c, a, f) => ({ lines: [], fight: siegeFight(c, a, f) }) },
+      { id: 'allies', label: 'Позвать своих', no: (c, a) => (allies(c, a).length ? null : 'своих нет'), run: (c, a, f) => ({ lines: [`Пришли ${allies(c, a).join(', ')}: громил разогнали. Остался Мясник`], fight: butcherFight(c, a, f) }) },
+      { id: 'leave', label: 'Не лезть', run: (_c, a, f) => {
+        a.flags.podkovaLost = 1;
+        addMood(f, -10);
+        return { lines: ['«Подкова» теперь бархатная. Кубок «Подковы» закрыт до конца акта'] };
+      } },
+    ],
+  },
+  {
+    id: 'c2b', title: 'Мясник', who: 'Мясник', when: () => false, forced: true, follow: true,
+    text: () => 'Громила лежит. Из-за стойки выходит Мясник и снимает пиджак.',
+    opts: [{ id: 'go', label: 'Драться', run: (c, a, f) => ({ lines: [], fight: butcherFight(c, a, f) }) }],
+  },
+  {
+    id: 'c3', title: 'Записка в поясе', who: 'Михалыч',
+    when: (c, a) => mday(c, a) >= 15,
+    text: (c, a) => `${c.act1?.ending === 'deal' ? (a.flags.stalFriend ? 'Сталь тайком снял пояс Михалыча со стены отца и принёс тебе. ' : 'Тётя Валя выпросила у Шрама пояс Михалыча — «почистить». ') : ''}В подкладке пояса — сложенный листок: «Лис дал 5000, чтобы я лёг. Не лягу. Малому сказал — пусть дерётся честно. М.»`,
+    scene: (c, f) => noteScene(c, f),
+    opts: [{ id: 'ok', label: 'Дальше', run: (_c, a) => {
+      a.flags.note = 1;
+      return { lines: ['Записка Михалыча: он не продавал финал. Но Шраму нужна не записка — нужна книга ставок Старого Лиса'] };
+    } }],
+  },
+  {
+    id: 'c4', title: 'Старый Лис', who: 'Охрана',
+    when: (c, a) => mday(c, a) >= 20,
+    text: (_c, a) => `${a.flags.nika && !a.flags.nikaCold ? 'Ника' : 'Николаич'} нашёл Старого Лиса, отца букмекера: загородный дом, у ворот охрана. Книга ставок с 1989 года — у него в сейфе.`,
+    opts: [
+      { id: 'fight', label: 'Пробиться', run: (c, a, f) => ({ lines: [], fight: guardFight(c, a, f, 0) }) },
+      { id: 'pay', label: 'Заплатить охране $500', no: (c) => (c.money < 500 ? 'нужно $500' : null), run: (c, a) => {
+        c.money -= 500;
+        a.pending = 'c4b';
+        return { lines: ['Охранник пересчитал и отвернулся'] };
+      } },
+      { id: 'gus', label: 'Через Гуся', run: (c, a, f) => {
+        if (gusTrue(c)) {
+          a.pending = 'c4b';
+          return { lines: ['Гусь знает старика с девяностых. Ворота открылись без драки'] };
+        }
+        a.flags.gusBetray = 1;
+        return { lines: ['Гусь ведёт к воротам — и запирает их за твоей спиной. Впереди двое охранников'], fight: guardFight(c, a, f, 1) };
+      } },
+    ],
+  },
+  {
+    id: 'c4g', title: 'Второй охранник', who: 'Охрана', when: () => false, forced: true, follow: true,
+    text: () => 'Первый лежит. Из темноты выходит второй.',
+    opts: [{ id: 'go', label: 'Драться', run: (c, a, f) => ({ lines: [], fight: guardFight(c, a, f, 2) }) }],
+  },
+  {
+    id: 'c4b', title: 'Книга', who: 'Старый Лис',
+    when: (c, a) => !!a.flags.bookLate && c.day >= a.flags.bookLate,
+    follow: true,
+    text: (_c, a) => `Старый Лис в инвалидном кресле сам отдаёт книгу: «Мне восемьдесят. Хочу умереть без долгов». В ней 1989 год и все договорные бои Титана. А на полях: «Конверт Михалычу отнёс — Н. Орлов». Николаич.${a.flags.gusBetray ? ' Гусь у ворот прячет глаза: «Долг, малой. Сам знаешь, что такое долг».' : ''}`,
+    scene: (c, f) => bookScene(c, f),
+    opts: [
+      { id: 'expose', label: 'Сказать при Шраме', run: (_c, a) => {
+        a.flags.nikSecret = 1;
+        a.flags.nikGone = 1;
+        return { lines: ['Шрам бьёт Николаича. Тот уходит не оглядываясь. В твоём углу его больше не будет'] };
+      } },
+      { id: 'private', label: 'Выслушать Николаича наедине', run: (_c, a) => {
+        a.flags.nikSecret = 2;
+        return { lines: ['«Мне было девятнадцать. Я не знал, что в конверте». Он остаётся — и сам расскажет Шраму'] };
+      } },
+      { id: 'silent', label: 'Промолчать', run: (_c, a) => {
+        a.flags.nikSecret = 3;
+        return { lines: ['Ты закрыл книгу. Пока никто не знает'] };
+      } },
+    ],
+  },
+  {
+    id: 'c5', title: 'Шрам читает', who: 'Шрам',
+    when: (c, a) => mday(c, a) >= 25 && did(a, 'c4b'),
+    text: () => 'Шрам долго читает. Потом снимает пояс со стены: «Тридцать пять лет я ненавидел не того». Кому отдать книгу?',
+    scene: (c, f) => scarReads(c, f),
+    opts: [
+      { id: 'scar', label: 'Отдать Шраму', run: (c, a) => {
+        a.flags.bookScar = 1;
+        if (a.flags.nikSecret === 3) a.flags.scarLearns = 1;
+        return { lines: ['Шрам — союзник. Финал будут судить честно'] };
+      } },
+      { id: 'nika', label: 'Отдать Нике', run: (_c, a) => {
+        a.flags.bookNika = 1;
+        return { lines: ['Скандал в «Вечернем городе». Финал будут судить честно — но Бархат будет мстить'] };
+      } },
+      { id: 'keep', label: 'Оставить себе: шантаж Бархата', run: (c, a) => {
+        c.money += 2000;
+        a.flags.bookKeep = 1;
+        return { lines: ['Бархат платит $2000 за молчание. Шрам остаётся врагом. Судьи — бархатные'] };
+      } },
+    ],
+  },
+  {
+    id: 'c6', title: 'Перед чемпионатом', who: 'Шрам, Сталь, тётя Валя',
+    when: (c, a) => mday(c, a) >= 30,
+    text: (c, a) => c6Text(c, a),
+    opts: [
+      { id: 'iron', label: 'Готовиться у Шрама', no: (_c, a) => (a.flags.bookScar && !a.flags.scarLearns ? null : 'не про тебя'), run: (c, a) => {
+        c.gym = 'iron';
+        c.gymUntil = finalDay(a);
+        story(c).flags.iron = 1;
+        a.flags.ironFree = 1;
+        if (!a.flags.valyaSafe) a.flags.sealed = c.day + 7;
+        return { lines: ['Лучший зал города бесплатно до финала. Сталь держит лапы'] };
+      } },
+      { id: 'ok', label: 'Дальше', run: (c, a) => {
+        if (!a.flags.valyaSafe) a.flags.sealed = c.day + 7;
+        if (a.flags.scarLearns) return { lines: ['Шрам узнал про Николаича сам. Ушёл, хлопнув дверью — и от тебя тоже'] };
+        return { lines: ['До чемпионата — две недели'] };
+      } },
+    ],
+  },
+
+  // --- Chapter 3 «Чемпионат города» ---
+  {
+    id: 'w1', title: 'Взвешивание', who: 'Титан',
+    when: (c, a) => !!a.ch && c.day >= a.ch.nights[0] - 2,
+    follow: true,
+    text: (_c, a) => `Взвешивание. Титан на голову выше, 118 кг. Бархат улыбается в первом ряду.${a.flags.tapes ? ' Рядом с ним стоит Сталь. В руках у Бархата — кассеты с твоими боями.' : ''}${a.flags.bookNika ? ' Журналисты кричат Бархату вопросы про договорные бои.' : ''}`,
+    scene: (c, f, a) => weighScene(c, f, a),
+    opts: [{ id: 'ok', label: 'Дальше', run: (_c, a) => ({ lines: [a.flags.tapes ? 'Тебя кинули: Титан изучил твои записи. Он будет ждать твоих любимых ударов' : 'Через два дня — четвертьфинал'] }) }],
+  },
+  {
+    id: 'l3', title: 'Последнее предложение', who: 'Лис',
+    when: (c, a) => !!a.flags.sfWon,
+    follow: true,
+    text: (_c, a) => (a.flags.owe ? 'Лис кладёт на стол конверт: «Помнишь подарок? Пора платить услугу. Ляжешь в финале — и вот тебе ещё десять тысяч. Не ляжешь — пеняй на себя».' : 'Лис кладёт на стол конверт: «Десять тысяч. За одно поражение. Титан всё равно сильнее»'),
+    opts: [
+      { id: 'take', label: 'Взять $10 000', run: (c, a) => {
+        c.money += 10000;
+        a.flags.sold = 1;
+        return { lines: ['+$10 000. В финале ты должен лечь'] };
+      } },
+      { id: 'no', label: 'Вернуть деньги в лицо', run: (_c, a, f) => {
+        addMood(f, 15);
+        if (a.flags.owe) a.flags.hunted = 1;
+        return { lines: [a.flags.owe ? 'Лис вытирает лицо: «Ну смотри». Люди Бархата будут ждать' : 'Лис пожимает плечами: «Дурак»'] };
+      } },
+    ],
+  },
+  {
+    id: 'am', title: 'Ночь перед финалом', who: 'Люди Бархата',
+    when: (c, a) => !!a.flags.sfWon && did(a, 'l3') && c.day >= finalDay(a) - 1,
+    forced: true,
+    text: (c, a) => (allies(c, a).length ? `У подъезда стоят ${allies(c, a).join(', ')}. Люди Бархата подъехали, посмотрели — и уехали.` : 'У подъезда трое в чёрных костюмах. «Привет от Бархата».'),
+    scene: (c, f, a) => (allies(c, a).length ? alliesScene(c, f, a) : (undefined as unknown as SceneSpec)),
+    opts: [
+      { id: 'ok', label: 'Спать', no: (c, a) => (allies(c, a).length ? null : 'не про тебя'), run: (_c, _a, f) => {
+        addMood(f, 15);
+        return { lines: ['Свои стоят кругом. Ты спишь спокойно'] };
+      } },
+      { id: 'fight', label: 'Драться', no: (c, a) => (allies(c, a).length ? 'не про тебя' : null), run: (c, a, f) => ({ lines: [], fight: thugFight(c, a, f) }) },
+    ],
+  },
+  {
+    id: 'fx', title: 'Финал', who: 'Лис',
+    when: (c, a) => !!a.flags.sold && c.day >= finalDay(a),
+    forced: true,
+    text: () => 'Финал. Лис в первом ряду. У тебя в кармане его десять тысяч.',
+    opts: [
+      { id: 'lay', label: 'Лечь', run: (c, a, f) => {
+        const ch = a.ch!;
+        const fin = ch.rounds[2]?.[0];
+        if (fin) brDecide(c, ch, fin, fin.a === f.id ? fin.b : fin.a, 'ring');
+        return finish3(c, a, 'sold', ['Лёг во втором раунде. Зал свистит. Тимоха отворачивается']);
+      } },
+      { id: 'fight', label: 'Драться по-настоящему', run: (_c, a) => {
+        a.flags.crossed = 1;
+        return { lines: ['Ты выходишь драться. Лис бледнеет'] };
+      } },
+    ],
+  },
+
 ];
 
 const kidSettled = (a: Act3) => !!a.flags.kidDone || (!a.flags.kidBout && did(a, 't3'));
@@ -820,6 +1043,394 @@ export function titanOf(c: Career, f: CareerFighter): CareerFighter {
   }, f);
 }
 
+// ---------- Chapters 2-3: helpers ----------
+
+/** Days since the poster. */
+const mday = (c: Career, a: Act3) => (a.m ? c.day - a.m : -1);
+
+/** Who stands by us: they take the thugs at the siege and guard the door before the final. */
+export function allies(c: Career, a: Act3): string[] {
+  const a1 = c.act1?.flags ?? {};
+  const a2 = c.act2?.flags ?? {};
+  const out: string[] = [];
+  if ((a1.bkJoin || a1.bkRespect) && !a2.bkWar2) out.push('«Железные кони»');
+  if ((c.act2?.done.includes('d1') && !a2.desCold) || a2.desHelp) out.push('«Десант»');
+  if (a.flags.portFriend) out.push('«Порт»');
+  if (a.flags.bookScar && !a.flags.scarLearns) out.push('Шрам со Сталью');
+  if (a1.kirpichRespect || a2.kirpichGym) out.push('Кирпич');
+  return out;
+}
+
+/** Гусь plays straight with us only if we beat him fairly or paid him all (act 1). */
+const gusTrue = (c: Career) => !!c.act1?.flags.gusAlly || (c.act1?.ending === 'ours' && (c.act1?.debt ?? 1) <= 0 && c.act1?.plan === 'pay');
+
+
+/** Men of the city and the district about a rating, not yet taken. */
+function pickMen(c: Career, f: CareerFighter, n: number, want: number, skip: Set<string>, clubs?: string[]): CareerFighter[] {
+  const pool = ladder(c).clubs
+    .filter((k) => k.stage >= 2 && (!clubs || clubs.includes(k.id)))
+    .flatMap((k) => k.members)
+    .filter((m) => !skip.has(m.id) && m.id !== butcher(c).id);
+  pool.sort((x, y) => Math.abs(rating(x) - want) - Math.abs(rating(y) - want));
+  const out = pool.slice(0, n);
+  while (out.length < n) {
+    const m = makeFighter(Math.max(0.02, Math.min(1, (want - 17) / 67)), 0.5, classOf(f));
+    out.push(m);
+  }
+  for (const m of out) skip.add(m.id);
+  return out;
+}
+
+/** Кубок Бархата: two Saturdays (quarter-finals, then the semi-finals and the final the same night). */
+function makeBk(c: Career, a: Act3, f: CareerFighter): Bracket {
+  const s1 = nextSat(a.m + 10);
+  const skip = new Set<string>();
+  const vel = pickMen(c, f, 2, rating(f) + 2, skip, ['velvet']);
+  const rest = pickMen(c, f, 6, rating(f), skip);
+  const order = [vel[0], rest[0], rest[1], rest[2], vel[1], rest[3], rest[4], rest[5]];
+  return makeBracket('Кубок Бархата', order, null, [s1, s1 + 7, s1 + 7], [3, 3, 5], []);
+}
+
+/** Ours takes the place opposite Бархат's first man. */
+function joinBk(a: Act3, f: CareerFighter): void {
+  const br = a.bk!;
+  const out = br.rounds[0][0].b;
+  br.men = br.men.filter((m) => m.id !== out);
+  br.rounds[0][0].b = f.id;
+  br.ours = f.id;
+}
+
+/** The championship: eight men, open weight. Our quarter-final rival by the story (the cup of
+ * Бархат won = the weakest; Николаич's late place = a strong one; else Мясник if still standing),
+ * Сталь in our half if he went over to Бархат, Титан in the other half. */
+function makeCh(c: Career, a: Act3, f: CareerFighter): Bracket {
+  const F = finalDay(a);
+  const skip = new Set<string>([f.id]);
+  const titan = titanOf(c, f);
+  const st = stal(c, f);
+  skip.add(titan.id);
+  skip.add(st.id);
+  const qf = a.flags.bkWon ? pickMen(c, f, 1, rating(f) - 8, skip)[0]
+    : a.flags.lastSeed ? pickMen(c, f, 1, rating(f) + 6, skip)[0]
+      : !a.flags.butcherBeaten ? butcher(c) : pickMen(c, f, 1, rating(f) + 1, skip)[0];
+  skip.add(qf.id);
+  const sf = a.flags.stalEnemy ? st : pickMen(c, f, 1, rating(f) + 3, skip, ['october', 'desant', 'uni', 'port'])[0];
+  const weak = pickMen(c, f, 1, rating(f) - 6, skip)[0];
+  const other = pickMen(c, f, 3, rating(f) + 1, skip);
+  const order = [f, qf, sf, weak, other[0], other[1], other[2], titan];
+  return makeBracket('Чемпионат города', order, f.id, [F - 14, F - 7, F], [3, 3, 5], [titan.id, ...(a.flags.stalEnemy ? [st.id] : [])]);
+}
+
+function streetTier(name: string): Tier {
+  return { ...place('alley', 0), name };
+}
+
+function siegeFight(c: Career, a: Act3, f: CareerFighter): A1Fight {
+  const thug = club(c, 'velvet').members.filter((m) => m.id !== butcher(c).id).sort((x, y) => rating(x) - rating(y))[0];
+  return {
+    opp: thug, tier: { ...place('bar', 0), name: '«Подкова»' }, title: `Осада «Подковы»: ${short(f)} против ${short(thug)}`,
+    after: (_c2, f2, r) => {
+      if (r.won) {
+        a.pending = 'c2b';
+        return { lines: [`${short(thug)} лежит. Но это не всё`] };
+      }
+      a.done.push('c2');
+      a.flags.podkovaLost = 1;
+      addMood(f2, -10);
+      return { lines: ['Не отбился. «Подкова» теперь бархатная: Кубок «Подковы» закрыт до конца акта'] };
+    },
+  };
+}
+
+function butcherFight(c: Career, a: Act3, f: CareerFighter): A1Fight {
+  const b = butcher(c);
+  return {
+    opp: b, tier: { ...place('bar', 0), name: '«Подкова»' }, title: `${short(f)} против Мясника`,
+    pre: { map: MAP_BY_ID.bar, a: P(f, 0), b: P(b, 1), dist: 2.6, lines: [
+      { who: 1, text: (a.flags.kidHurt ?? 0) >= 2 ? 'Как там твой малой? Ходит?' : 'Бархат сказал — бар наш. Значит, наш.', shot: 'over1' },
+      ...(a.flags.chain ? [{ who: null as null, text: 'На его шее — твоя цепь', shot: 'close1' as const }] : []),
+      { who: 0, text: 'Снимай пиджак.', shot: 'close0' },
+    ] },
+    after: (c2, f2, r) => {
+      for (const id of ['c2', 'c2b']) if (!a.done.includes(id)) a.done.push(id);
+      if (r.won) {
+        a.flags.butcherBeaten = 1;
+        f2.fame += 4;
+        addMood(f2, 15);
+        const lines = ['Мясник на полу. «Подкова» отбита. Известность +4'];
+        if (a.flags.chain) {
+          a.flags.chain = 0;
+          lines.push('Ты снимаешь с него свою цепь. И пояс района нашёлся у него в машине');
+        }
+        if ((a.flags.kidHurt ?? 0) >= 2) lines.push('Это за Тимоху');
+        return { lines };
+      }
+      a.flags.podkovaLost = 1;
+      f2.busyFrom = c2.day;
+      f2.busyUntil = Math.max(f2.busyUntil, c2.day + 4);
+      f2.busyWhat = 'избит Мясником';
+      return { lines: ['Мясник сильнее. «Подкова» теперь бархатная, Кубок «Подковы» закрыт. 4 дня на восстановление'] };
+    },
+  };
+}
+
+function guardFight(c: Career, a: Act3, f: CareerFighter, n: number): A1Fight {
+  const g = npc(c, story(c), `a3guard${n === 2 ? 2 : 1}`, () => heavy(f, n === 2 ? 0.05 : 0.02, n === 2 ? 'Охранник «Сейф» Лисин' : 'Охранник «Ворота» Лисин', 'boxing', 'velvet'), f);
+  return {
+    opp: g, tier: streetTier('Загородный дом'), title: `${short(f)} против ${short(g)}`,
+    pre: { map: MAP_BY_ID.alley, a: P(f, 0), b: P(g, 1), dist: 3, lines: [{ who: null, text: n === 1 ? 'Ворота лязгнули за спиной. Гусь по ту сторону' : 'Загородный дом Старого Лиса. Ночь', shot: 'low' }] },
+    after: (c2, _f2, r) => {
+      if (r.won) {
+        a.pending = n === 1 ? 'c4g' : 'c4b';
+        return { lines: [n === 1 ? 'Первый охранник лежит' : 'Охрана лежит. Дверь в дом открыта'] };
+      }
+      a.done.push('c4');
+      a.flags.bookLate = c2.day + 5;
+      return { lines: ['Не пробился. Через несколько дней Старый Лис сам пришлёт за тобой: «Хочу поговорить»'] };
+    },
+  };
+}
+
+function thugFight(c: Career, a: Act3, f: CareerFighter): A1Fight {
+  const thug = club(c, 'velvet').members.filter((m) => m.id !== butcher(c).id).sort((x, y) => rating(y) - rating(x))[0];
+  return {
+    opp: thug, tier: streetTier('У подъезда'), title: `Ночь перед финалом: ${short(f)} против ${short(thug)}`,
+    pre: { map: MAP_BY_ID.alley, a: P(f, 0), b: P(thug, 1), dist: 3, lines: [{ who: 1, text: 'Привет от Бархата. До финала ты дойдёшь хромым.', shot: 'over1' }] },
+    after: (_c2, f2, r) => {
+      a.done.push('am');
+      if (r.won) {
+        addMood(f2, 10);
+        return { lines: ['Отбился. Спишь с ножкой стула под рукой'] };
+      }
+      f2.energy = Math.max(0, energyOf(f2) - 45);
+      addMood(f2, -10);
+      return { lines: ['Избили у подъезда. На финал выйдешь помятым: энергии почти нет'] };
+    },
+  };
+}
+
+const ROUNDS3 = ['четвертьфинал', 'полуфинал', 'финал'];
+
+/** Our fight of tonight in a bracket of the act (with its scene and what follows). */
+export function act3BrFight(c: Career, which: 'bk' | 'ch'): A1Fight | null {
+  const a = act3(c);
+  const br = a?.[which];
+  if (!a || !br) return null;
+  const mine = brMine(c, br);
+  if (!mine) return null;
+  const { m, r } = mine;
+  const f = brPerson(c, br, br.ours!);
+  const opp = brPerson(c, br, m.a === f.id ? m.b : m.a);
+  const fin = which === 'ch' && r === 2;
+  if (fin && !a.flags.kidGone && (a.flags.kidCorner || a.flags.cutman || kidIn(c))) addMood(f, 30);
+  const tier: Tier = { ...place('ring', br.len[r]), name: br.name };
+  return {
+    opp, tier, title: `${br.name}, ${ROUNDS3[r]}: ${short(f)} против ${short(opp)}`,
+    pre: fin ? finalScene(c, f, opp, a) : {
+      map: MAP_BY_ID.ring, a: P(f, 0), b: P(opp, 1), dist: 3,
+      lines: [
+        { who: null, text: `${br.name}. ${ROUNDS3[r][0].toUpperCase()}${ROUNDS3[r].slice(1)}`, shot: 'wide', act: (s) => (s.scene!.dist = 1.8) },
+        ...(opp.name.includes('Сталь') ? [{ who: 1 as const, text: 'Подвальный. Я ждал этого с района.', shot: 'over1' as const }] : []),
+        ...(opp.id === butcher(c).id ? [{ who: 1 as const, text: 'Опять ты.', shot: 'over1' as const }] : []),
+      ],
+    },
+    after: (c2, f2, res) => {
+      let won = res.won;
+      const lines: string[] = [];
+      // Бархат's judges: a final won on points is given to Титан unless the book came out.
+      if (fin && won && !res.ko && !a.flags.bookScar && !a.flags.bookNika) {
+        won = false;
+        lines.push('Решение судей… Титан! Зал свистит. Судьи Бархата отдали бой ему');
+      }
+      lines.push(...brDecide(c2, br, m, won ? f2.id : opp.id, 'ring'));
+      if (won) {
+        f2.record.w++;
+        f2.fame += 2 + r;
+      } else f2.record.l++;
+      if (which === 'bk') {
+        if (won && r === 2) {
+          c2.money += BK_PRIZE[0];
+          a.flags.bkWon = 1;
+          lines.unshift(`🏆 Кубок Бархата твой: +$${BK_PRIZE[0]}. В чемпионате — лучший посев`);
+        } else if (!won && r === 2) {
+          c2.money += BK_PRIZE[1];
+          lines.unshift(`Финал Кубка Бархата проигран: +$${BK_PRIZE[1]}`);
+        } else lines.unshift(won ? `Кубок Бархата: ${ROUNDS3[r]} выигран. ${r === 1 ? 'Финал — сегодня же' : 'Через неделю — полуфинал и финал'}` : `Кубок Бархата: вылет в ${r ? 'полуфинале' : 'четвертьфинале'}`);
+        return { lines };
+      }
+      if (!won) return finish3(c2, a, 'final', [`Чемпионат города: поражение — ${ROUNDS3[r]}, ${short(opp)}`, ...lines]);
+      if (r === 1) a.flags.sfWon = 1;
+      if (r === 2) return finish3(c2, a, 'city', [`Чемпионат города: ${short(opp)} повержен!`, ...lines]);
+      return { lines: [`Чемпионат города: ${ROUNDS3[r]} выигран. Через неделю — ${ROUNDS3[r + 1]}`, ...lines] };
+    },
+  };
+}
+
+function c6Text(c: Career, a: Act3): string {
+  const out: string[] = [];
+  if (a.flags.scarLearns) out.push('Шрам узнал про Николаича сам — из книги, которую ты ему отдал молча. «Ты знал и молчал». Ушёл, хлопнув дверью.');
+  else if (a.flags.bookScar) out.push('Сталь вернулся к отцу. Оба спустились в подвал: «Готовься у нас. Лучший зал города — твой до финала».');
+  if (a.flags.stalEnemy) out.push('Говорят, Сталь у Бархата готовится к чемпионату. И что Бархат купил кассеты с твоими боями.');
+  else if (a.flags.stalFriend && !a.flags.stood) out.push('Сталь куда-то пропадал два дня. Вернулся молчаливый.');
+  if (!a.flags.valyaSafe) out.push('Тётя Валя плачет: «Бархатные заставили подписать бумагу». Подвал на неделю опечатан: тренировки −20%.');
+  return out.join(' ') || 'До чемпионата две недели. Тихо.';
+}
+
+/** The act ends: champion of the city, finalist (or out earlier), or sold. */
+function finish3(c: Career, a: Act3, e: Ending3, lines: string[]): { lines: string[]; scene?: SceneSpec } {
+  if (a.ending) return { lines };
+  a.ending = e;
+  a.pending = 'end';
+  const f = main(c);
+  if (e === 'city') {
+    c.money += CH_PRIZE;
+    f.fame += 10;
+    addMood(f, 25);
+    const L = ladder(c);
+    L.stage = Math.max(L.stage, 4);
+    lines.push(`Акт 3: «Чемпион города». +$${CH_PRIZE}, пояс города. Открыта ступень «Страна»`);
+  } else if (e === 'final') {
+    addMood(f, -10);
+    lines.push('Акт 3: «Финалист». Николаич: «Ещё год». Реванш — на следующем чемпионате');
+  } else {
+    addMood(f, -30);
+    a.flags.kidGone = 1;
+    c.roster = c.roster.filter((x) => !x.name.includes('Тимоха'));
+    if (!c.roster.some((x) => x.id === c.pick)) c.pick = c.roster[0].id;
+    lines.push('Акт 3: «Продался». Деньги на столе, подвал пустой. Тимоха ушёл. Второй шанс — только на следующем чемпионате');
+  }
+  return { lines };
+}
+
+// ---------- Chapters 2-3: scenes ----------
+
+function scarOffice(c: Career, f: CareerFighter): SceneSpec {
+  return {
+    map: MAP_BY_ID.dojo, a: P(f, 0), b: P(scarOf(c, f), 1), dist: 2.6, extra: { p: P(stal(c, f), 1), side: 1 }, names: { extra: 'Сталь' },
+    lines: [
+      { who: null, text: '«Железный кулак». Кабинет Шрама. На стене — пояс Михалыча', shot: 'wide' },
+      { who: 1, text: 'Восемьдесят девятый. Перед гонгом он мне шепнул: «Я знаю про ставку, малой». Знал — значит, был в доле.', shot: 'over1' },
+      { who: 1, text: 'Я проиграл честно. А отца посадили за долги Лису. И люди Лиса оставили мне вот это.', shot: 'close1' },
+      { who: null, text: 'Шрам проводит пальцем по шраму через бровь', shot: 'close1' },
+    ],
+  };
+}
+
+function siegeScene(c: Career, f: CareerFighter, a: Act3): SceneSpec {
+  return {
+    map: MAP_BY_ID.bar, a: P(f, 0), b: P(butcher(c), 1), dist: 3, extra: { p: P(club(c, 'velvet').members[1] ?? butcher(c), 1) }, names: { extra: 'Громила' },
+    lines: [
+      { who: null, text: '«Подкова». Бармен за стойкой бледный. У двери чёрные костюмы', shot: 'wide' },
+      { who: 1, text: 'Бар продаётся. Бархат купил. Всех на выход.', shot: 'over1' },
+      ...(a.flags.chain ? [{ who: null as null, text: 'На шее у Мясника — твоя цепь', shot: 'close1' as const }] : []),
+    ],
+  };
+}
+
+function noteScene(c: Career, f: CareerFighter): SceneSpec {
+  return {
+    map: home(c), a: P(f, 0), b: P(f, 1), dist: 2.4, hide: [false, true], names: { tv: 'Михалыч' },
+    lines: [
+      { who: null, text: 'В подкладке пояса что-то шуршит. Сложенный вчетверо листок', shot: 'close0' },
+      { who: 'tv', text: 'Лис дал пять тысяч, чтобы я лёг. Не лягу. Малому сказал — пусть дерётся честно. М.', shot: 'close0' },
+    ],
+  };
+}
+
+function bookScene(c: Career, f: CareerFighter): SceneSpec {
+  const old = npc(c, story(c), 'a3oldfox', () => heavy(f, -0.3, 'Старый Лис «Касса» Лисин', 'street', 'clerk'), f);
+  return {
+    map: MAP_BY_ID.dojo, a: P(f, 0), b: P(old, 1), dist: 2.2,
+    lines: [
+      { who: null, text: 'Загородный дом. Старик в кресле у камина', shot: 'wide' },
+      { who: 1, text: 'Ты от Михалыча? Он единственный, кто тогда не взял.', shot: 'over1' },
+      { who: 1, text: 'Мне восемьдесят. Хочу умереть без долгов. Бери.', shot: 'close1' },
+      { who: null, text: 'Книга ставок. 1989. И свежие страницы: все бои Титана', shot: 'close0' },
+    ],
+  };
+}
+
+function scarReads(c: Career, f: CareerFighter): SceneSpec {
+  return {
+    map: MAP_BY_ID.dojo, a: P(f, 0), b: P(scarOf(c, f), 1), dist: 2.4,
+    lines: [
+      { who: null, text: 'Шрам читает долго. Очень долго', shot: 'close1', dur: 3 },
+      { who: 1, text: 'Тридцать пять лет я ненавидел не того.', shot: 'close1' },
+    ],
+  };
+}
+
+function weighScene(c: Career, f: CareerFighter, a: Act3): SceneSpec {
+  return {
+    map: MAP_BY_ID.ring, a: P(f, 0), b: P(titanOf(c, f), 1), dist: 2.4, extra: { p: P(a.flags.tapes ? stal(c, f) : barkhat(c, f), 1), side: 1.2 }, names: { extra: a.flags.tapes ? 'Сталь' : 'Бархат' },
+    lines: [
+      { who: null, text: 'Взвешивание. Чемпионат города', shot: 'wide', act: (s) => (s.scene!.dist = 0.8) },
+      { who: 1, text: 'Ты маленький. Мне тебя жалко.', shot: 'over1' },
+      ...(a.flags.tapes ? [{ who: 2 as const, text: 'Прости. Отец говорил — ты меня кинешь. Я кинул первым.', shot: 'group' as const }] : []),
+      ...(a.flags.bookNika ? [{ who: null as null, text: 'Вспышки. «Бархатов, это правда про договорные бои?»', shot: 'low' as const }] : []),
+    ],
+  };
+}
+
+function alliesScene(c: Career, f: CareerFighter, a: Act3): SceneSpec {
+  return {
+    map: MAP_BY_ID.alley, a: P(f, 0), b: P(f, 1), dist: 2.4, hide: [false, true],
+    lines: [
+      { who: null, text: 'Ночь перед финалом. У подъезда — свои', shot: 'wide' },
+      { who: null, text: allies(c, a).join(' · '), shot: 'low' },
+      { who: null, text: 'Чёрная машина Бархата постояла и уехала', shot: 'wide' },
+    ],
+  };
+}
+
+function finalScene(c: Career, f: CareerFighter, opp: CareerFighter, a: Act3): SceneSpec {
+  const lines: SceneLine[] = [
+    { who: null, text: 'ФИНАЛ ЧЕМПИОНАТА ГОРОДА', shot: 'wide', act: (s) => (s.scene!.dist = 0.9) },
+    { who: null, text: 'В зале все, кого ты встретил за три акта', shot: 'low' },
+  ];
+  if (!a.flags.kidGone && (a.flags.kidCorner || a.flags.cutman || kidIn(c)))
+    lines.push({ who: 2, name: 'Тимоха', text: (a.flags.kidHurt ?? 0) >= 3 ? 'Бинтую. Не дёргайся. За нас двоих.' : 'Бинтую. За нас двоих.', shot: 'close0' });
+  if (!a.flags.nikGone && c.act2?.flags.mentor) lines.push({ who: 2, name: 'Николаич', text: 'Левое плечо. И не слушай их.', shot: 'close0' });
+  if (!opp.name.includes('Титан')) lines.push({ who: null, text: 'Титан выбыл! В финале — другой', shot: 'over1' });
+  else lines.push({ who: 1, text: 'Тридцать одна победа. Ты будешь тридцать второй.', shot: 'over1' });
+  return { map: MAP_BY_ID.ring, a: P(f, 0), b: P(opp, 1), dist: 2.6, extra: { p: P(barkhat(c, f), 1), side: 1.3 }, names: { extra: 'Бархат' }, lines };
+}
+
+export function ending3Scene(c: Career, f: CareerFighter, e: Ending3): SceneSpec {
+  const t = titanOf(c, f);
+  const a = act3(c)!;
+  if (e === 'city')
+    return {
+      map: MAP_BY_ID.ring, a: P(f, 0), b: P(t, 1), dist: 2.4, extra: { p: P(a.flags.bookScar && !a.flags.scarLearns ? scarOf(c, f) : nik(c, f), 1) }, names: { extra: a.flags.bookScar && !a.flags.scarLearns ? 'Шрам' : 'Николаич' },
+      start: (s) => {
+        s.knockDown(s.fighters[1], 'нокаут', 'back', 'l');
+        s.startAction(s.fighters[0], 'victory', { dur: 1e9 });
+      },
+      lines: [
+        { who: null, text: 'ЧЕМПИОН ГОРОДА', shot: 'orbit0', act: (_s, fx) => fx.belt(0) },
+        { who: 2, text: a.flags.bookScar && !a.flags.scarLearns ? 'Пояс Михалыча повешу у тебя в подвале. Он бы хотел, чтоб ты.' : 'Михалыч бы гордился. Я — горжусь.', shot: 'group' },
+        ...(a.flags.bookScar || a.flags.bookNika ? [{ who: null as null, text: 'Бархата уводят из зала двое в форме', shot: 'low' as const }] : []),
+        { who: null, text: 'Телеграмма: «Чемпионат страны. Ждём». И где-то в столице звонит телефон Бархата', shot: 'wide' },
+      ],
+    };
+  if (e === 'final')
+    return {
+      map: MAP_BY_ID.ring, a: P(f, 0), b: P(t, 1), dist: 1.6,
+      start: (s) => s.knockDown(s.fighters[0], 'нокаут', 'back', 'l'),
+      lines: [
+        { who: 1, text: 'Ты первый, с кем мне было страшно.', shot: 'low' },
+        { who: null, text: 'Николаич: «Ещё год»', shot: 'top' },
+      ],
+    };
+  return {
+    map: home(c), a: P(f, 0), b: P(f, 1), dist: 2.4, hide: [false, true],
+    lines: [
+      { who: null, text: 'Деньги на столе. Подвал пустой', shot: 'wide' },
+      { who: null, text: 'Кассета Михалыча в мусорном ведре', shot: 'close0' },
+    ],
+  };
+}
+
 const BY = Object.fromEntries(CARDS.map((x) => [x.id, x]));
 
 // ---------- What the career calls ----------
@@ -837,7 +1448,8 @@ export function act3Check(c: Career): string[] {
   const card = CARDS.find((x) => !did(a, x.id) && (!rest || x.forced || x.follow) && x.when(c, a));
   if (card) {
     a.pending = card.id;
-    if (!card.follow) a.flags.lastCard = c.day;
+    // A follow-up comes at once but pushes the next scene back too.
+    a.flags.lastCard = c.day;
     out.push(`🎬 Сюжет: «${card.title}»`);
   }
   return out;
@@ -850,6 +1462,19 @@ export function act3Day(c: Career): string[] {
   const out: string[] = [];
   // Тимоха's line needs no fight: settled once the call would have come.
   if (!a.flags.kidBout && did(a, 't3') && !a.flags.kidDone) a.flags.kidDone = 1;
+  // The tournaments: past nights counted, ours unfought = lost.
+  if (a.bk && !a.bk.done) {
+    const r = brDay(c, a.bk);
+    if (r.forfeit) out.push('Не вышел на бой Кубка Бархата — техническое поражение');
+  }
+  if (a.m && !a.ch && !a.ending && c.day >= finalDay(a) - 17) {
+    a.ch = makeCh(c, a, main(c));
+    out.push('🏆 Сетка Чемпионата города готова');
+  }
+  if (a.ch && !a.ch.done && !a.ending) {
+    const r = brDay(c, a.ch);
+    if (r.forfeit) out.push(...finish3(c, a, 'final', ['Не вышел на бой чемпионата — техническое поражение']).lines);
+  }
   out.push(...act3Check(c));
   return out;
 }
@@ -858,19 +1483,29 @@ export function act3Card(c: Career): Act1Card | null {
   const a = act3(c);
   if (!a?.pending) return null;
   const f = main(c);
-  if (a.pending === 'end')
-    return { id: 'end', title: 'Конец акта 3', who: '', text: '', film: false, watched: true, forced: false, opts: [{ id: 'close', label: 'Дальше', no: null }] };
+  if (a.pending === 'end') {
+    const e = a.ending!;
+    return {
+      id: 'end', title: e === 'city' ? 'Чемпион города' : e === 'final' ? 'Финалист' : 'Продался', who: e === 'city' ? 'Город' : e === 'final' ? 'Титан' : 'Лис',
+      text: e === 'city' ? 'Пояс города твой.' : e === 'final' ? 'Чемпионат города проигран. Будет следующий.' : 'Деньги на столе. Подвал пустой.',
+      film: true, watched: a.seen.includes('end'), forced: false,
+      opts: [{ id: 'close', label: 'Акт 3 пройден', no: null }],
+    };
+  }
   const card = BY[a.pending];
+  const scene = card.scene && !(card.id === 'am' && !allies(c, a).length);
   return {
     id: card.id, title: card.title, who: card.who, text: card.text(c, a, f), forced: !!card.forced,
-    film: !!card.scene, watched: a.seen.includes(card.id),
-    opts: card.opts.map((o) => ({ id: o.id, label: o.label, no: o.no?.(c, a, f) ?? null })),
+    film: !!scene, watched: a.seen.includes(card.id),
+    opts: card.opts.map((o) => ({ id: o.id, label: o.label, no: o.no?.(c, a, f) ?? null })).filter((o) => o.no !== 'не про тебя'),
   };
 }
 
 export function act3Film(c: Career): SceneSpec | null {
   const a = act3(c);
-  if (!a?.pending || a.pending === 'end') return null;
+  if (!a?.pending) return null;
+  if (a.pending === 'end') return ending3Scene(c, main(c), a.ending!);
+  if (a.pending === 'am' && !allies(c, a).length) return null;
   return BY[a.pending].scene?.(c, main(c), a) ?? null;
 }
 
@@ -888,7 +1523,7 @@ export function act3Choose(c: Career, opt: string): { lines: string[]; fight?: A
     a.done.push('end');
     a.pending = null;
     save(c);
-    return { lines: ['Продолжение следует'] };
+    return { lines: [a.ending === 'city' ? 'Дальше — страна. Продолжение следует' : 'Продолжение следует'] };
   }
   const card = BY[a.pending];
   const o = card.opts.find((x) => x.id === opt);
@@ -933,12 +1568,16 @@ export function act3Buttons(c: Career): { id: string; label: string; no: string 
     if (fri) out.push({ id: 'ring', label: `🥊 Городской ринг: ${short(ringOpp(c, a, f))}`, no: foughtFri ? 'на этой неделе уже был' : cannot(c, f, 1, 20) });
     else out.push({ id: 'call', label: `📣 Вызов на ринг: ${short(ringOpp(c, a, f))} (сил больше)`, no: foughtCh ? 'вызов — раз в неделю' : cannot(c, f, 1, 35) });
   }
+  if (a.bk && (!a.bk.done || brTonight(c, a.bk) >= 0) && c.day <= a.bk.nights[2])
+    out.push({ id: 'br_bk', label: `🏆 Кубок Бархата${a.bk.ours && brMine(c, a.bk) ? ' · твой бой сегодня!' : brTonight(c, a.bk) >= 0 ? ' · вечер боёв' : ''}`, no: null });
+  if (a.ch && !a.ch.done)
+    out.push({ id: 'br_ch', label: `🏆 Чемпионат города${brMine(c, a.ch) ? ' · твой бой сегодня!' : brTonight(c, a.ch) >= 0 ? ' · вечер боёв' : ''}`, no: null });
   if ((a.flags.kidHurt ?? 0) >= 2 && !did(a, 't8') && !a.flags.kidGone && c.day > (a.flags.hospDay ?? 0))
     out.push({ id: 'visit', label: '🏥 Навестить Тимоху', no: a.flags.visitDay === c.day ? 'сегодня уже был' : partsLeft(c, f) < 1 ? 'сегодня уже поздно' : null });
   return out;
 }
 
-export function act3Act(c: Career, id: string): { lines: string[]; fight?: A1Fight } {
+export function act3Act(c: Career, id: string): { lines: string[]; fight?: A1Fight; screen?: 'bk' | 'ch' } {
   const a = act3(c);
   if (!a) return { lines: [] };
   const f = main(c);
@@ -946,6 +1585,7 @@ export function act3Act(c: Career, id: string): { lines: string[]; fight?: A1Fig
   if (!b) return { lines: ['Сейчас нельзя'] };
   if (b.no) return { lines: [b.no] };
   if (id === 'under') return { lines: [], fight: underFight(c, a, f) };
+  if (id === 'br_bk' || id === 'br_ch') return { lines: [], screen: id === 'br_bk' ? 'bk' : 'ch' };
   if (id === 'ring' || id === 'call') {
     if (id === 'ring') a.flags.friWeek = week(c.day);
     else {
@@ -976,7 +1616,8 @@ export function act3Goal(c: Career): { text: string; debt: number; left: number 
     const toFri = (FRI - DOW(c.day) + 7) % 7;
     return { text: `Сделай себе имя: победы на Городском ринге ${a.wins}/${need(a)} · бой по пятницам`, debt: 0, left: toFri };
   }
-  return { text: 'Чемпионат города · финал', debt: 0, left: finalDay(a) - c.day };
+  const ch = a.ch && c.day >= a.ch.nights[0] ? 'Чемпионат города' : did(a, 'c6') ? 'Перед чемпионатом' : 'Пояс 89-го';
+  return { text: `${ch} · финал`, debt: 0, left: finalDay(a) - c.day };
 }
 
 /** The city championship's poster is up (the countdown runs). */

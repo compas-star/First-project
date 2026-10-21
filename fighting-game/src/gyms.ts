@@ -46,7 +46,10 @@ export const gymK = (c: Career | undefined, k: GymKey): number =>
       // The yard (basement lost) or the sewer (act 2 lost): −20%.
       (gymOf(c).id === 'basement' && (c.act1?.flags.lost || c.act2?.flags.sewer) ? 0.8 : 1) *
       // Кирпич holds the pads through act 2.
-      (k === 'strength' && c.act2?.flags.kirpichGym && !c.act2.ending ? 1.1 : 1)
+      (k === 'strength' && c.act2?.flags.kirpichGym && !c.act2.ending ? 1.1 : 1) *
+      // Act 3: Сталь spars with us; the basement sealed for a week.
+      ((k === 'bodySpeed' || k === 'skill') && c.act3?.flags.stalFriend && !c.act3.ending ? 1.1 : 1) *
+      (gymOf(c).id === 'basement' && (c.act3?.flags.sealed ?? 0) > c.day ? 0.8 : 1)
     : 1;
 
 /** Whether this gym can be chosen now (and why not). */

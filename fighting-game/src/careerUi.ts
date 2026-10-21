@@ -34,12 +34,13 @@ import { homeSvg, APPARATUS, type HomeObj } from './homeArt';
 import {
   ladder, clubStage, cup, cupCanJoin, cupJoin, cupMyMatch, cupAdvance, cupFought, ambushFight, ambushDone, clubOf, ranked, nextStageNeeds,
   cupTier, cupCallDue, cupCallDone, cupTonight, cupNight, cupResult, cupCountRest, cupBet, cupPerson, coef, isOurs, nightDay,
-  STREET_TIER, CUP_PRIZE, CUP_FEE, CUP_NIGHTS, CUP_ROUND_NAME, STAGE_NAME, type Club, type CupMatch,
+  STREET_TIER, CUP_TIER, CUP_PRIZE, CUP_FEE, CUP_NIGHTS, CUP_ROUND_NAME, STAGE_NAME, type Club, type CupMatch,
 } from './clubs';
 import { callDue, callScene, callDone, trainTip, streetRep, act1Pay, watchLesson, basementLost, act, type A1Fight } from './act1';
 import { actCheck, actCard, actFilm, actSeen, actChoose, actFightDone, actGoal, forcedNow } from './acts';
 import { act2Fee, inSewer } from './act2';
-import { act3Act } from './act3';
+import { act3Act, act3BrFight, BK_PRIZE, CH_PRIZE } from './act3';
+import { brMine, brPerson, brTonight, brCoef, brOurs, brDecide, brCount, brBet, ROUND_NAME } from './bracket';
 
 export interface CareerHooks {
   /** Show this fight in the arena; `done` gets the result when it is over. */
@@ -55,7 +56,7 @@ export interface CareerHooks {
   close(): void;
 }
 
-type Screen = 'prep' | 'cup' | 'clubs' | 'club' | 'map' | 'more' | 'place' | 'save' | 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
+type Screen = 'prep' | 'cup' | 'a3br' | 'clubs' | 'club' | 'map' | 'more' | 'place' | 'save' | 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -95,6 +96,8 @@ export class CareerUi {
   private pSheet: string | null = null;
   /** A bet being placed in the cup: which fight and on whom. */
   private betSel: { r: number; i: number; on: string } | null = null;
+  /** Which tournament of act 3 the bracket screen shows. */
+  private brWhich: 'bk' | 'ch' = 'bk';
 
   constructor(private hooks: CareerHooks) {
     this.c = load() ?? newCareer();
@@ -306,6 +309,7 @@ export class CareerUi {
       : this.screen === 'place' ? this.place()
       : this.screen === 'map' ? this.mapView()
       : this.screen === 'cup' ? this.cupView()
+      : this.screen === 'a3br' ? this.a3brView()
       : this.screen === 'prep' ? this.prepView()
       : this.screen === 'clubs' ? this.clubsView()
       : this.screen === 'club' ? this.clubView()
@@ -1036,6 +1040,50 @@ export class CareerUi {
       ${L.history.length ? `<div class="newsbox"><div class="h2">Прошлые Кубки</div>${L.history.slice(0, 5).map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}`;
   }
 
+  /** Act 3's tournaments (Кубок Бархата, the city championship): the nights, bets, watching, our fight. */
+  private a3brView(): string {
+    const c = this.c;
+    const a = c.act3;
+    const br = a?.[this.brWhich];
+    if (!a || !br) return this.home();
+    const who = (id: string) => brPerson(c, br, id);
+    const tn = brTonight(c, br);
+    const when = (d: number) => (d === c.day ? '<b>сегодня</b>' : `${dayName(d)} (${weekday(d)})`);
+    const head = `<div class="poster"><div class="h1">🏆 ${esc(br.name)}</div>
+      <div class="fnote">${this.brWhich === 'bk'
+        ? `8 бойцов города. Первая суббота — четвертьфиналы, вторая — полуфиналы и финал. Призы $${BK_PRIZE.join(' / $')}. Победитель получает в чемпионате слабого соперника.`
+        : `8 бойцов без весовых категорий. Три субботы: четвертьфинал (3 раунда), полуфинал (3), финал (5). Приз $${CH_PRIZE} и пояс города.`}</div></div>`;
+    const sched = ROUND_NAME.map((n, r) => `<div class="cupsched${r === tn ? ' on' : ''}${br.rounds[r]?.every((m) => m.w) ? ' done' : ''}"><span>${n}</span><span>${when(br.nights[r])}</span></div>`).join('');
+    const sign = br.ours ? `<div class="pill green">В сетке: ${esc(short(who(br.ours)))}</div>` : '<div class="pill">Ты не записан. Можно смотреть и ставить.</div>';
+    const row = (m: CupMatch, r: number, i: number, live: boolean) => {
+      const [ka, kb] = brCoef(c, br, m);
+      const mine = brOurs(br, m);
+      const bt = br.bets.find((x) => x.r === r && x.i === i);
+      const side = (x: CareerFighter, k: number) => this.manLine(x, m.w === x.id ? ' <em>✔</em>' : m.w ? '' : ` <i class="kf">×${k.toFixed(2)}</i>`);
+      let acts = '';
+      if (!m.w && live) acts = mine ? '<button type="button" class="primary" data-act="brfight">⚔ Подготовка и бой</button>'
+        : `<div class="row"><button type="button" data-act="brwatch" data-r="${r}" data-i="${i}">👁 Смотреть</button>${bt ? '' : `<button type="button" data-act="brbetpick" data-r="${r}" data-i="${i}">💵 Ставка</button>`}</div>`;
+      else if (!m.w && !mine && !bt) acts = `<button type="button" data-act="brbetpick" data-r="${r}" data-i="${i}">💵 Ставка</button>`;
+      const sel = this.betSel && this.betSel.r === r && this.betSel.i === i && !m.w
+        ? `<div class="betbox"><div class="row">${[[m.a, ka], [m.b, kb]].map(([id, k]) => `<button type="button" class="${this.betSel!.on === id ? 'primary' : ''}" data-act="betside" data-on="${id}">${esc(short(who(id as string)))} ×${(k as number).toFixed(2)}</button>`).join('')}</div>
+          <div class="row">${[25, 50, 100, 250].map((n) => `<button type="button" data-act="brbetgo" data-n="${n}" ${c.money >= n ? '' : 'disabled'}>$${n}</button>`).join('')}</div></div>`
+        : '';
+      const how = m.how === 'odds' ? '<small class="fnote">досчитан</small>' : m.how === 'forfeit' ? '<small class="fnote">неявка</small>' : '';
+      return `<div class="cupm${mine ? ' mine' : ''}">${side(who(m.a), ka)}${side(who(m.b), kb)}${how}
+        ${bt ? `<div class="pill ${bt.paid ? (bt.on === m.w ? 'green' : 'red') : 'gold'}">Ставка $${bt.stake} на ${esc(short(who(bt.on)))} ×${bt.k.toFixed(2)}</div>` : ''}${acts}${sel}</div>`;
+    };
+    const cur = br.done ? br.rounds.length - 1 : br.rounds.findIndex((R) => R.some((m) => !m.w));
+    const r = cur < 0 ? br.rounds.length - 1 : cur;
+    const live = tn === r;
+    const left = live ? br.rounds[r].filter((m) => !m.w && !brOurs(br, m)).length : 0;
+    const night = `<div class="h2">${ROUND_NAME[r]} · ${when(br.nights[r])}</div>
+      <div class="fnote">${br.done ? 'Турнир окончен.' : live ? 'Вечер боёв. Смотри чужие бои, ставь. Свой бой — когда будешь готов.' : 'Ставки уже принимают.'}</div>
+      ${br.rounds[r].map((m, i) => row(m, r, i, live)).join('')}
+      ${left ? `<button type="button" data-act="brcount">⏩ Досчитать остальные бои вечера (${left})</button>` : ''}
+      ${br.rounds.slice(0, r).map((R, k) => `<details><summary>${ROUND_NAME[k]}</summary>${R.map((m, i) => row(m, k, i, false)).join('')}</details>`).join('')}`;
+    return `${head}${sign}<div class="qbox">${sched}</div>${night}`;
+  }
+
   /** Before a fight: who he is, the odds, what to do beforehand, the plan per round. */
   private prepView(): string {
     const pr = this.prep;
@@ -1506,6 +1554,10 @@ export class CareerUi {
       case 'a3': {
         const r = act3Act(c, b.dataset.o!);
         if (r.fight) return this.a1Fight(r.fight);
+        if (r.screen) {
+          this.brWhich = r.screen;
+          return this.go('a3br');
+        }
         return say(r.lines.join(' · ') || null);
       }
       case 'a1pay':
@@ -1584,6 +1636,53 @@ export class CareerUi {
           this.show();
         });
         return;
+      }
+      case 'brfight': {
+        const fight = act3BrFight(c, this.brWhich);
+        if (!fight) return say('Сегодня твоего боя нет');
+        return this.a1Fight(fight);
+      }
+      case 'brwatch': {
+        const br = c.act3?.[this.brWhich];
+        const r = Number(b.dataset.r);
+        const m = br?.rounds[r]?.[Number(b.dataset.i)];
+        if (!br || !m || m.w) return say(null);
+        const A = brPerson(c, br, m.a);
+        const B = brPerson(c, br, m.b);
+        $('career').hidden = true;
+        clearInterval(this.timer);
+        this.hooks.fight(A, B, { ...CUP_TIER, name: br.name, map: 'ring', rules: { ...CUP_TIER.rules, rounds: br.len[r] } }, `${br.name}, ${ROUND_NAME[r].toLowerCase()}: ${short(A)} против ${short(B)}`, (res) => {
+          const lines = brDecide(c, br, m, res.won ? m.a : m.b, 'ring');
+          save(c);
+          this.toast = [`Победил ${short(res.won ? A : B)}${res.ko ? ' досрочно' : ''}`, ...lines].join(' · ');
+          this.screen = 'a3br';
+          this.show();
+        });
+        return;
+      }
+      case 'brcount': {
+        const br = c.act3?.[this.brWhich];
+        if (!br) return say(null);
+        const lines = brCount(c, br);
+        save(c);
+        return say(lines.join(' · ') || 'Остальные бои вечера досчитаны');
+      }
+      case 'brbetpick': {
+        const br = c.act3?.[this.brWhich];
+        const r = Number(b.dataset.r);
+        const i = Number(b.dataset.i);
+        const m = br?.rounds[r]?.[i];
+        this.betSel = m ? { r, i, on: m.a } : null;
+        return say(null);
+      }
+      case 'brbetgo': {
+        const sel = this.betSel;
+        const br = c.act3?.[this.brWhich];
+        this.betSel = null;
+        if (!sel || !br) return say(null);
+        const t = brBet(c, br, sel.r, sel.i, sel.on, Number(b.dataset.n));
+        save(c);
+        return say(t);
       }
       case 'cupcount':
         return say(cupCountRest(c).join(' · ') || 'Остальные бои вечера досчитаны');
@@ -1674,6 +1773,13 @@ export class CareerUi {
       case 'nextday': {
         const fz = forcedNow(c);
         if (fz) return say(`Сначала разберись: ${fz.title}`);
+        const a3 = c.act3;
+        const brToday = a3 && !a3.ending && ((a3.bk && brMine(c, a3.bk)) || (a3.ch && brMine(c, a3.ch)));
+        if (brToday && !this.asking && b.dataset.sure !== '1')
+          return ask('Сегодня твой бой турнира. Не выйдешь — техническое поражение. Закончить день?', () => {
+            b.dataset.sure = '1';
+            b.click();
+          });
         const done = (err: string | null) => {
           if (err) return say(err);
           this.calDay = c.day;

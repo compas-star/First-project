@@ -472,7 +472,25 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   Saturday >= m + 45 (`finalDay`). City gangs (stage 3, only from act 3): «Бархатные» (Мясник,
   skin velvet), «Порт» (docker), «Студенты» (student), «Двор» (yard); skins barkhat, titan.
   `clubStage` 3 in act 3 (cups take stage 2-3 clubs). Tool `act3test [runs]` (scene gaps, poster
-  day, Тимоха's fate, soft locks). Chapters 2-3, tournaments and endings: next step.
+  day, Тимоха's fate, soft locks; quarter of the runs at their caps so all endings show).
+  Chapters 2-3 (days from the poster, `mday`): bk1 sign up for Кубок Бархата ($200, follow), c1
+  Николаич + Шрам's office («Докажу» / stood up for Михалыч = `stood`), c2 the siege of «Подкова»
+  (two fights, or allies take the thugs; Мясник wears our stolen chain; loss = `podkovaLost`, the
+  cup of «Подкова» closed), c3 the note in the belt, c4 Старый Лис (fight the guard / $500 / via
+  Гусь, who betrays unless `gusTrue`: two guards) -> c4b the book + Николаич carried the envelope in
+  1989 (expose / hear him / keep quiet), c5 who gets the book (Шрам = ally + honest judges, Ника =
+  honest judges, keep = +$2000 and bought judges), c6 Шрам's gym / Сталь's tapes / тётя Валя sealed
+  the basement (−20% 7 days, `sealed`), w1 weigh-in (tapes revealed), l3 Лис's $10 000 after the
+  semi-final, am the night before the final (allies at the door, else a forced fight), fx (took
+  the money: lie down or fight). Tournaments: `bracket.ts` (8 men, a round per night, others' fights
+  watched / counted / bet on, `fate` men win counted fights), screen 'a3br' (goal buttons br_bk /
+  br_ch), our fight `act3BrFight` (final scene: Тимоха tapes the hands, Николаич). Кубок Бархата:
+  two Saturdays from m+10, prizes $3000/$1000, a win = weakest quarter-final opponent. Championship
+  (`makeCh` 17 days before the final): Мясник in our quarter-final if still standing, Сталь in our
+  half if he went to Бархат, Титан in the other half; a final won on points is overturned by
+  Бархат's judges unless the book went to Шрам or Ника. Endings (`finish3`): city (+$8000, stage 4),
+  final (any loss), sold (Тимоха leaves); end card with a film (`ending3Scene`). City gang levels
+  were lowered 0.06 after the test (gang leaders were ~10 rating above a capped fighter).
 - District clubs (stage 2, user: no wrestlers, Russian boxers etc., recognisable looks):
   «Железный кулак» (Шрам's, Thai, skin `ironfist`: black/gold), «Красный Октябрь» (Soviet
   boxing school, `sovboxer`: red vest + trunks, white boots), «Десант» (veterans, `vdv`:

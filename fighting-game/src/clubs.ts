@@ -178,35 +178,35 @@ const CHEMISTS: Man[] = [
 // ---------- The city's gangs (stage 3, act 3 only: user) ----------
 
 const VELVET: Man[] = [
-  { name: 'Мясник «Тесак» Мясоедов', level: 0.5, disc: 'street', weight: 110, height: 1.92, tilt: { strength: 1.2, bodySpeed: 0.9, skill: 0.9 }, story: 'Главный у «Бархатных», цепной пёс Бархата. Добивает лежачих.', aggression: 0.95 },
-  { name: 'Шпала «Длинный» Ветлугин', level: 0.4, disc: 'kickboxing', weight: 88, height: 1.95, tilt: { bodySpeed: 1.05 }, story: 'Охранник Бархата. Длинные ноги, длинные руки, короткий разговор.', legs: 0.4 },
-  { name: 'Перстень «Тихий» Гольдман', level: 0.38, disc: 'boxing', weight: 79, height: 1.78, tilt: { skill: 1.12 }, story: 'Бьёт в перстнях, если судья не смотрит.' },
-  { name: 'Костюм «Двойка» Белых', level: 0.33, disc: 'boxing', weight: 84, height: 1.82, tilt: { cardio: 1.1 }, story: 'Водитель Бархата. Всегда в костюме, даже на ринге.' },
-  { name: 'Рыжая «Касса» Лунёва', level: 0.34, disc: 'muaythai', weight: 64, height: 1.7, tilt: { bodySpeed: 1.1, evasion: 1.1 }, story: 'Считает деньги Бархата и чужие рёбра.', legs: 0.5 },
+  { name: 'Мясник «Тесак» Мясоедов', level: 0.44, disc: 'street', weight: 110, height: 1.92, tilt: { strength: 1.2, bodySpeed: 0.9, skill: 0.9 }, story: 'Главный у «Бархатных», цепной пёс Бархата. Добивает лежачих.', aggression: 0.95 },
+  { name: 'Шпала «Длинный» Ветлугин', level: 0.34, disc: 'kickboxing', weight: 88, height: 1.95, tilt: { bodySpeed: 1.05 }, story: 'Охранник Бархата. Длинные ноги, длинные руки, короткий разговор.', legs: 0.4 },
+  { name: 'Перстень «Тихий» Гольдман', level: 0.32, disc: 'boxing', weight: 79, height: 1.78, tilt: { skill: 1.12 }, story: 'Бьёт в перстнях, если судья не смотрит.' },
+  { name: 'Костюм «Двойка» Белых', level: 0.27, disc: 'boxing', weight: 84, height: 1.82, tilt: { cardio: 1.1 }, story: 'Водитель Бархата. Всегда в костюме, даже на ринге.' },
+  { name: 'Рыжая «Касса» Лунёва', level: 0.28, disc: 'muaythai', weight: 64, height: 1.7, tilt: { bodySpeed: 1.1, evasion: 1.1 }, story: 'Считает деньги Бархата и чужие рёбра.', legs: 0.5 },
 ];
 
 const PORT: Man[] = [
-  { name: 'Якорь «Бригадир» Шульга', level: 0.48, disc: 'street', weight: 102, height: 1.87, tilt: { strength: 1.18, cardio: 1.1 }, story: 'Бригадир докеров. Таскает мешки по сто кило и не любит бархатных.', aggression: 0.7 },
-  { name: 'Кран «Стрела» Осокин', level: 0.39, disc: 'boxing', weight: 96, height: 1.9, tilt: { strength: 1.12 }, story: 'Длинный прямой, как стрела портового крана.' },
-  { name: 'Боцман «Шторм» Ильин', level: 0.35, disc: 'street', weight: 90, height: 1.8, tilt: { cardio: 1.15 }, story: 'Ходил в море двадцать лет. Качку держит лучше всех.' },
-  { name: 'Трюм «Молчун» Сазонов', level: 0.32, disc: 'boxing', weight: 81, height: 1.77, tilt: { skill: 1.05 }, story: 'Ни слова за весь бой. Ни шагу назад.' },
-  { name: 'Чайка «Юнга» Носов', level: 0.27, disc: 'kickboxing', weight: 68, height: 1.74, tilt: { bodySpeed: 1.12 }, story: 'Самый молодой в порту. Прыгает как чайка за рыбой.', legs: 0.35 },
+  { name: 'Якорь «Бригадир» Шульга', level: 0.42, disc: 'street', weight: 102, height: 1.87, tilt: { strength: 1.18, cardio: 1.1 }, story: 'Бригадир докеров. Таскает мешки по сто кило и не любит бархатных.', aggression: 0.7 },
+  { name: 'Кран «Стрела» Осокин', level: 0.33, disc: 'boxing', weight: 96, height: 1.9, tilt: { strength: 1.12 }, story: 'Длинный прямой, как стрела портового крана.' },
+  { name: 'Боцман «Шторм» Ильин', level: 0.29, disc: 'street', weight: 90, height: 1.8, tilt: { cardio: 1.15 }, story: 'Ходил в море двадцать лет. Качку держит лучше всех.' },
+  { name: 'Трюм «Молчун» Сазонов', level: 0.26, disc: 'boxing', weight: 81, height: 1.77, tilt: { skill: 1.05 }, story: 'Ни слова за весь бой. Ни шагу назад.' },
+  { name: 'Чайка «Юнга» Носов', level: 0.21, disc: 'kickboxing', weight: 68, height: 1.74, tilt: { bodySpeed: 1.12 }, story: 'Самый молодой в порту. Прыгает как чайка за рыбой.', legs: 0.35 },
 ];
 
 const STUDENTS: Man[] = [
-  { name: 'Гоша «Отличник» Лавров', level: 0.47, disc: 'kickboxing', weight: 77, height: 1.81, tilt: { skill: 1.2, mindSpeed: 1.15 }, story: 'Лучший в секции университета. Красный диплом и красивая двоечка.', legs: 0.45 },
-  { name: 'Вадим «Аспирант» Кольцов', level: 0.38, disc: 'boxing', weight: 86, height: 1.85, tilt: { mindSpeed: 1.12 }, story: 'Пишет диссертацию о биомеханике удара. Проверяет на людях.' },
-  { name: 'Ира «Сессия» Белкина', level: 0.33, disc: 'kickboxing', weight: 60, height: 1.69, tilt: { bodySpeed: 1.1, evasion: 1.12 }, story: 'Сдаёт сессию и соперников досрочно.', legs: 0.5 },
-  { name: 'Миша «Первокурсник» Пак', level: 0.26, disc: 'karate', weight: 70, height: 1.75, tilt: { bodySpeed: 1.08 }, story: 'Пришёл из каратэ. Всё ещё кланяется.', legs: 0.4 },
-  { name: 'Лёва «Профессор» Гринберг', level: 0.3, disc: 'boxing', weight: 92, height: 1.83, tilt: { skill: 1.15, bodySpeed: 0.9 }, story: 'Тренер Лаврентьев говорит, он думает быстрее, чем бьёт.' },
+  { name: 'Гоша «Отличник» Лавров', level: 0.41, disc: 'kickboxing', weight: 77, height: 1.81, tilt: { skill: 1.2, mindSpeed: 1.15 }, story: 'Лучший в секции университета. Красный диплом и красивая двоечка.', legs: 0.45 },
+  { name: 'Вадим «Аспирант» Кольцов', level: 0.32, disc: 'boxing', weight: 86, height: 1.85, tilt: { mindSpeed: 1.12 }, story: 'Пишет диссертацию о биомеханике удара. Проверяет на людях.' },
+  { name: 'Ира «Сессия» Белкина', level: 0.27, disc: 'kickboxing', weight: 60, height: 1.69, tilt: { bodySpeed: 1.1, evasion: 1.12 }, story: 'Сдаёт сессию и соперников досрочно.', legs: 0.5 },
+  { name: 'Миша «Первокурсник» Пак', level: 0.20, disc: 'karate', weight: 70, height: 1.75, tilt: { bodySpeed: 1.08 }, story: 'Пришёл из каратэ. Всё ещё кланяется.', legs: 0.4 },
+  { name: 'Лёва «Профессор» Гринберг', level: 0.24, disc: 'boxing', weight: 92, height: 1.83, tilt: { skill: 1.15, bodySpeed: 0.9 }, story: 'Тренер Лаврентьев говорит, он думает быстрее, чем бьёт.' },
 ];
 
 const YARD: Man[] = [
-  { name: 'Баян «Хозяин двора» Баянов', level: 0.46, disc: 'street', weight: 95, height: 1.84, tilt: { strength: 1.1, skill: 1.05 }, story: 'Держит подпольные бои во дворе-колодце. Принимает ставки и долги.', aggression: 0.8 },
-  { name: 'Зуб «Золотой» Каримов', level: 0.37, disc: 'street', weight: 80, height: 1.79, tilt: { bodySpeed: 1.08 }, story: 'Улыбается золотыми зубами. Своих зубов осталось мало.', aggression: 0.9 },
-  { name: 'Шарик «Колобок» Пухов', level: 0.31, disc: 'boxing', weight: 112, height: 1.76, tilt: { strength: 1.15, bodySpeed: 0.88 }, story: 'Круглый и тяжёлый. Катится вперёд и давит.' },
-  { name: 'Сява «Карась» Ершов', level: 0.28, disc: 'street', weight: 66, height: 1.71, tilt: { evasion: 1.12 }, story: 'Выскальзывает из любого угла.', aggression: 0.85 },
-  { name: 'Дэн «Ставка» Минаев', level: 0.34, disc: 'kickboxing', weight: 83, height: 1.83, tilt: { cardio: 1.05 }, story: 'Ставит на себя всё до копейки. Пока везёт.', legs: 0.35 },
+  { name: 'Баян «Хозяин двора» Баянов', level: 0.40, disc: 'street', weight: 95, height: 1.84, tilt: { strength: 1.1, skill: 1.05 }, story: 'Держит подпольные бои во дворе-колодце. Принимает ставки и долги.', aggression: 0.8 },
+  { name: 'Зуб «Золотой» Каримов', level: 0.31, disc: 'street', weight: 80, height: 1.79, tilt: { bodySpeed: 1.08 }, story: 'Улыбается золотыми зубами. Своих зубов осталось мало.', aggression: 0.9 },
+  { name: 'Шарик «Колобок» Пухов', level: 0.25, disc: 'boxing', weight: 112, height: 1.76, tilt: { strength: 1.15, bodySpeed: 0.88 }, story: 'Круглый и тяжёлый. Катится вперёд и давит.' },
+  { name: 'Сява «Карась» Ершов', level: 0.22, disc: 'street', weight: 66, height: 1.71, tilt: { evasion: 1.12 }, story: 'Выскальзывает из любого угла.', aggression: 0.85 },
+  { name: 'Дэн «Ставка» Минаев', level: 0.28, disc: 'kickboxing', weight: 83, height: 1.83, tilt: { cardio: 1.05 }, story: 'Ставит на себя всё до копейки. Пока везёт.', legs: 0.35 },
 ];
 
 function cityClubs(): Club[] {
@@ -372,6 +372,7 @@ export function cupCanJoin(c: Career, f: CareerFighter): string | null {
   const L = ladder(c);
   const cp = cup(c);
   if (!L.open) return 'откроется по сюжету';
+  if (c.act3?.flags.podkovaLost && !c.act3.ending) return '«Подкова» у Бархата';
   if (cp.ours) return cp.ours === f.id ? 'уже записан' : 'записан другой твой боец';
   if (cp.rounds.length) return 'запись закрыта';
   if (c.money < CUP_FEE) return `взнос $${CUP_FEE}`;

@@ -5,7 +5,8 @@ import { newCareer, nextDay, rating, type Career } from '../src/career';
 import { actCard, actChoose, actFightDone, actSeen, actFilm, actCheck, forcedNow } from '../src/acts';
 import { act1Pay, callDue, callDone } from '../src/act1';
 import { act2Fee } from '../src/act2';
-import { act3Buttons, act3Act, finalDay } from '../src/act3';
+import { act3Buttons, act3Act, act3BrFight, finalDay } from '../src/act3';
+import { brCount } from '../src/bracket';
 import { ambushFight, ambushDone, ladder } from '../src/clubs';
 const RUNS = Number(process.argv[2] ?? 40);
 let locks = 0;
@@ -13,6 +14,8 @@ const posters: number[] = [];
 const kid: Record<string, number> = {};
 const gaps: number[] = [];
 const robbed = { rich: 0, ok: 0 };
+const ends: Record<string, number> = {};
+const bkRes: Record<string, number> = {};
 let sample: string[] = [];
 
 function fight(c: Career, r: ReturnType<typeof actChoose>, log: string[]): void {
@@ -50,7 +53,18 @@ function play(c: Career, days: number, log: string[], cards: number[]): void {
       fight(c, r, log);
     }
     // The goal card's buttons: the ring, «Подземка», a visit to the hospital.
+    if (c.act3) for (const w of ['bk', 'ch'] as const) {
+      const br = c.act3[w];
+      if (!br) continue;
+      if (Math.random() < 0.5) brCount(c, br);
+      for (let k = 0; k < 2; k++) {
+        const ft = act3BrFight(c, w);
+        if (!ft) break;
+        fight(c, { lines: [], fight: ft }, log);
+      }
+    }
     if (c.act3) for (const b of act3Buttons(c)) {
+      if (b.id.startsWith('br_')) continue;
       if (b.no || Math.random() < (b.id === 'call' ? 0.6 : 0.15)) continue;
       const r = act3Act(c, b.id);
       fight(c, r, log);
@@ -75,12 +89,17 @@ for (let run = 0; run < RUNS; run++) {
   for (let d = 0; d < 200 && !(c.act2?.ending && c.act2.done.includes('end')); d++) play(c, 1, [], []);
   if (!c.act2?.done.includes('end')) { log.push('!!! act 2 not over'); continue; }
   if (run % 2) c.money = 9000;
+  // A trained fighter (the test does not train): every quality at his cap.
+  if (run % 4 < 2) for (const f of c.roster) for (const k of Object.keys(f.stats) as (keyof typeof f.stats)[]) f.stats[k] = f.caps[k];
   const day0 = c.day;
   play(c, 2, log, cards);
   if (!c.act3) { console.log('no act 3'); continue; }
   if (c.act3.rob) robbed.rich++;
-  play(c, 110, log, cards);
+  play(c, 150, log, cards);
   const a = c.act3;
+  ends[a.ending ?? 'running'] = (ends[a.ending ?? 'running'] ?? 0) + 1;
+  bkRes[a.flags.bkWon ? 'won' : a.bk?.ours ? 'played' : 'skipped'] = (bkRes[a.flags.bkWon ? 'won' : a.bk?.ours ? 'played' : 'skipped'] ?? 0) + 1;
+  if (a.m && !a.ending) log.push(`!!! no ending: day ${c.day}, final ${finalDay(a)}, pending ${a.pending}`);
   if (run % 2 && a.flags.robbed && c.money < 9000) robbed.ok++;
   const start = a.flags.cityDay ?? a.start;
   if (a.m) posters.push(a.m - start + 1);
@@ -95,5 +114,6 @@ const avg = (x: number[]) => (x.reduce((s, v) => s + v, 0) / Math.max(1, x.lengt
 console.log('softlocks', locks, '| rich saves robbed', robbed);
 console.log('poster on act day: avg', avg(posters), 'min', Math.min(...posters), 'max', Math.max(...posters));
 console.log('Тимоха:', kid);
+console.log('endings', ends, '| Кубок Бархата', bkRes);
 console.log('days between story scenes: avg', avg(gaps), 'min', Math.min(...gaps), '| scenes counted', gaps.length + RUNS);
-console.log(sample.slice(0, 80).join('\n'));
+console.log(sample.slice(-60).join('\n'));

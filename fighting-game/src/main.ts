@@ -21,7 +21,7 @@ import { Recorder } from './recorder';
 import { toParams, relOf, load as loadCareer, saveHook, type FightResult } from './career';
 import { cloudStart, cloudDirty } from './cloud';
 import type { Rules } from './sim';
-import { barCut, faceoffCut, beltCut, talkCut, storyCut, type Cut } from './cutscenes';
+import { barCut, faceoffCut, beltCut, talkCut, storyCut, type Cut, type SceneSpec } from './cutscenes';
 import { TV, TV_POS, TV_FACING } from './arena';
 
 type Eyes = 'fastest' | 'red' | 'blue' | 'real';
@@ -345,6 +345,12 @@ function playCut(c: Cut, done: () => void): void {
   (cutEl.querySelector('.cutline') as HTMLElement).hidden = true;
   cutEl.hidden = false;
   document.body.classList.add('cutting');
+  document.body.classList.toggle('vhs', !!c.vhs);
+}
+
+/** A story scene and the ones chained after it (a flashback), then `done`. */
+function playSpec(spec: SceneSpec, done: () => void): void {
+  playCut(storyCut(spec, TVSPOT), spec.next ? () => playSpec(spec.next!, done) : done);
 }
 
 (window as unknown as { __cut: unknown }).__cut = { play: (c: Cut) => playCut(c, () => startFight()), barCut, faceoffCut, beltCut, MAP_BY_ID, params };
@@ -401,7 +407,7 @@ function endCut(): void {
   TV.on = TV.talk = false;
   view.debugCam = undefined;
   cutEl.hidden = true;
-  document.body.classList.remove('cutting');
+  document.body.classList.remove('cutting', 'vhs');
   done();
 }
 
@@ -1006,7 +1012,7 @@ const career = new CareerUi({
       showBill(title);
     };
     // A scene first: the bar, or face to face before a title fight or one with a sworn enemy.
-    if (opts?.scene) return playCut(storyCut(opts.scene, TVSPOT), go);
+    if (opts?.scene) return playSpec(opts.scene, go);
     if (opts?.intro === 'bar') return playCut(barCut(mine, theirs, map, opts.barName ?? '«Подкова»'), go);
     if (opts?.intro === 'story' && opts.talk?.length) {
       const [first, ...rest] = opts.talk;
@@ -1016,7 +1022,7 @@ const career = new CareerUi({
     go();
   },
   scene(spec, done) {
-    playCut(storyCut(spec, TVSPOT), () => {
+    playSpec(spec, () => {
       startFight();
       done();
     });

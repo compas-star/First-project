@@ -18,7 +18,8 @@ export type SkinId =
   | 'boxer' | 'mma' | 'kick' | 'nakmuay' | 'karateka' | 'luchador' | 'biker'
   | 'ninja' | 'gladiator' | 'robot' | 'clerk' | 'sumo' | 'zombie' | 'wrestler' | 'bjj'
   | 'rider' | 'artist' | 'brute' | 'feral'
-  | 'worker' | 'sovboxer' | 'vdv' | 'gopnik' | 'ironfist';
+  | 'worker' | 'sovboxer' | 'vdv' | 'gopnik' | 'ironfist'
+  | 'velvet' | 'barkhat' | 'docker' | 'student' | 'yard' | 'titan';
 
 export interface Skin {
   id: SkinId;
@@ -51,6 +52,12 @@ export const SKINS: Skin[] = [
   { id: 'vdv', name: 'Десантник', desc: 'Тельняшка, камуфляжные штаны, берцы.' },
   { id: 'gopnik', name: 'Пацан с района', desc: 'Чёрный спортивный костюм с тремя белыми полосками, бритый затылок.' },
   { id: 'ironfist', name: '«Железный кулак»', desc: 'Чёрные тайские шорты с золотым поясом, золотой монгкол на голове.' },
+  { id: 'velvet', name: '«Бархатные»', desc: 'Чёрный костюм, золотая цепь, тёмные очки.' },
+  { id: 'barkhat', name: 'Промоутер', desc: 'Бордовый бархатный пиджак, брюки, цепь и очки.' },
+  { id: 'docker', name: 'Докер', desc: 'Бушлат, рабочие штаны, вязаная шапка, борода.' },
+  { id: 'student', name: 'Студент', desc: 'Синяя форма университета, белые перчатки и боксёрки.' },
+  { id: 'yard', name: 'Пацан со двора', desc: 'Бордовый спортивный костюм с золотыми полосками, цепь.' },
+  { id: 'titan', name: 'Чемпион города', desc: 'Золотые трусы, чёрные перчатки, бритая голова.' },
 ];
 
 export const SKIN_BY_ID = Object.fromEntries(SKINS.map((s) => [s.id, s])) as Record<SkinId, Skin>;
@@ -453,6 +460,18 @@ export function comicLook(id: SkinId, team: number, seed: number, strength: numb
       return { ...base, top: 'long', topColor: 0x15151a, pattern: 'tracksuit', stripeColor: 0xf4f4f0, bottom: 'long', bottomColor: 0x15151a, band: team, hands: 'bare', shoes: 0.14, shoeColor: 0xe8e8e4, hair: 'bald' };
     case 'ironfist':
       return { ...base, hands: 'boxing', handColor: 0x111111, bottom: 'trunks', bottomColor: 0x111111, band: 0xd4a72c, hair: 'headband', maskColor: 0xd4a72c, capColor: 0xd4a72c, shoes: 0 };
+    case 'velvet':
+      return { ...base, top: 'jacket', topColor: 0x111114, bottom: 'long', bottomColor: 0x15151a, band: team, hands: 'bare', shoes: 0.12, shoeColor: 0x0a0a0a, hair: 'crop', extras: ['chain', 'shades'] };
+    case 'barkhat':
+      return { ...base, top: 'jacket', topColor: 0x5a1030, bottom: 'long', bottomColor: 0x1a1418, band: team, hands: 'bare', shoes: 0.12, shoeColor: 0x0a0a0a, hair: 'crop', hairColor: 0x9a9a98, extras: ['chain', 'shades'] };
+    case 'docker':
+      return { ...base, top: 'jacket', topColor: 0x1f2a3a, bottom: 'long', bottomColor: 0x3a3a30, band: team, hands: 'wraps', shoes: 0.28, shoeColor: 0x3a2416, hair: 'bandana', maskColor: 0x2a2a2e, capColor: 0x2a2a2e, beard: true };
+    case 'student':
+      return { ...base, top: 'tee', topColor: 0x2a62c8, bottom: 'shorts', bottomColor: 0x2a62c8, band: 0xf4f4f0, hands: 'boxing', handColor: 0xf2f2ee, shoes: 0.3, shoeColor: 0xf2f2ee, hair: 'crop' };
+    case 'yard':
+      return { ...base, top: 'long', topColor: 0x5a1424, pattern: 'tracksuit', stripeColor: 0xd4a72c, bottom: 'long', bottomColor: 0x5a1424, band: team, hands: 'bare', shoes: 0.14, shoeColor: 0xe8e8e4, hair: 'crop', extras: ['chain'] };
+    case 'titan':
+      return { ...base, bulk: Math.max(1.3, bulk), arms: Math.max(1.25, bulk), hands: 'boxing', handColor: 0x111111, bottom: 'trunks', bottomColor: 0xd4a72c, band: 0x111111, shoes: 0.34, shoeColor: 0x111111, hair: 'bald' };
     case 'feral':
       return { ...base, hair: 'spiky', hairColor: 0x161214, top: 'vest', topColor: 0xf2c418, bottom: 'long', bottomColor: 0x1d2a63, band: team, shoes: 0.25, shoeColor: 0x2a1a10, hands: 'wraps', extras: ['belt'] };
   }

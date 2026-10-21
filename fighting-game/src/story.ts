@@ -516,7 +516,7 @@ export function pendingChapter(c: Career): { id: string; line: string; lineName:
 export function storyCheck(c: Career): string[] {
   // While act 1 runs, its scenes are the story.
   if (c.act1 && !c.act1.ending) return [];
-  if (c.act2 && !c.act2.ending) return [];
+  if ((c.act2 && !c.act2.ending) || (c.act3 && !c.act3.ending)) return [];
   const s = story(c);
   if (s.pending || c.day - s.last < 3) return [];
   const f = main(c);

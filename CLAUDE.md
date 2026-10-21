@@ -451,6 +451,28 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   leave, no tax, no hired ambush before the tournament), «Перед турниром» (s7 tape d31, s8
   weigh-in d36, k3 hired ambush only if not `chemOut`). The TV sheet has «📖 Что было» from
   `Career.storyLog` (`storyNote`, every act choice and fight result with its date).
+- **Act 3 «Город»** (`act3.ts`, doc tab «Сценарий. Акт 3: Город»; user: ~100 days, something
+  every 5-6 days, play more than watch): `Career.act3` (start, rob, done/seen/pending, flags, wins/
+  losses on the city ring, `opp`, Тимоха's hidden `risk` + `why` list, `m` = poster day). Starts when
+  act 2's 'end' card is closed (`ensureAct3`, also via `actChoose`). Story card at most every
+  `GAP3` 5 days (`follow` cards go right on, `forced` ones too). Prologue for rich saves (money >
+  `ROB_OVER` $2000): quiet days, then forced card 'rob' on a random day 5-10: `robberyScene` (alley,
+  knocked down by a pipe) -> `flashback` (acts 1-2 of this save as worn-tape scenes: `SceneSpec.vhs`
+  = body class 'vhs' CSS filter + scan lines, chained by `SceneSpec.next`, `playSpec` in main.ts) ->
+  morning; money = $300 stash, concussion 2 days, the act starts over. From the sewer: u1 Гусь,
+  «Подземка» fights (goal button, $150, 2 wins) -> u3 up to тётя Валя's room. Chapter 1: b1 Бархат's
+  contract (40% / 25% with fame 20 / solo = 7 wins), t1-t5 Тимоха (corner, mom's money, Бархат's
+  warm-up «Разрешаешь?», gloves/quarrel, the call), s1 Сталь (friend / enemy), n1 Ника, l1 Лис's gift
+  (next ring opponent lies down: stats x0.4-0.7) -> l2 the newspaper (fame −5: you were set up).
+  t6 Тимоха vs Мясник (watched; injury by `risk` − present: nose / arm 21 d / knee forever), t7
+  hospital (op $600, sit, revenge), visits (goal button), t8 his decision (cutman or leaves). City
+  ring: goal buttons, Friday fight + one midweek call-out a week (`act3Buttons`/`act3Act`), opponents
+  from the city gangs near our rating (`ringOpp`), purse $500-1000 minus Бархат's cut. Poster 'm1'
+  (forced) when 5 wins + Тимоха's line settled + act day >= 45, or at day 60 (Николаич); final =
+  Saturday >= m + 45 (`finalDay`). City gangs (stage 3, only from act 3): «Бархатные» (Мясник,
+  skin velvet), «Порт» (docker), «Студенты» (student), «Двор» (yard); skins barkhat, titan.
+  `clubStage` 3 in act 3 (cups take stage 2-3 clubs). Tool `act3test [runs]` (scene gaps, poster
+  day, Тимоха's fate, soft locks). Chapters 2-3, tournaments and endings: next step.
 - District clubs (stage 2, user: no wrestlers, Russian boxers etc., recognisable looks):
   «Железный кулак» (Шрам's, Thai, skin `ironfist`: black/gold), «Красный Октябрь» (Soviet
   boxing school, `sovboxer`: red vest + trunks, white boots), «Десант» (veterans, `vdv`:

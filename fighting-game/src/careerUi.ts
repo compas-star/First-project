@@ -39,6 +39,7 @@ import {
 import { callDue, callScene, callDone, trainTip, streetRep, act1Pay, watchLesson, basementLost, act, type A1Fight } from './act1';
 import { actCheck, actCard, actFilm, actSeen, actChoose, actFightDone, actGoal, forcedNow } from './acts';
 import { act2Fee, inSewer } from './act2';
+import { act3Act } from './act3';
 
 export interface CareerHooks {
   /** Show this fight in the arena; `done` gets the result when it is over. */
@@ -216,7 +217,8 @@ export class CareerUi {
     const c = this.c;
     const g = actGoal(c);
     const goal = g
-      ? `<div class="goal slim"><div>🎯 ${g.debt > 0 ? `Долг Гусю <b>$${g.debt}</b>` : esc(g.text)} · ${g.left > 0 ? `<b>${g.left}</b> дн.` : '<b>сегодня!</b>'}</div>
+      ? `<div class="goal slim${g.btns?.length ? ' wrap' : ''}"><div>🎯 ${g.debt > 0 ? `Долг Гусю <b>$${g.debt}</b>` : esc(g.text)}${g.left < 0 ? '' : ` · ${g.left > 0 ? `<b>${g.left}</b> дн.` : '<b>сегодня!</b>'}`}</div>
+          ${g.btns?.length ? `<div class="a3btns">${g.btns.map((x) => `<button type="button" data-act="a3" data-o="${x.id}" ${x.no ? 'disabled' : ''}>${esc(x.label)}${x.no ? ` <small>(${esc(x.no)})</small>` : ''}</button>`).join('')}</div>` : ''}
           ${g.fee ? `<div class="row"><button type="button" data-act="a2fee" ${c.money >= g.fee ? '' : 'disabled'}>Взнос $${g.fee}</button></div>` : ''}
           ${g.debt > 0 ? `<div class="row">${[100, 300].map((n) => `<button type="button" data-act="a1pay" data-n="${n}" ${c.money >= n ? '' : 'disabled'}>$${n}</button>`).join('')}<button type="button" data-act="a1pay" data-n="${g.debt}" ${c.money >= g.debt ? '' : 'disabled'}>Всё</button></div>` : ''}
         </div>`
@@ -1501,6 +1503,11 @@ export class CareerUi {
         return this.playFilm();
       case 'a2fee':
         return say(act2Fee(c));
+      case 'a3': {
+        const r = act3Act(c, b.dataset.o!);
+        if (r.fight) return this.a1Fight(r.fight);
+        return say(r.lines.join(' · ') || null);
+      }
       case 'a1pay':
         return say(act1Pay(c, Number(b.dataset.n)));
       case 'a1tape': {

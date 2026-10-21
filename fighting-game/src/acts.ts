@@ -3,6 +3,7 @@
 import { save, type Career, type CareerFighter, type FightResult } from './career';
 import { act1Card, act1Film, act1Seen, act1Choose, act1FightDone, act1Goal, act1Check, ensureAct1, type A1Fight, type Act1Card } from './act1';
 import { act2Active, act2Card, act2Film, act2Seen, act2Choose, act2FightDone, act2Goal, act2Check } from './act2';
+import { act3Active, act3Card, act3Film, act3Seen, act3Choose, act3FightDone, act3Goal, act3Check, act3Buttons } from './act3';
 import { ambushFight, cup, cupNight, nightDay } from './clubs';
 import type { SceneSpec } from './cutscenes';
 
@@ -11,15 +12,22 @@ export function actCheck(c: Career): string[] {
   ensureAct1(c);
   const out = act1Check(c);
   out.push(...act2Check(c));
+  out.push(...act3Check(c));
   return out;
 }
 
-export const actCard = (c: Career): Act1Card | null => (act2Active(c) ? act2Card(c) : act1Card(c));
-export const actFilm = (c: Career): SceneSpec | null => (act2Active(c) ? act2Film(c) : act1Film(c));
-export const actSeen = (c: Career): void => (act2Active(c) ? act2Seen(c) : act1Seen(c));
+export const actCard = (c: Career): Act1Card | null => (act3Active(c) ? act3Card(c) : act2Active(c) ? act2Card(c) : act1Card(c));
+export const actFilm = (c: Career): SceneSpec | null => (act3Active(c) ? act3Film(c) : act2Active(c) ? act2Film(c) : act1Film(c));
+export const actSeen = (c: Career): void => (act3Active(c) ? act3Seen(c) : act2Active(c) ? act2Seen(c) : act1Seen(c));
 
 export function actChoose(c: Career, opt: string): { lines: string[]; fight?: A1Fight; scene?: SceneSpec } {
-  if (act2Active(c)) return act2Choose(c, opt);
+  if (act3Active(c)) return act3Choose(c, opt);
+  if (act2Active(c)) {
+    const r = act2Choose(c, opt);
+    // Closing act 2's last card starts act 3.
+    if (act3Check(c).length) save(c);
+    return r;
+  }
   const r = act1Choose(c, opt);
   // Closing act 1's last card starts act 2.
   if (act2Check(c).length) save(c);
@@ -27,10 +35,14 @@ export function actChoose(c: Career, opt: string): { lines: string[]; fight?: A1
 }
 
 export function actFightDone(c: Career, f: CareerFighter, fight: A1Fight, r: FightResult): { lines: string[]; scene?: SceneSpec } {
-  return act2Active(c) ? act2FightDone(c, f, fight, r) : act1FightDone(c, f, fight, r);
+  return act3Active(c) ? act3FightDone(c, f, fight, r) : act2Active(c) ? act2FightDone(c, f, fight, r) : act1FightDone(c, f, fight, r);
 }
 
-export function actGoal(c: Career): { text: string; debt: number; left: number; fee?: number } | null {
+export function actGoal(c: Career): { text: string; debt: number; left: number; fee?: number; btns?: { id: string; label: string; no: string | null }[] } | null {
+  if (act3Active(c)) {
+    const g = act3Goal(c);
+    return g && { ...g, btns: act3Buttons(c) };
+  }
   if (act2Active(c)) return act2Goal(c);
   const g = act1Goal(c);
   if (g || c.act2 || !c.act1?.ending) return g;

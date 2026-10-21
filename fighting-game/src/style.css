@@ -2094,6 +2094,24 @@ body.pixel .dock button {
   top: calc(11% + 14px);
   bottom: auto;
 }
+/* A flashback: an old worn tape. */
+body.vhs canvas {
+  filter: sepia(0.55) saturate(0.55) contrast(1.15) brightness(0.88) blur(0.4px);
+}
+body.vhs #cut::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+  animation: vhsroll 0.12s steps(2) infinite;
+}
+@keyframes vhsroll {
+  from { transform: translateY(0); }
+  to { transform: translateY(2px); }
+}
 #cut .cutskip {
   position: absolute;
   right: 12px;
@@ -2436,6 +2454,25 @@ body.cutting #btnRec {
 #career .goal.slim .row button {
   padding: 4px 6px;
   font-size: 8px;
+}
+#career .goal.slim.wrap {
+  flex-wrap: wrap;
+}
+#career .goal.slim .a3btns {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#career .goal.slim .a3btns button {
+  font-size: 10px;
+  padding: 8px 8px;
+  line-height: 1.5;
+}
+#career .goal.slim .a3btns small {
+  font-family: 'Pixelify Sans', system-ui, sans-serif;
+  font-size: 11px;
+  opacity: 0.8;
 }
 /* Clubs and the weekly tournament (clubs.ts). */
 #career .cupm {

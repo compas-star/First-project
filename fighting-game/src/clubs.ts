@@ -175,6 +175,54 @@ const CHEMISTS: Man[] = [
   { name: 'Костян «Карбид» Ершов', level: 0.24, disc: 'kickboxing', weight: 84, height: 1.82, tilt: { strength: 1.08 }, story: 'Спокойнее остальных. Поэтому опаснее.', legs: 0.3 },
 ];
 
+// ---------- The city's gangs (stage 3, act 3 only: user) ----------
+
+const VELVET: Man[] = [
+  { name: 'Мясник «Тесак» Мясоедов', level: 0.5, disc: 'street', weight: 110, height: 1.92, tilt: { strength: 1.2, bodySpeed: 0.9, skill: 0.9 }, story: 'Главный у «Бархатных», цепной пёс Бархата. Добивает лежачих.', aggression: 0.95 },
+  { name: 'Шпала «Длинный» Ветлугин', level: 0.4, disc: 'kickboxing', weight: 88, height: 1.95, tilt: { bodySpeed: 1.05 }, story: 'Охранник Бархата. Длинные ноги, длинные руки, короткий разговор.', legs: 0.4 },
+  { name: 'Перстень «Тихий» Гольдман', level: 0.38, disc: 'boxing', weight: 79, height: 1.78, tilt: { skill: 1.12 }, story: 'Бьёт в перстнях, если судья не смотрит.' },
+  { name: 'Костюм «Двойка» Белых', level: 0.33, disc: 'boxing', weight: 84, height: 1.82, tilt: { cardio: 1.1 }, story: 'Водитель Бархата. Всегда в костюме, даже на ринге.' },
+  { name: 'Рыжая «Касса» Лунёва', level: 0.34, disc: 'muaythai', weight: 64, height: 1.7, tilt: { bodySpeed: 1.1, evasion: 1.1 }, story: 'Считает деньги Бархата и чужие рёбра.', legs: 0.5 },
+];
+
+const PORT: Man[] = [
+  { name: 'Якорь «Бригадир» Шульга', level: 0.48, disc: 'street', weight: 102, height: 1.87, tilt: { strength: 1.18, cardio: 1.1 }, story: 'Бригадир докеров. Таскает мешки по сто кило и не любит бархатных.', aggression: 0.7 },
+  { name: 'Кран «Стрела» Осокин', level: 0.39, disc: 'boxing', weight: 96, height: 1.9, tilt: { strength: 1.12 }, story: 'Длинный прямой, как стрела портового крана.' },
+  { name: 'Боцман «Шторм» Ильин', level: 0.35, disc: 'street', weight: 90, height: 1.8, tilt: { cardio: 1.15 }, story: 'Ходил в море двадцать лет. Качку держит лучше всех.' },
+  { name: 'Трюм «Молчун» Сазонов', level: 0.32, disc: 'boxing', weight: 81, height: 1.77, tilt: { skill: 1.05 }, story: 'Ни слова за весь бой. Ни шагу назад.' },
+  { name: 'Чайка «Юнга» Носов', level: 0.27, disc: 'kickboxing', weight: 68, height: 1.74, tilt: { bodySpeed: 1.12 }, story: 'Самый молодой в порту. Прыгает как чайка за рыбой.', legs: 0.35 },
+];
+
+const STUDENTS: Man[] = [
+  { name: 'Гоша «Отличник» Лавров', level: 0.47, disc: 'kickboxing', weight: 77, height: 1.81, tilt: { skill: 1.2, mindSpeed: 1.15 }, story: 'Лучший в секции университета. Красный диплом и красивая двоечка.', legs: 0.45 },
+  { name: 'Вадим «Аспирант» Кольцов', level: 0.38, disc: 'boxing', weight: 86, height: 1.85, tilt: { mindSpeed: 1.12 }, story: 'Пишет диссертацию о биомеханике удара. Проверяет на людях.' },
+  { name: 'Ира «Сессия» Белкина', level: 0.33, disc: 'kickboxing', weight: 60, height: 1.69, tilt: { bodySpeed: 1.1, evasion: 1.12 }, story: 'Сдаёт сессию и соперников досрочно.', legs: 0.5 },
+  { name: 'Миша «Первокурсник» Пак', level: 0.26, disc: 'karate', weight: 70, height: 1.75, tilt: { bodySpeed: 1.08 }, story: 'Пришёл из каратэ. Всё ещё кланяется.', legs: 0.4 },
+  { name: 'Лёва «Профессор» Гринберг', level: 0.3, disc: 'boxing', weight: 92, height: 1.83, tilt: { skill: 1.15, bodySpeed: 0.9 }, story: 'Тренер Лаврентьев говорит, он думает быстрее, чем бьёт.' },
+];
+
+const YARD: Man[] = [
+  { name: 'Баян «Хозяин двора» Баянов', level: 0.46, disc: 'street', weight: 95, height: 1.84, tilt: { strength: 1.1, skill: 1.05 }, story: 'Держит подпольные бои во дворе-колодце. Принимает ставки и долги.', aggression: 0.8 },
+  { name: 'Зуб «Золотой» Каримов', level: 0.37, disc: 'street', weight: 80, height: 1.79, tilt: { bodySpeed: 1.08 }, story: 'Улыбается золотыми зубами. Своих зубов осталось мало.', aggression: 0.9 },
+  { name: 'Шарик «Колобок» Пухов', level: 0.31, disc: 'boxing', weight: 112, height: 1.76, tilt: { strength: 1.15, bodySpeed: 0.88 }, story: 'Круглый и тяжёлый. Катится вперёд и давит.' },
+  { name: 'Сява «Карась» Ершов', level: 0.28, disc: 'street', weight: 66, height: 1.71, tilt: { evasion: 1.12 }, story: 'Выскальзывает из любого угла.', aggression: 0.85 },
+  { name: 'Дэн «Ставка» Минаев', level: 0.34, disc: 'kickboxing', weight: 83, height: 1.83, tilt: { cardio: 1.05 }, story: 'Ставит на себя всё до копейки. Пока везёт.', legs: 0.35 },
+];
+
+function cityClubs(): Club[] {
+  const make = (list: Man[], skin: SkinId) => list.map((m) => man(m, skin));
+  const vel = make(VELVET, 'velvet');
+  const port = make(PORT, 'docker');
+  const uni = make(STUDENTS, 'student');
+  const yard = make(YARD, 'yard');
+  return [
+    { id: 'velvet', name: '«Бархатные»', stage: 3, motto: 'Всё решают деньги', desc: 'Люди промоутера Бархата: чёрные костюмы, перстни, золотые цепи. Охрана, сборщики, бойцы. Главный — Мясник.', colors: ['#111114', '#d4a72c'], skin: 'velvet', leader: vel[0].id, members: vel },
+    { id: 'port', name: '«Порт»', stage: 3, motto: 'Груз дойдёт', desc: 'Докеры и грузчики: бушлаты, вязаные шапки, огромные руки. Не любят бархатных. С ними можно дружить.', colors: ['#1f2a3a', '#e2b04a'], skin: 'docker', leader: port[0].id, members: port },
+    { id: 'uni', name: '«Студенты»', stage: 3, motto: 'Знание — сила', desc: 'Секция университета, тренер Лаврентьев. Синяя форма, белые перчатки. Не банда: честная техника.', colors: ['#2a62c8', '#f4f4f0'], skin: 'student', leader: uni[0].id, members: uni },
+    { id: 'yard', name: '«Двор»', stage: 3, motto: 'Ставь на своего', desc: 'Подпольные бои во дворе-колодце у Баяна: бордовые спортивки, золотые зубы, ставки. Быстрые деньги, быстрые долги.', colors: ['#5a1424', '#d4a72c'], skin: 'yard', leader: yard[0].id, members: yard },
+  ];
+}
+
 function districtClubs(): Club[] {
   const make = (list: Man[], skin: SkinId) => list.map((m) => man(m, skin));
   const iron = make(IRON, 'ironfist');
@@ -229,6 +277,8 @@ export function ladder(c: Career): Ladder {
       for (const m of shop.members) m.skin = 'worker';
     }
   }
+  // Act 3: the city's gangs (only from then on).
+  if (c.act3 && !c.ladder.clubs.some((k) => k.stage === 3)) c.ladder.clubs.push(...cityClubs());
   return c.ladder;
 }
 
@@ -237,7 +287,7 @@ export function ladder(c: Career): Ladder {
 export const known = (c: Career) => ladder(c).stage >= 3;
 
 /** Clubs that come to the weekly cup and show in the list: the district's once act 2 runs. */
-export const clubStage = (c: Career) => (ladder(c).stage >= 2 || c.act2 ? 2 : 1);
+export const clubStage = (c: Career) => (c.act3 ? 3 : ladder(c).stage >= 2 || c.act2 ? 2 : 1);
 
 export const clubOf = (c: Career, id: string): Club | null => ladder(c).clubs.find((k) => k.members.some((m) => m.id === id)) ?? null;
 export const isLeader = (c: Career, id: string) => ladder(c).clubs.some((k) => k.leader === id);
@@ -279,7 +329,7 @@ export const nightDay = (cp: Cup, r: number) => cp.day + 7 * r;
 
 /** Loners of the district, about the clubs' level. */
 function loner(c: Career): CareerFighter {
-  const top = clubStage(c) === 2 ? 0.3 : 0.16;
+  const top = [0, 0.16, 0.3, 0.45][clubStage(c)];
   const f = makeFighter(0.02 + Math.random() * top, 0.5, WCLASSES[Math.floor(Math.random() * 3)]);
   f.story = `${f.story} Без клуба.`;
   return f;
@@ -290,7 +340,7 @@ function field(c: Career): CareerFighter[] {
   const L = ladder(c);
   const top = clubStage(c);
   const out: CareerFighter[] = [];
-  for (const k of L.clubs.filter((x) => x.stage <= top)) {
+  for (const k of L.clubs.filter((x) => x.stage <= top && x.stage >= top - 1)) {
     const r = ranked(k);
     const n = top === 1 ? r.length : k.stage === top ? 3 : 2;
     out.push(...r.slice(0, n));

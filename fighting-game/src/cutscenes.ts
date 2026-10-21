@@ -33,6 +33,8 @@ export interface Cut {
   beats: { at: number; run: (s: Sim, fx: CutFx) => void }[];
   lines: CutLine[];
   cam: (t: number, cam: THREE.PerspectiveCamera, s: Sim) => void;
+  /** Shown as an old worn tape (a flashback): faded colours, noise, scan lines. */
+  vhs?: boolean;
 }
 
 /** What a beat can ask of the view. */
@@ -264,6 +266,10 @@ export interface SceneSpec {
   names?: { extra?: string; tv?: string };
   start?: (s: Sim) => void;
   lines: SceneLine[];
+  /** A flashback: played as an old worn tape. */
+  vhs?: boolean;
+  /** The scene that follows right after this one (a flashback is several short scenes). */
+  next?: SceneSpec;
 }
 
 const lineDur = (l: SceneLine) => l.dur ?? THREE.MathUtils.clamp(1.3 + l.text.length * 0.05, 2.2, 5.5);
@@ -290,7 +296,7 @@ export function storyCut(spec: SceneSpec, tv: { pos: THREE.Vector3; facing: THRE
     return { at, facing: Math.atan2(-away.x, -away.z) };
   };
   return {
-    map: spec.map, a: spec.a, b: spec.b, dur: t + 0.3, dist: spec.dist, lines, beats, hide: spec.hide, start: spec.start,
+    map: spec.map, a: spec.a, b: spec.b, dur: t + 0.3, dist: spec.dist, lines, beats, hide: spec.hide, start: spec.start, vhs: spec.vhs,
     extra: spec.extra ? { p: spec.extra.p, place: behind } : undefined,
     cam: (time, cam, s) => {
       const sp = spans.find((x) => time >= x.t0 && time < x.t1) ?? spans[spans.length - 1];

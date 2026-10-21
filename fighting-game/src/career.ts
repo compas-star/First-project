@@ -14,6 +14,7 @@ import { rollTraits, ensureLife, dailyLife, trainK, lifeParams, moodAfterFight, 
 import { cityNight, needsK, fightToll } from './city';
 import { act1Day, type Act1 } from './act1';
 import { act2Day, type Act2 } from './act2';
+import { act3Day, type Act3 } from './act3';
 import { cupDay, ladderLock, known, type Ladder } from './clubs';
 
 export type StatKey = 'bodySpeed' | 'strength' | 'mindSpeed' | 'skill' | 'evasion' | 'cardio';
@@ -178,6 +179,8 @@ export interface Career {
   ladder?: Ladder;
   /** Act 2 of the main story (act2.ts). */
   act2?: Act2;
+  /** Act 3 of the main story (act3.ts). */
+  act3?: Act3;
   /** What happened in the story, newest first (the TV's «Что было»). */
   storyLog?: string[];
 }
@@ -750,6 +753,7 @@ function endDay(c: Career): string[] {
   out.push(...storyDay(c));
   out.push(...act1Day(c));
   out.push(...act2Day(c));
+  out.push(...act3Day(c));
   out.push(...cupDay(c));
   out.unshift(`— ${dayName(c.day)}, ${weekday(c.day)} —`);
   return out;

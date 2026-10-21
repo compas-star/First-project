@@ -418,6 +418,10 @@ export function endingScene(c: Career, f: CareerFighter, e: Ending): SceneSpec {
 // ---------- Fights ----------
 
 export interface A1Fight {
+  /** A line for the preview (what the other side knows of ours...). */
+  note?: string;
+  /** He has watched ours' tapes: his memory of ours is everyone's (tapes.ts). */
+  tapes?: boolean;
   opp: CareerFighter;
   /** Who fights for us (default: the picked fighter). */
   who?: CareerFighter;

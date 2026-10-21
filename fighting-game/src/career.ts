@@ -1,3 +1,4 @@
+import type { Genome } from './genome';
 // Manager mode: you own fighters, train them (slowly, in real time), buy new ones and
 // enter them in fights and tournaments, from basement brawls to a world title.
 // Pure state and rules here; the screen is in careerUi.ts. Stand-up fighting only.
@@ -32,6 +33,8 @@ export const STAT_INFO: Record<StatKey, { name: string; drill: string; desc: str
 };
 
 export interface CareerFighter {
+  /** Habits trained in sparring (act 3's tapes: Титан against a copy of ours). */
+  genome?: Genome;
   id: string;
   name: string;
   story: string;
@@ -372,6 +375,7 @@ export function toParams(f: CareerFighter, team: 0 | 1, angry = false): FighterP
   p.strength *= nk.power;
   if (f.craft) p.moves = craftMoves(f);
   if (f.gamePlan?.some((x) => x !== 'auto')) p.roundPlan = [...f.gamePlan];
+  if (f.genome) p.genome = f.genome;
   lifeParams(f, p);
   return p;
 }

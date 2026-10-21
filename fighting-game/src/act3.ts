@@ -409,6 +409,8 @@ interface Card {
   forced?: boolean;
   /** Goes on right from the last scene (does not wait the 5 days). */
   follow?: boolean;
+  /** A side line's step: opened only from «Дела в городе». */
+  side?: boolean;
   opts: Opt[];
 }
 
@@ -532,6 +534,7 @@ const CARDS: Card[] = [
       { id: 'leave', label: 'Уйти', run: () => ({ lines: ['Сталь остаётся один со стаканом'] }) },
       { id: 'mock', label: 'Подколоть', run: (_c, a) => {
         a.flags.stalEnemy = 1;
+        a.flags.tapes = 1;
         return { lines: ['«Ещё увидимся», — Сталь швыряет стакан. Говорят, наутро он пошёл к Бархату'] };
       } },
     ],
@@ -798,7 +801,11 @@ const CARDS: Card[] = [
         a.flags.stood = 1;
         return { lines: ['Шрам усмехается: «Все так говорят». Сталь смотрит на тебя иначе'] };
       } },
-      { id: 'quiet', label: 'Промолчать', run: () => ({ lines: ['Шрам кивает: «Вот и молчи»'] }) },
+      { id: 'quiet', label: 'Промолчать', run: (_c, a) => {
+        // Сталь heard you keep quiet for his father's enemy: Бархат gets your tapes from him.
+        if (a.flags.stalFriend) a.flags.tapes = 1;
+        return { lines: ['Шрам кивает: «Вот и молчи». Сталь отводит глаза'] };
+      } },
       { id: 'prove', label: '«Докажу»', run: (_c, a) => {
         a.flags.stood = 1;
         a.flags.prove = 1;
@@ -984,6 +991,120 @@ const CARDS: Card[] = [
         a.flags.crossed = 1;
         return { lines: ['Ты выходишь драться. Лис бледнеет'] };
       } },
+    ],
+  },
+
+  // --- Side lines (user: they start only when the player goes there; «Дела в городе») ---
+  {
+    id: 'v1', title: 'Прачечная', who: 'Тётя Валя', side: true, when: () => false,
+    text: () => 'В прачечной тёти Вали двое в чёрных костюмах: «Охрана. Сто пятьдесят в неделю». Тётя Валя белая как простыня.',
+    opts: [
+      { id: 'fight', label: 'Выставить их', run: (c, a, f) => ({ lines: [], fight: sideFight(c, a, f, 'v1', club(c, 'velvet').members[3] ?? butcher(c), 'Прачечная', 'Сборщик лежит в корзине с бельём. Тётя Валя: «Пироги по понедельникам — твои»', 'Сборщик сильнее. Тётя Валя платит сама и плачет') }) },
+      { id: 'pay', label: 'Заплатить за неё $150', no: (c) => (c.money < 150 ? 'нужно $150' : null), run: (c, a) => {
+        c.money -= 150;
+        a.flags.valyaSafe = 1;
+        return { lines: ['Ты заплатил. Тётя Валя: «Пироги по понедельникам — твои»'] };
+      } },
+    ],
+  },
+  {
+    id: 'k2', title: 'Первая победа Тимохи', who: 'Тимоха', side: true, when: () => false,
+    text: () => 'Тимоха отработал с тобой три вечера. Говорит: «Я готов. Только ты будь в углу».',
+    opts: [{ id: 'go', label: 'В угол Тимохи', run: (c, a) => ({ lines: [], fight: kidWinFight(c, a) }) }],
+  },
+  {
+    id: 'tp1', title: 'Кассета Петра Ильича', who: 'Пётр Ильич', side: true, when: () => false,
+    text: () => 'Посылка без обратного адреса: кассета «Пётр Ильич. Урок Мише». Тренер Михалыча.',
+    scene: (c, f) => tapeScene(c, f, 'Мишенька, голова не мишень. Двигай её до удара, а не после.'),
+    opts: [{ id: 'ok', label: 'Отработать', run: (_c, _a, f) => {
+      f.stats.evasion = Math.min(f.caps.evasion, f.stats.evasion + 0.01);
+      return { lines: ['Урок Петра Ильича: уклоны +1%'] };
+    } }],
+  },
+  {
+    id: 'tp2', title: 'Кассета Петра Ильича №2', who: 'Пётр Ильич', side: true, when: () => false,
+    text: () => 'Вторая кассета: «Пётр Ильич. Дыхалка».',
+    scene: (c, f) => tapeScene(c, f, 'Устал — значит, вдохни. Не рот открывай, а живот. Двенадцать раундов на этом держатся.'),
+    opts: [{ id: 'ok', label: 'Отработать', run: (_c, _a, f) => {
+      f.stats.cardio = Math.min(f.caps.cardio, f.stats.cardio * 1.02);
+      return { lines: ['Урок Петра Ильича: выносливость +2%'] };
+    } }],
+  },
+  {
+    id: 'tp3', title: 'Кассета Петра Ильича №3', who: 'Пётр Ильич', side: true, when: () => false,
+    text: () => 'Последняя кассета: «Пётр Ильич. Для Миши, когда у него будут свои ученики».',
+    scene: (c, f) => tapeScene(c, f, 'Ученик тебя превзойдёт — радуйся. Значит, ты не зря стоял в углу. Береги его, Миша.'),
+    opts: [{ id: 'ok', label: 'Отработать', run: (_c, _a, f) => {
+      f.stats.skill = Math.min(f.caps.skill, f.stats.skill + 0.01);
+      return { lines: ['Урок Петра Ильича: техника +1%'] };
+    } }],
+  },
+  {
+    id: 'p2', title: 'Драка у причала', who: '«Порт»', side: true, when: () => false,
+    text: () => 'Третья смена в порту. Бригадир Якорь собрал ребят у причала: «Новенький, говорят, боксёр. Ну-ка, Кран, проверь его».',
+    opts: [{ id: 'go', label: 'К причалу', run: (c, a, f) => ({ lines: [], fight: sideFight(c, a, f, 'p2', club(c, 'port').members[1] ?? club(c, 'port').members[0], 'Причал', 'Кран сидит на кнехте и смеётся. Якорь: «Свой. «Порт» за тебя»', 'Кран сильнее. Якорь: «Ничего, приходи ещё»') }) }],
+  },
+  {
+    id: 'n2', title: 'Интервью', who: 'Ника Соколова', side: true, when: () => false,
+    text: () => 'Ника: второе интервью для «Вечернего города». Про подвал, про Михалыча, про город.',
+    opts: [{ id: 'ok', label: 'Говорить', run: (_c, a, f) => {
+      f.fame += 2;
+      a.flags.nikaTalks = (a.flags.nikaTalks ?? 0) + 1;
+      return { lines: ['Интервью вышло. Известность +2'] };
+    } }],
+  },
+  {
+    id: 'n3', title: 'Большое интервью', who: 'Ника Соколова', side: true, when: () => false,
+    text: () => 'Ника: «Большой материал. Разворот. Спонсор уже звонил. Про Бархата будешь говорить?»',
+    opts: [
+      { id: 'ok', label: 'Только про спорт', run: (_c, a, f) => {
+        f.fame += 3;
+        a.flags.sponsor = 1;
+        return { lines: ['Разворот в газете. Известность +3. Спонсор: +$100 каждый понедельник'] };
+      } },
+      { id: 'barkhat', label: 'Рассказать про Бархата', run: (_c, a, f) => {
+        f.fame += 4;
+        a.flags.sponsor = 1;
+        a.flags.hunted = 1;
+        return { lines: ['Разворот: «Кто платит за бои?» Известность +4, спонсор +$100 в неделю. Бархат в ярости'] };
+      } },
+    ],
+  },
+  {
+    id: 'r1', title: 'Кирпич хочет на ринг', who: 'Кирпич', side: true, when: () => false,
+    text: () => 'Кирпич у стойки «Подковы» мнёт кепку: «Я всю жизнь бил за деньги. Хочу хоть раз — по-честному. Потренируешь?»',
+    opts: [
+      { id: 'yes', label: '«Потренирую»', run: (c, a) => {
+        a.flags.kirpichTrain = c.day;
+        return { lines: ['Кирпич тренируется с тобой. Через пять дней — его первый честный бой'] };
+      } },
+      { id: 'no', label: '«Не моё дело»', run: () => ({ lines: ['Кирпич пожимает плечами и допивает пиво'] }) },
+    ],
+  },
+  {
+    id: 'r2', title: 'Первый честный бой Кирпича', who: 'Кирпич', side: true, when: () => false,
+    text: () => 'Кирпич выходит на ринг в «Подкове». Первый раз — с перчатками и судьёй.',
+    opts: [{ id: 'go', label: 'В угол Кирпича', run: (c, a) => ({ lines: [], fight: kirpichFight(c, a) }) }],
+  },
+  {
+    id: 'dy', title: 'Двор Баяна', who: 'Баян', side: true, when: () => false,
+    text: (c) => `Двор-колодец. Баян принимает ставки на ящике: «Ставь на себя, чемпион. Выиграешь — вдвое. Нет денег — запишу в долг».${c.money < 50 ? ' Денег у тебя почти нет.' : ''}`,
+    opts: [50, 200, 500].map((n) => ({
+      id: `s${n}`, label: `Бой, ставка $${n}`, run: (c: Career, a: Act3, f: CareerFighter) => ({ lines: [], fight: yardFight(c, a, f, n) }),
+    })),
+  },
+  {
+    id: 'dyb', title: 'Баян за долгом', who: 'Баян',
+    when: (c, a) => (a.flags.bayanDebt ?? 0) > 0 && c.day >= (a.flags.bayanDay ?? 0) + 7,
+    forced: true, follow: true,
+    text: (_c, a) => `Баян у двери: «Неделя прошла. $${a.flags.bayanDebt}. Или выйдем во двор».`,
+    opts: [
+      { id: 'pay', label: 'Отдать долг', no: (c, a) => (c.money < (a.flags.bayanDebt ?? 0) ? 'не хватает денег' : null), run: (c, a) => {
+        c.money -= a.flags.bayanDebt!;
+        a.flags.bayanDebt = 0;
+        return { lines: ['Баян пересчитал: «Приходи ещё»'] };
+      } },
+      { id: 'fight', label: 'Выйти во двор', run: (c, a, f) => ({ lines: [], fight: bayanFight(c, a, f) }) },
     ],
   },
 
@@ -1224,7 +1345,9 @@ export function act3BrFight(c: Career, which: 'bk' | 'ch'): A1Fight | null {
   const fin = which === 'ch' && r === 2;
   if (fin && !a.flags.kidGone && (a.flags.kidCorner || a.flags.cutman || kidIn(c))) addMood(f, 30);
   const tier: Tier = { ...place('ring', br.len[r]), name: br.name };
+  const learns = !!a.flags.tapes && (opp.name.includes('Титан') || (!!a.flags.stalEnemy && opp.name.includes('Сталь')));
   return {
+    tapes: learns,
     opp, tier, title: `${br.name}, ${ROUNDS3[r]}: ${short(f)} против ${short(opp)}`,
     pre: fin ? finalScene(c, f, opp, a) : {
       map: MAP_BY_ID.ring, a: P(f, 0), b: P(opp, 1), dist: 3,
@@ -1431,6 +1554,182 @@ export function ending3Scene(c: Career, f: CareerFighter, e: Ending3): SceneSpec
   };
 }
 
+// ---------- Side lines ----------
+
+function tapeScene(c: Career, f: CareerFighter, line: string): SceneSpec {
+  return {
+    map: MAP_BY_ID.basement, a: P(f, 0), b: P(f, 1), dist: 2.4, hide: [false, true], names: { tv: 'Пётр Ильич' }, vhs: true,
+    lines: [
+      { who: null, text: 'Старая кассета. Зал восьмидесятых, молодой Михалыч у мешка', shot: 'wide', act: () => (TV.on = true) },
+      { who: 'tv', text: line, shot: 'tv' },
+    ],
+  };
+}
+
+/** A fight of a side line: won or lost, the line is done. */
+function sideFight(c: Career, a: Act3, f: CareerFighter, id: string, opp: CareerFighter, where: string, win: string, lose: string): A1Fight {
+  return {
+    opp, tier: { ...place(id === 'p2' ? 'alley' : 'bar', 0), name: where }, title: `${where}: ${short(f)} против ${short(opp)}`,
+    after: (_c2, f2, r) => {
+      a.done.push(id);
+      if (r.won) {
+        f2.fame += 2;
+        addMood(f2, 8);
+        if (id === 'v1') a.flags.valyaSafe = 1;
+        if (id === 'p2') a.flags.portFriend = 1;
+        return { lines: [win] };
+      }
+      addMood(f2, -6);
+      if (id === 'v1') a.flags.valyaSafe = 1;
+      return { lines: [lose] };
+    },
+  };
+}
+
+/** Тимоха's first win: an easy man, ours in his corner. */
+function kidWinFight(c: Career, a: Act3): A1Fight {
+  const k = timokha(c);
+  const opp = makeFighter(Math.max(0.01, levelOf(k) - 0.04), 0.4, classOf(k));
+  return {
+    opp, who: k, tier: { ...place('bar', 1), name: '«Подкова»' }, title: `Тимоха против ${short(opp)}`,
+    pre: kidScene(c, main(c), [{ who: 1, text: 'Руки вверх, голова вниз. Руки вверх, голова вниз…', shot: 'close1' }], MAP_BY_ID.bar),
+    after: (_c2, k2, r) => {
+      a.done.push('k2');
+      if (r.won) {
+        a.flags.kidWin = 1;
+        addMood(k2, 30);
+        k2.fame += 3;
+        return { lines: ['Тимоха победил! Первая победа. Он остаётся в команде насовсем — и смотрит на тебя, как ты когда-то на Михалыча'] };
+      }
+      a.flags.kidTrain = 0;
+      return { lines: ['Тимоха проиграл, но не сломался: «Ещё три вечера — и снова»'] };
+    },
+  };
+}
+
+function kirpichFight(c: Career, a: Act3): A1Fight {
+  const k = kirpich(c, main(c));
+  const opp = makeFighter(Math.max(0.02, levelOf(k) - 0.05), 0.4, classOf(k));
+  return {
+    opp, who: k, tier: { ...place('bar', 3), name: '«Подкова»' }, title: `Кирпич против ${short(opp)}`,
+    after: (_c2, _k2, r) => {
+      a.done.push('r2');
+      if (r.won) {
+        a.flags.kirpichPads = 1;
+        return { lines: ['Кирпич выиграл свой первый честный бой. «Теперь лапы тебе держу я. Бесплатно» — сила растёт на 10% быстрее'] };
+      }
+      return { lines: ['Кирпич проиграл — и улыбается: «Первый раз проиграл честно. Хорошо-то как»'] };
+    },
+  };
+}
+
+/** A fight in Баян's yard with a stake on ourselves (in debt if the money is not there). */
+function yardFight(c: Career, a: Act3, f: CareerFighter, stake: number): A1Fight {
+  const pool = club(c, 'yard').members;
+  const opp = pool[Math.floor(Math.random() * pool.length)];
+  a.flags.yardDay = c.day;
+  return {
+    opp, tier: { ...place('alley', 0), name: 'Двор Баяна' }, title: `Двор Баяна, ставка $${stake}: ${short(f)} против ${short(opp)}`,
+    after: (c2, _f2, r) => {
+      a.done = a.done.filter((x) => x !== 'dy');
+      if (r.won) {
+        c2.money += stake;
+        return { lines: [`Победа во дворе: +$${stake}`] };
+      }
+      c2.money -= stake;
+      if (c2.money < 0) {
+        a.flags.bayanDebt = (a.flags.bayanDebt ?? 0) - c2.money;
+        a.flags.bayanDay = c2.day;
+        c2.money = 0;
+        return { lines: [`Проиграл. Денег не хватило: долг Баяну $${a.flags.bayanDebt}. Через неделю он придёт`] };
+      }
+      return { lines: [`Проиграл во дворе: −$${stake}`] };
+    },
+  };
+}
+
+function bayanFight(c: Career, a: Act3, f: CareerFighter): A1Fight {
+  const b = club(c, 'yard').members.find((m) => m.id === club(c, 'yard').leader) ?? club(c, 'yard').members[0];
+  return {
+    opp: b, tier: { ...place('alley', 0), name: 'Двор Баяна' }, title: `${short(f)} против Баяна`,
+    after: (_c2, f2, r) => {
+      if (r.won) {
+        a.flags.bayanDebt = 0;
+        f2.fame += 2;
+        return { lines: ['Баян сплёвывает: «Долг прощён. Ты мне нравишься»'] };
+      }
+      a.flags.bayanDay = c.day;
+      f2.energy = Math.max(0, energyOf(f2) - 40);
+      return { lines: ['Баян сильнее. Долг остаётся, через неделю он придёт снова. Энергия −40'] };
+    },
+  };
+}
+
+/** «Дела в городе»: what the player can go and do (side lines start only from here). */
+export function act3Sides(c: Career): { id: string; label: string; no: string | null }[] {
+  const a = act3(c);
+  if (!a || a.ending || !did(a, 'b1') || a.pending) return [];
+  const f = main(c);
+  const out: { id: string; label: string; no: string | null }[] = [];
+  if (!did(a, 'v1')) out.push({ id: 's_v1', label: '🧺 Прачечная тёти Вали', no: null });
+  const k = c.roster.find((x) => x.name.includes('Тимоха'));
+  if (k && (a.flags.kidHurt ?? 0) < 3 && !a.flags.kidWin && did(a, 't1'))
+    out.push({ id: 's_kid', label: `🧒 Вечер с Тимохой в подвале (${a.flags.kidTrain ?? 0}/3)`, no: k.busyUntil > c.day ? 'Тимоха ещё лечится' : a.flags.kidTrainDay === c.day ? 'сегодня уже были' : partsLeft(c, f) < 1 ? 'сегодня уже поздно' : null });
+  const tn = ['tp1', 'tp2', 'tp3'].find((x) => !did(a, x));
+  if (tn) out.push({ id: 's_tape', label: '📼 Посылка: кассета Петра Ильича', no: a.flags.tapeDay !== undefined && c.day < a.flags.tapeDay + 7 ? `следующая через ${a.flags.tapeDay + 7 - c.day} дн.` : null });
+  if (!a.flags.portFriend || did(a, 'p2')) out.push({ id: 's_port', label: `⚓ Смена в порту, $60${did(a, 'p2') ? '' : ` (${a.flags.portShifts ?? 0}/3)`}`, no: a.flags.portDay === c.day ? 'сегодня уже работал' : cannot(c, f, 2, 30) });
+  if (a.flags.nika && !a.flags.nikaCold) {
+    const n = !did(a, 'n2') ? 'n2' : !did(a, 'n3') ? 'n3' : null;
+    if (n) out.push({ id: 's_nika', label: '📰 Интервью Нике', no: a.flags.nikaDay !== undefined && c.day < a.flags.nikaDay + 7 ? `Ника занята ещё ${a.flags.nikaDay + 7 - c.day} дн.` : null });
+  }
+  if (!did(a, 'r1')) out.push({ id: 's_r1', label: '🧱 Кирпич у стойки «Подковы»', no: a.flags.podkovaLost ? '«Подкова» у Бархата' : null });
+  else if (a.flags.kirpichTrain && !did(a, 'r2')) out.push({ id: 's_r2', label: '🧱 Бой Кирпича', no: c.day < a.flags.kirpichTrain + 5 ? `через ${a.flags.kirpichTrain + 5 - c.day} дн.` : null });
+  out.push({ id: 's_yard', label: '🎲 Двор Баяна: бой со ставкой', no: a.flags.yardDay === c.day ? 'сегодня уже дрался' : (a.flags.bayanDebt ?? 0) > 0 ? `долг Баяну $${a.flags.bayanDebt}` : cannot(c, f, 1, 20) });
+  return out;
+}
+
+/** Runs a «Дела в городе» button: a side card opens, or something happens at once. */
+function sideAct(c: Career, a: Act3, f: CareerFighter, id: string): { lines: string[] } {
+  const open = (card: string) => {
+    a.pending = card;
+    return { lines: [] };
+  };
+  switch (id) {
+    case 's_v1':
+      return open('v1');
+    case 's_kid': {
+      a.flags.kidTrain = (a.flags.kidTrain ?? 0) + 1;
+      a.flags.kidTrainDay = c.day;
+      f.parts = (f.parts ?? 0) + 1;
+      if (a.flags.kidTrain >= 3) return open('k2');
+      return { lines: [`Вечер с Тимохой: лапы, скакалка, разговоры (${a.flags.kidTrain}/3)`] };
+    }
+    case 's_tape': {
+      a.flags.tapeDay = c.day;
+      return open(['tp1', 'tp2', 'tp3'].find((x) => !did(a, x))!);
+    }
+    case 's_port': {
+      a.flags.portDay = c.day;
+      c.money += 60;
+      f.parts = (f.parts ?? 0) + 2;
+      f.energy = Math.max(0, energyOf(f) - 30);
+      a.flags.portShifts = (a.flags.portShifts ?? 0) + 1;
+      if (a.flags.portShifts >= 3 && !did(a, 'p2')) return open('p2');
+      return { lines: ['Смена в порту: +$60. Мешки по сто кило — тоже тренировка'] };
+    }
+    case 's_nika':
+      a.flags.nikaDay = c.day;
+      return open(!did(a, 'n2') ? 'n2' : 'n3');
+    case 's_r1':
+      return open('r1');
+    case 's_r2':
+      return open('r2');
+    case 's_yard':
+      return open('dy');
+  }
+  return { lines: [] };
+}
+
 const BY = Object.fromEntries(CARDS.map((x) => [x.id, x]));
 
 // ---------- What the career calls ----------
@@ -1462,6 +1761,17 @@ export function act3Day(c: Career): string[] {
   const out: string[] = [];
   // Тимоха's line needs no fight: settled once the call would have come.
   if (!a.flags.kidBout && did(a, 't3') && !a.flags.kidDone) a.flags.kidDone = 1;
+  // Side lines' perks on Mondays: тётя Валя's pies, the sponsor.
+  if ((c.day - 1) % 7 === 0) {
+    if (a.flags.valyaSafe) {
+      main(c).sat = 100;
+      out.push('Тётя Валя принесла пирогов: сытость 100');
+    }
+    if (a.flags.sponsor) {
+      c.money += 100;
+      out.push('Спонсор заплатил за неделю: +$100');
+    }
+  }
   // The tournaments: past nights counted, ours unfought = lost.
   if (a.bk && !a.bk.done) {
     const r = brDay(c, a.bk);
@@ -1572,15 +1882,25 @@ export function act3Buttons(c: Career): { id: string; label: string; no: string 
     out.push({ id: 'br_bk', label: `🏆 Кубок Бархата${a.bk.ours && brMine(c, a.bk) ? ' · твой бой сегодня!' : brTonight(c, a.bk) >= 0 ? ' · вечер боёв' : ''}`, no: null });
   if (a.ch && !a.ch.done)
     out.push({ id: 'br_ch', label: `🏆 Чемпионат города${brMine(c, a.ch) ? ' · твой бой сегодня!' : brTonight(c, a.ch) >= 0 ? ' · вечер боёв' : ''}`, no: null });
+  if (act3Sides(c).length) out.push({ id: 'sides', label: `📌 Дела в городе (${act3Sides(c).filter((x) => !x.no).length})`, no: null });
   if ((a.flags.kidHurt ?? 0) >= 2 && !did(a, 't8') && !a.flags.kidGone && c.day > (a.flags.hospDay ?? 0))
     out.push({ id: 'visit', label: '🏥 Навестить Тимоху', no: a.flags.visitDay === c.day ? 'сегодня уже был' : partsLeft(c, f) < 1 ? 'сегодня уже поздно' : null });
   return out;
 }
 
-export function act3Act(c: Career, id: string): { lines: string[]; fight?: A1Fight; screen?: 'bk' | 'ch' } {
+export function act3Act(c: Career, id: string): { lines: string[]; fight?: A1Fight; screen?: 'bk' | 'ch' | 'sides'; opened?: boolean } {
   const a = act3(c);
   if (!a) return { lines: [] };
   const f = main(c);
+  if (id.startsWith('s_')) {
+    const sb = act3Sides(c).find((x) => x.id === id);
+    if (!sb) return { lines: ['Сейчас нельзя'] };
+    if (sb.no) return { lines: [sb.no] };
+    const r = sideAct(c, a, f, id);
+    save(c);
+    return { ...r, opened: !!a.pending };
+  }
+  if (id === 'sides') return { lines: [], screen: 'sides' };
   const b = act3Buttons(c).find((x) => x.id === id);
   if (!b) return { lines: ['Сейчас нельзя'] };
   if (b.no) return { lines: [b.no] };

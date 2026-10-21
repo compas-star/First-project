@@ -21,6 +21,7 @@ import { Recorder } from './recorder';
 import { toParams, relOf, load as loadCareer, saveHook, type FightResult } from './career';
 import { cloudStart, cloudDirty } from './cloud';
 import type { Rules } from './sim';
+import { tapesStep, tapesOf } from './tapes';
 import { barCut, faceoffCut, beltCut, talkCut, storyCut, type Cut, type SceneSpec } from './cutscenes';
 import { TV, TV_POS, TV_FACING } from './arena';
 
@@ -609,6 +610,8 @@ function frame(now: number): void {
   // The career screen covers the arena: the sandbox fight waits behind it (user: the sandbox men
   // kept fighting in the background), and the arena is only redrawn now and then.
   const careerUp = !$('career').hidden && !cutState;
+  // Act 3: Титан spars with a copy of ours behind the career screen (tapes.ts).
+  if (careerUp) tapesStep(career.c, 7);
   if (!paused && !training && !frozen && !careerUp) {
     // On a slow phone the physics may not keep up; then time simply runs slower.
     worldDt = sim.advance(realDt * viewScale * (sim.winner ? 1 : speed) * (lab.active ? lab.slow : 1));
@@ -1007,6 +1010,12 @@ const career = new CareerUi({
     const theirs = toParams(opp, 1, grudge);
     const map = MAP_BY_ID[tier.map];
     const rec = (f: typeof me) => `${f.record.w}-${f.record.l}`;
+    // Act 3's tapes: he knows ours as well as everyone who ever fought him, together.
+    if (opts?.tapes) {
+      const t = tapesOf(mine.name, theirs.name);
+      const k = memKey(theirs, mine);
+      if (t.fights) memStore[k] = { fights: Math.max(memStore[k]?.fights ?? 0, t.fights), mem: t.mem };
+    }
     const go = () => {
       runFight(mine, theirs, map, tier.rules);
       showBill(title);

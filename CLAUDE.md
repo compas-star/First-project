@@ -491,6 +491,21 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   Бархат's judges unless the book went to Шрам or Ника. Endings (`finish3`): city (+$8000, stage 4),
   final (any loss), sold (Тимоха leaves); end card with a film (`ending3Scene`). City gang levels
   were lowered 0.06 after the test (gang leaders were ~10 rating above a capped fighter).
+  Tapes (`tapes.ts`, user: real fights in the background so he knows your habits): `flags.tapes`
+  is set when Сталь goes to Бархат (s1 «Подколоть») or when we kept quiet before Шрам with Сталь as a
+  friend (c1). While the career screen is open, `tapesStep(c, 7 ms)` in main.ts' frame runs
+  `train()` (the «Тренировать против» evolution) for Титан (and Сталь if he is Бархат's) against
+  `toParams` of ours; the genome is kept on the story man (`CareerFighter.genome`, used by
+  `toParams`), `flags.tapeFights` counts the sparring fights (~9 in 45 s on a desktop). Before the
+  fight (`A1Fight.tapes`) main.ts merges every `X→ours` memory into his (`tapesOf`), so his
+  look-ahead reads our favourite blows; the preview says so (`tapesNote`, A1Fight `note`).
+  Side lines (`act3Sides`, screen 'a3sides' from the goal button «📌 Дела в городе»; they start only
+  from there): тётя Валя's laundry (fight a collector or pay $150 -> pies = satiety 100 on Mondays,
+  `valyaSafe`, else c6 seals the basement), evenings with Тимоха (3) -> his first win, Пётр Ильич's
+  tapes (3, a week apart, small stat gains, vhs), port shifts ($60, 2 parts) -> the pier fight ->
+  `portFriend` (an ally), Ника's interviews (fame, sponsor +$100 on Mondays; telling about Бархат =
+  `hunted`), Кирпич's first honest fight (win = strength x1.1, `kirpichPads`), Баян's yard (fights
+  with a stake $50/200/500, a loss beyond the money = debt; a week later forced 'dyb').
 - District clubs (stage 2, user: no wrestlers, Russian boxers etc., recognisable looks):
   «Железный кулак» (Шрам's, Thai, skin `ironfist`: black/gold), «Красный Октябрь» (Soviet
   boxing school, `sovboxer`: red vest + trunks, white boots), «Десант» (veterans, `vdv`:

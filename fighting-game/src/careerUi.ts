@@ -39,7 +39,8 @@ import {
 import { callDue, callScene, callDone, trainTip, streetRep, act1Pay, watchLesson, basementLost, act, type A1Fight } from './act1';
 import { actCheck, actCard, actFilm, actSeen, actChoose, actFightDone, actGoal, forcedNow } from './acts';
 import { act2Fee, inSewer } from './act2';
-import { act3Act, act3BrFight, BK_PRIZE, CH_PRIZE } from './act3';
+import { act3Act, act3BrFight, act3Sides, BK_PRIZE, CH_PRIZE } from './act3';
+import { tapesNote } from './tapes';
 import { brMine, brPerson, brTonight, brCoef, brOurs, brDecide, brCount, brBet, ROUND_NAME } from './bracket';
 
 export interface CareerHooks {
@@ -48,7 +49,7 @@ export interface CareerHooks {
     me: CareerFighter, opp: CareerFighter, tier: Tier, title: string, done: (r: FightResult) => void,
     tweak?: (p: FighterParams) => void,
     /** Scenes: the bar before a bar brawl; a title fight gets face to face and the belt. */
-    opts?: { intro?: 'bar' | 'story'; barName?: string; title?: boolean; cls?: string; talk?: { who: 0 | 1 | null; text: string }[]; scene?: SceneSpec },
+    opts?: { intro?: 'bar' | 'story'; barName?: string; title?: boolean; cls?: string; talk?: { who: 0 | 1 | null; text: string }[]; scene?: SceneSpec; tapes?: boolean },
   ): void;
   /** A story scene on the engine (no fight); `done` when it ends or is skipped. */
   scene(spec: SceneSpec, done: () => void): void;
@@ -56,7 +57,7 @@ export interface CareerHooks {
   close(): void;
 }
 
-type Screen = 'prep' | 'cup' | 'a3br' | 'clubs' | 'club' | 'map' | 'more' | 'place' | 'save' | 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
+type Screen = 'prep' | 'cup' | 'a3br' | 'a3sides' | 'clubs' | 'club' | 'map' | 'more' | 'place' | 'save' | 'cal' | 'rank' | 'profile' | 'bracket' | 'home' | 'gym' | 'fights' | 'preview' | 'result' | 'team' | 'market' | 'log';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -199,7 +200,7 @@ export class CareerUi {
   private a1Fight(fight: A1Fight): void {
     const c = this.c;
     const f = fight.who ?? c.roster.find((x) => x.id === c.pick) ?? c.roster[0];
-    this.toPrep({ me: f, opp: fight.opp, tier: fight.tier, title: fight.title, go: (tweak) => this.a1Go(fight, f, tweak) });
+    this.toPrep({ me: f, opp: fight.opp, tier: fight.tier, title: fight.title, note: fight.note ?? tapesNote(c, fight.opp) ?? undefined, go: (tweak) => this.a1Go(fight, f, tweak) });
   }
 
   private a1Go(fight: A1Fight, f: CareerFighter, tweak: (p: FighterParams) => void): void {
@@ -212,7 +213,7 @@ export class CareerUi {
       this.screen = 'result';
       if (res.scene) this.hooks.scene(res.scene, () => this.show());
       else this.show();
-    }, tweak, { scene: fight.pre, cls: classOf(f).name });
+    }, tweak, { scene: fight.pre, cls: classOf(f).name, tapes: fight.tapes });
   }
 
   /** Act 1: the goal and the open scene. */
@@ -310,6 +311,7 @@ export class CareerUi {
       : this.screen === 'map' ? this.mapView()
       : this.screen === 'cup' ? this.cupView()
       : this.screen === 'a3br' ? this.a3brView()
+      : this.screen === 'a3sides' ? this.a3sidesView()
       : this.screen === 'prep' ? this.prepView()
       : this.screen === 'clubs' ? this.clubsView()
       : this.screen === 'club' ? this.clubView()
@@ -1040,6 +1042,14 @@ export class CareerUi {
       ${L.history.length ? `<div class="newsbox"><div class="h2">Прошлые Кубки</div>${L.history.slice(0, 5).map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}`;
   }
 
+  /** «Дела в городе»: act 3's side lines start only from here (user: the player goes, they do not come). */
+  private a3sidesView(): string {
+    const list = act3Sides(this.c);
+    return `<div class="h1">📌 Дела в городе</div>
+      <div class="fnote">Побочные истории. Сами не приходят — только если пойдёшь.</div>
+      <div class="a3sides">${list.map((x) => `<button type="button" data-act="a3" data-o="${x.id}" ${x.no ? 'disabled' : ''}>${esc(x.label)}${x.no ? `<small>${esc(x.no)}</small>` : ''}</button>`).join('') || '<div class="pill">Пока делать нечего</div>'}</div>`;
+  }
+
   /** Act 3's tournaments (Кубок Бархата, the city championship): the nights, bets, watching, our fight. */
   private a3brView(): string {
     const c = this.c;
@@ -1554,9 +1564,14 @@ export class CareerUi {
       case 'a3': {
         const r = act3Act(c, b.dataset.o!);
         if (r.fight) return this.a1Fight(r.fight);
+        if (r.screen === 'sides') return this.go('a3sides');
         if (r.screen) {
           this.brWhich = r.screen;
           return this.go('a3br');
+        }
+        if (r.opened) {
+          this.toast = 'Открылась история — карточка на главной';
+          return this.go('home');
         }
         return say(r.lines.join(' · ') || null);
       }

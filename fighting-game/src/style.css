@@ -2469,6 +2469,23 @@ body.cutting #btnRec {
   padding: 8px 8px;
   line-height: 1.5;
 }
+#career .a3sides {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#career .a3sides button {
+  text-align: left;
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 10px;
+}
+#career .a3sides button small {
+  display: block;
+  font-family: 'Pixelify Sans', system-ui, sans-serif;
+  font-size: 12px;
+  opacity: 0.75;
+}
 #career .goal.slim .a3btns small {
   font-family: 'Pixelify Sans', system-ui, sans-serif;
   font-size: 11px;

@@ -49,6 +49,7 @@ export const gymK = (c: Career | undefined, k: GymKey): number =>
       (k === 'strength' && c.act2?.flags.kirpichGym && !c.act2.ending ? 1.1 : 1) *
       // Act 3: Сталь spars with us; the basement sealed for a week.
       ((k === 'bodySpeed' || k === 'skill') && c.act3?.flags.stalFriend && !c.act3.ending ? 1.1 : 1) *
+      (k === 'strength' && c.act3?.flags.kirpichPads ? 1.1 : 1) *
       (gymOf(c).id === 'basement' && (c.act3?.flags.sealed ?? 0) > c.day ? 0.8 : 1)
     : 1;
 

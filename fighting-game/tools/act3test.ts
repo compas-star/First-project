@@ -5,7 +5,7 @@ import { newCareer, nextDay, rating, type Career } from '../src/career';
 import { actCard, actChoose, actFightDone, actSeen, actFilm, actCheck, forcedNow } from '../src/acts';
 import { act1Pay, callDue, callDone } from '../src/act1';
 import { act2Fee } from '../src/act2';
-import { act3Buttons, act3Act, act3BrFight, finalDay } from '../src/act3';
+import { act3Buttons, act3Act, act3BrFight, act3Sides, finalDay } from '../src/act3';
 import { brCount } from '../src/bracket';
 import { ambushFight, ambushDone, ladder } from '../src/clubs';
 const RUNS = Number(process.argv[2] ?? 40);
@@ -15,6 +15,7 @@ const kid: Record<string, number> = {};
 const gaps: number[] = [];
 const robbed = { rich: 0, ok: 0 };
 const ends: Record<string, number> = {};
+const sides: Record<string, number> = {};
 const bkRes: Record<string, number> = {};
 let sample: string[] = [];
 
@@ -70,6 +71,27 @@ function play(c: Career, days: number, log: string[], cards: number[]): void {
       fight(c, r, log);
       break;
     }
+    // Side lines now and then.
+    if (c.act3 && Math.random() < 0.35) {
+      const sd = act3Sides(c).filter((x) => !x.no);
+      if (sd.length) {
+        const pick = sd[Math.floor(Math.random() * sd.length)];
+        const r = act3Act(c, pick.id);
+        sides[pick.id] = (sides[pick.id] ?? 0) + 1;
+        if (r.opened) {
+          const card = actCard(c);
+          if (card) {
+            if (card.film) actSeen(c);
+            const opts = actCard(c)!.opts.filter((o) => !o.no);
+            if (opts.length) {
+              const rr = actChoose(c, opts[Math.floor(Math.random() * opts.length)].id);
+              log.push(`д${c.day - (c.act3.start || c.day) + 1} side ${card.id}: ${rr.lines.join('; ')}`);
+              fight(c, rr, log);
+            }
+          }
+        }
+      }
+    }
     if (Math.random() < 0.3) act1Pay(c, 100);
     if (c.act2 && Math.random() < 0.2) act2Fee(c);
     c.money += 60;
@@ -115,5 +137,6 @@ console.log('softlocks', locks, '| rich saves robbed', robbed);
 console.log('poster on act day: avg', avg(posters), 'min', Math.min(...posters), 'max', Math.max(...posters));
 console.log('Тимоха:', kid);
 console.log('endings', ends, '| Кубок Бархата', bkRes);
+console.log('side actions', sides);
 console.log('days between story scenes: avg', avg(gaps), 'min', Math.min(...gaps), '| scenes counted', gaps.length + RUNS);
 console.log(sample.slice(-60).join('\n'));

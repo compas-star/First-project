@@ -2562,3 +2562,15 @@ body.cutting #btnRec {
 #career .fade { font-family: 'Pixelify Sans', sans-serif; text-transform: none; letter-spacing: 0; font-size: 12px; margin: 2px 0 4px; color: #b8b0c8; }
 #career .fade.warn { color: #f2c14e; }
 #career .fade.on { color: #ff5d73; }
+/* A question (Да / Нет) floats over the screen: it used to sit at the top of the page, so after
+   scrolling down (the list of gyms) the tap seemed to do nothing. */
+#career .askbox {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  top: 38%;
+  max-width: 520px;
+  margin: 0 auto;
+  z-index: 60;
+  box-shadow: inset 0 0 0 2px #3b3242, 0 0 0 100vmax rgba(0, 0, 0, 0.6);
+}

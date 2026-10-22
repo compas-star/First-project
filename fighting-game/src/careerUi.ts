@@ -1500,6 +1500,8 @@ export class CareerUi {
       case 'gymmove': {
         const id = b.dataset.g as GymId;
         const g = GYMS.find((x) => x.id === id)!;
+        // The question must not hide under the place's bottom sheet (the tap looked dead).
+        this.pSheet = null;
         return ask(`Перейти в «${g.name.replace(/[«»]/g, '')}»?${g.price ? ` $${g.price} за неделю, дальше списывается каждую неделю.` : ''}`, () =>
           say(moveGym(c, id) ?? `Команда тренируется в зале «${g.name.replace(/[«»]/g, '')}»`));
       }

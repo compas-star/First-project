@@ -540,7 +540,11 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   (strength +4%, aggression, skill −4%)): screen 'prep' (`toPrep`) for cup and story (act)
   fights, and the same block on the calendar preview; applied through the fight hook's tweak.
 - Fights without rounds stop at `NO_ROUND_LIMIT` 120 s of fight time (twice a career round):
-  `timeUp` = decision on damage dealt (user: endless fights took too long). Roof fights in
+  `timeUp` (user: endless fights took too long; then: they stood after the gong with no way out —
+  the reason did not start with 'решение', so no KO card ever came): no draw, the one who dealt
+  less (then fewer hits, then less wind) leaves, `Sim.retreat`; reason 'избит — ретировался' for
+  the other man, 'сам смотался — поражение' for fighter 0 (ours in the career); KO card title says
+  so, `FightResult.ko` false. Roof fights in
   act 1: 3 rounds, $120 (`ROOF_PAY`), $20 for a loss (user: $300 for a minute was too much).
 - Training rework (user: stats should fade without training; better gyms to grow further):
   `Gym.level` = equipment, how far toward his talent a man can be trained there (basement 0.6,

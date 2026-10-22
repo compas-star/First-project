@@ -528,7 +528,9 @@ function showKo(): void {
   const w = sim.winner!;
   const l = w.enemy;
   const known = memStore[memKey(w.p, l.p)]?.fights ?? 0;
-  $('koTitle').textContent = `${l.koReason === 'нокаут' ? 'Нокаут' : l.koReason.startsWith('решение') ? 'Решение судей' : 'Победа'}. Победил ${w.p.name}`;
+  $('koTitle').textContent = sim.retreat
+    ? (l === sim.fighters[0] ? `${l.p.name} сматывается. Поражение` : `${l.p.name} ретировался. Победил ${w.p.name}`)
+    : `${l.koReason === 'нокаут' ? 'Нокаут' : l.koReason.startsWith('решение') ? 'Решение судей' : 'Победа'}. Победил ${w.p.name}`;
   $('koStats').innerHTML = [
     `Бой длился <b>${sim.t >= 120 ? fmtClock(sim.t) : `${sim.t.toFixed(2)} с`}</b> реального времени`,
     `Попаданий: ${w.p.name} <b>${w.hits}</b>, ${l.p.name} <b>${l.hits}</b>`,
@@ -634,7 +636,7 @@ function frame(now: number): void {
   }
   if (sim.winner && koShownAt < 0 && !covered) {
     const w = sim.winner;
-    const decision = w.enemy.koReason.startsWith('решение');
+    const decision = w.enemy.koReason.startsWith('решение') || sim.retreat;
     if (decision) {
       koTimer += realDt;
       if (w.state === 'ok' && !w.action) sim.startAction(w, 'victory', { dur: 1e9 });
@@ -1062,7 +1064,7 @@ function finishCareerFight(): void {
   const loser = won ? opp : me;
   const r: FightResult = {
     won,
-    ko: !!sim.winner && !loser.koReason.startsWith('решение'),
+    ko: !!sim.winner && !loser.koReason.startsWith('решение') && !sim.retreat,
     reason: sim.winner ? loser.koReason || 'нокаут' : 'ничья, по попаданиям',
     trauma: me.trauma,
     body: me.bodyHurt,

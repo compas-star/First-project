@@ -1872,14 +1872,17 @@ export class Sim {
   private timeUp(): void {
     const [da, db] = this.roundDealt;
     const [fa, fb] = this.fighters;
-    if (Math.abs(da - db) < 0.05 * Math.max(da, db, 1)) {
-      this.draw = true;
-      return;
-    }
-    const w = da > db ? fa : fb;
+    // No draw (user: the fight must end): the one who took more gives up and goes; a dead heat
+    // goes by clean hits, then by who is fresher.
+    const w = Math.abs(da - db) > 0.02 * Math.max(da, db, 1) ? (da > db ? fa : fb)
+      : fa.hits !== fb.hits ? (fa.hits > fb.hits ? fa : fb) : fa.stamina >= fb.stamina ? fa : fb;
     this.winner = w;
-    w.enemy.koReason = 'время вышло — решение по очкам';
+    this.retreat = true;
+    // Fighter 0 is ours in the career: he slips away himself; the other one was beaten off.
+    w.enemy.koReason = w.enemy === fa ? 'сам смотался — поражение' : 'избит — ретировался';
   }
+  /** The fight ended by time without rounds: the loser left (not a knockout). */
+  retreat = false;
 
   /** Totals on the judges' cards. */
   score(): [number, number] {

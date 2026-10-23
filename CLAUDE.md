@@ -594,6 +594,14 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
 - After a ground exchange, fighters standing up inside each other are eased apart so
   contact comes back (was: they fought passing through each other). Tool: `contact`.
 
+- English (user: the Russian audience is smaller): `i18n.ts` — the code keeps its Russian strings;
+  a MutationObserver translates every text node / title / placeholder as it appears (`tr`: exact
+  dictionary `EN`, then patterns `EN_RX` whose captured parts are translated again, then sentence by
+  sentence; cached), canvas signs in arena.ts go through `tr` in fillText. Dictionaries in
+  `i18nEn.ts` (part 1 = the sandbox; career menus and the story still to come). Language:
+  localStorage `arena-lang-v1`, default by the phone's language (ru/uk/be/kk = Russian); dock button
+  🌐 switches and reloads. Untranslated Cyrillic seen on screen is collected in `__i18nMissing`;
+  the Playwright script `miss.cjs` (scratchpad) plays the sandbox in English and dumps it.
 - `labUi.ts` + `combos.ts`: combination lab ("Лаборатория связок" at the top of the setup
   sheet; the user rejected the slider strike editor: "миллион ползунков"). Tap blows in
   order (tap a step to cycle its zone), "Показать" plays it on a dummy (`Sim.lab`: striker

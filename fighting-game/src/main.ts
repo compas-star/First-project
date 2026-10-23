@@ -1,4 +1,5 @@
 import './style.css';
+import { startTranslation, setLang, lang } from './i18n';
 import { PRESETS, applyPreset, defaultFighter, type FighterParams } from './config';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Sim, LIMB_NAME, QUICK, bout, type Limb } from './sim';
@@ -35,6 +36,11 @@ const EYES_LABEL: Record<Eyes, string> = {
 };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+// English: the page is translated as it is drawn (i18n.ts); the button switches and reloads.
+startTranslation();
+$('btnLang').textContent = lang === 'ru' ? '🌐 EN' : '🌐 RU';
+$('btnLang').addEventListener('click', () => setLang(lang === 'ru' ? 'en' : 'ru'));
 const STORE_KEY = 'arena-speed-v1';
 
 function load(): [FighterParams, FighterParams] {

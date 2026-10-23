@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ALLEY_HALF, type MapDef } from './maps';
+import { tr } from './i18n';
 
 // The look of each map: floor, ring or cage, walls, lights, crowd, city.
 // Everything is primitives and canvas textures, cheap enough for a phone.
@@ -114,7 +115,7 @@ function neonSign(text: string, color: string, w: number, h: number, font = '900
     g.font = font;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText(text, 256, H / 2 + 4);
+    g.fillText(tr(text), 256, H / 2 + 4);
     g.globalCompositeOperation = 'source-atop';
     g.fillStyle = color;
     g.globalAlpha = 0.55;
@@ -313,7 +314,7 @@ function ring(map: MapDef): Arena {
     g.font = '900 130px "Russo One", Arial Black, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText('АРЕНА', 512, 512);
+    g.fillText(tr('АРЕНА'), 512, 512);
     // Corner colours.
     g.fillStyle = 'rgba(240,83,62,0.5)';
     g.beginPath();
@@ -335,7 +336,7 @@ function ring(map: MapDef): Arena {
     g.fillStyle = '#f2c14e';
     g.font = '700 64px "Russo One", Arial Black, sans-serif';
     g.textBaseline = 'middle';
-    for (let x = 30; x < 1024; x += 360) g.fillText('ARENA FIGHT', x, 66);
+    for (let x = 30; x < 1024; x += 360) g.fillText(tr('ARENA FIGHT'), x, 66);
   });
   const sides = std(0xffffff, 0.7, 0, { map: apron });
   const platform = new THREE.Mesh(new THREE.BoxGeometry(W, 1.1, W), [sides, sides, std(0xffffff, 0.85, 0, { map: top }), sides, sides, sides]);
@@ -400,7 +401,7 @@ function ring(map: MapDef): Arena {
       g.fillRect(x + 30, h * 0.38, 110, 70);
       g.fillStyle = '#f2c14e';
       g.font = '700 22px Arial Black, sans-serif';
-      g.fillText('НОЧЬ БОЁВ', x + 36, h * 0.38 + 42);
+      g.fillText(tr('НОЧЬ БОЁВ'), x + 36, h * 0.38 + 42);
     }
   }, 40));
   // A big screen box hanging over the ring, a press row at ringside.
@@ -414,10 +415,10 @@ function ring(map: MapDef): Arena {
     g.fillStyle = '#fff';
     g.font = '900 64px "Russo One", Arial Black, sans-serif';
     g.textAlign = 'center';
-    g.fillText('VS', 256, 125);
+    g.fillText(tr('VS'), 256, 125);
     g.fillStyle = '#f2c14e';
     g.font = '700 34px Arial Black, sans-serif';
-    g.fillText('РАУНД 1', 256, 215);
+    g.fillText(tr('РАУНД 1'), 256, 215);
   });
   const scrM = new THREE.MeshStandardMaterial({ map: screen, emissive: 0xffffff, emissiveMap: screen, emissiveIntensity: 1.1 });
   const cube = new THREE.Mesh(new THREE.BoxGeometry(3, 1.5, 3), [scrM, scrM, std(0x0b0c10), std(0x0b0c10), scrM, scrM]);
@@ -470,7 +471,7 @@ function cage(map: MapDef): Arena {
     g.font = '900 120px "Russo One", Arial Black, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText('MMA', 0, 0);
+    g.fillText(tr('MMA'), 0, 0);
   });
   const oct = mesh(new THREE.CircleGeometry(S + 0.3, 8), std(0xffffff, 0.85, 0, { map: mat }), false);
   oct.rotation.x = -Math.PI / 2;
@@ -628,12 +629,12 @@ function alley(map: MapDef): Arena {
       g.rotate(-0.08 + Math.random() * 0.1);
       g.lineWidth = 18;
       g.strokeStyle = line;
-      g.strokeText(txt, 0, 0);
+      g.strokeText(tr(txt), 0, 0);
       g.fillStyle = fill;
-      g.fillText(txt, 0, 0);
+      g.fillText(tr(txt), 0, 0);
       g.lineWidth = 3;
       g.strokeStyle = 'rgba(255,255,255,0.6)';
-      g.strokeText(txt, -3, -4);
+      g.strokeText(tr(txt), -3, -4);
       g.restore();
       // Drips.
       g.fillStyle = fill;
@@ -711,7 +712,7 @@ function alley(map: MapDef): Arena {
     g.font = '900 110px "Russo One", Arial Black, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.fillText('БАР 24', 256, 84);
+    g.fillText(tr('БАР 24'), 256, 84);
   });
   const neonMat = new THREE.MeshStandardMaterial({ map: neonTex, emissive: 0xffffff, emissiveMap: neonTex, emissiveIntensity: 1.6, roughness: 0.5 });
   const neon = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.75), neonMat);
@@ -865,8 +866,8 @@ function dojo(map: MapDef): Arena {
     g.fillStyle = '#1a1010';
     g.font = '700 120px serif';
     g.textAlign = 'center';
-    g.fillText('武', 80, 160);
-    g.fillText('道', 80, 300);
+    g.fillText(tr('武'), 80, 160);
+    g.fillText(tr('道'), 80, 300);
   });
   const sc = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 1.5), std(0xffffff, 0.9, 0, { map: scroll }));
   sc.position.set(0, 1.5, -S - 0.15);
@@ -920,9 +921,9 @@ function dojo(map: MapDef): Arena {
     g.fillStyle = '#f4e4c0';
     g.font = '700 90px serif';
     g.textAlign = 'center';
-    g.fillText('拳', 64, 150);
-    g.fillText('心', 64, 290);
-    g.fillText('力', 64, 430);
+    g.fillText(tr('拳'), 64, 150);
+    g.fillText(tr('心'), 64, 290);
+    g.fillText(tr('力'), 64, 430);
   });
   for (const sgn of [-1, 1]) {
     const bn = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 1.9), std(0xffffff, 0.9, 0, { map: banner, side: THREE.DoubleSide }));
@@ -1163,7 +1164,7 @@ function bar(map: MapDef): Arena {
       g.fillStyle = '#1a1010';
       g.font = '900 26px Arial Black, sans-serif';
       g.textAlign = 'center';
-      g.fillText(t, x + 40, 90);
+      g.fillText(tr(t), x + 40, 90);
     });
     noise(g, 512, 256, 2500, 'rgba(0,0,0,0.2)', 3);
   }, [S / 2, 1]);

@@ -558,6 +558,12 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   `CareerFighter.faded` (lost since last worked, reset by `worked`), `statsFade` lines under
   each quality in the hero card and the gym (idle days, loss per night, lost so far, "с завтрашней
   ночи начнёт уходить"), `FADE_RULE` text, and the night's `📉` lines in the new-day toast.
+- Quick menu (user: eat anywhere from your stock, reach every menu without walking the city):
+  `Career.pantry` (city.ts `pantryOf`/`buyFood`/`eatStock`, no spoiling): the place food sheets
+  have «🎒 С собой» ×1/×3, the fridge shows the stock. `CareerUi.quickBar()` on every screen
+  (sticky, not on forced/result/prep): 🍞 Есть (sheet `qs` 'eat' = `stockHtml`, eating costs no
+  money or time), 😌 Отдых, 💪 Зал, 🧭 Куда (`goHtml`: your gym, the cup, fights, the map and
+  every place with what is on today, `placeBadges` shared with the map), 🌙 Спать.
 - Place interiors (`placeArt.ts` `placeSvg`, user: every building in the home's pixel style
   with little people): 160x120 SVGs for cafe, market, site, «Подкова», hospital, arena,
   sport quarter (alley/roofs "скоро"); things are `data-act="pobj"` groups: food/job/beer/

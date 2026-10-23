@@ -24,10 +24,11 @@ import { GYMS, gymOf, gymOpen, moveGym, gymCap, type GymId } from './gyms';
 import {
   PARTS, JOBS, FOODS, TRAIN_ENERGY, MIN_TRAIN_ENERGY, HUNGRY, RENT, satOf, energyOf, partOf, partsLeft, cannot, jobClosed,
   trainNow, work, eat, rest, sessionGain, sessionCraft, needWord, DOW, treat, treatCost, beer, fightToll,
+  buyFood, eatStock, pantryOf, pantryCount,
 } from './city';
 import { MAP_BY_ID } from './maps';
 import { PREPS, PREP_BY_ID, type PrepId } from './prep';
-import { mapSvg, PLACE_BY_ID, type PlaceId } from './cityMap';
+import { mapSvg, PLACES, PLACE_BY_ID, type PlaceId } from './cityMap';
 import { placeSvg } from './placeArt';
 import type { SceneSpec } from './cutscenes';
 import { homeSvg, APPARATUS, type HomeObj } from './homeArt';
@@ -83,6 +84,8 @@ export class CareerUi {
   private placeId: PlaceId = 'flat';
   /** The panel open over the home screen (a thing tapped in the flat or the basement). */
   private sheet: HomeObj | null = null;
+  /** The quick bar's sheet over any screen: the food stock, or where to go. */
+  private qs: 'eat' | 'go' | null = null;
   /** Which of an apparatus's exercises is picked. */
   private appSel = 0;
   /** The club open on the club screen. */
@@ -326,9 +329,11 @@ export class CareerUi {
           .map(([id, icon, name]) => `<button type="button" class="${this.screen === id ? 'on' : ''}" data-act="to" data-s="${id}"><span>${icon}</span>${name}</button>`).join('')}</nav>`
       : '';
     const inSheet = this.screen === 'home' && !!this.sheet && !forced;
+    const quick = forced || this.screen === 'result' || this.screen === 'prep' ? '' : this.quickBar();
+    const qsheet = this.qs && !forced ? `<div class="sheetbg" data-act="qsx"></div><div class="sheet"><div class="sheethead"><b>${this.qs === 'eat' ? '🍞 Запасы еды' : '🧭 Куда пойти'}</b><button type="button" class="qx" data-act="qsx">✕</button></div>${this.qs === 'eat' ? this.stockHtml() : this.goHtml()}</div>` : '';
     const toast = this.toast ? `<div class="toast">${esc(this.toast)}</div>` : '';
     const sheet = inSheet ? `<div class="sheetbg" data-act="sheetx"></div><div class="sheet">${toast}${this.sheetHtml(this.sheet!)}</div>` : '';
-    $('career').innerHTML = (top + ask + (inSheet ? '' : toast) + body + nav + sheet).replace(/◆/g, '<i class="gem">◆</i>');
+    $('career').innerHTML = (top + quick + ask + (inSheet ? '' : toast) + body + nav + sheet + qsheet).replace(/◆/g, '<i class="gem">◆</i>');
     this.toast = '';
   }
 
@@ -411,9 +416,10 @@ export class CareerUi {
           ${DOW(c.day) === 6 ? `<div class="fnote">Ночью квартплата $${RENT}.</div>` : ''}`;
       case 'fridge': {
         const x = FOODS[0];
-        return `${head('Холодильник')}<div class="fnote">На полке доширак. Нормальная еда и спортпит — в Пельменной (город).</div>
+        return `${head('Холодильник')}${this.stockHtml()}
+          <div class="h2">Доширак с полки</div>
           <div class="ibtns"><button type="button" class="ibtn" data-act="eat" data-f="${x.id}" ${c.money < x.price ? 'disabled' : ''}><b>${x.name}</b><span class="gain">+${x.sat}</span><span>$${x.price}</span><small>сытость ${Math.round(satOf(f))}</small></button></div>
-          <button type="button" data-act="to" data-s="map">🗺 В город, в Пельменную</button>`;
+          <button type="button" data-act="place" data-p="cafe">🥟 В Пельменную — нормальная еда и спортпит</button>`;
       }
       case 'tv': {
         const tape = act(c)?.done.includes('s3') && !act(c)?.flags.tape2;
@@ -514,8 +520,54 @@ export class CareerUi {
     </div>`;
   }
 
-  /** The district with badges for what is on today. */
-  private cityMap(): string {
+  /** Always at hand (user: eat, sleep, go anywhere without walking through the city). */
+  private quickBar(): string {
+    const c = this.c;
+    const f = this.me();
+    const n = pantryCount(c);
+    return `<div class="qbar">
+      <button type="button" data-act="qs" data-q="eat">🍞<span>Есть${n ? ` (${n})` : ''}</span></button>
+      <button type="button" data-act="rest" ${partsLeft(c, f) ? '' : 'disabled'}>😌<span>Отдых</span></button>
+      <button type="button" data-act="gymgo" data-t="stats">💪<span>Зал</span></button>
+      <button type="button" data-act="qs" data-q="go">🧭<span>Куда</span></button>
+      <button type="button" data-act="nextday" class="${partsLeft(c, f) ? '' : 'primary'}">🌙<span>Спать</span></button>
+    </div>`;
+  }
+
+  /** The food stock: eat one, no money, no time. */
+  private stockHtml(): string {
+    const c = this.c;
+    const f = this.me();
+    const p = pantryOf(c);
+    const have = FOODS.filter((x) => (p[x.id] ?? 0) > 0);
+    return `<div class="fmeta">${esc(short(f))}: сытость <b>${Math.round(satOf(f))}</b> / 100</div>
+      ${have.length
+        ? `<div class="ibtns">${have.map((x) => `<button type="button" class="ibtn" data-act="eatstock" data-f="${x.id}" ${satOf(f) >= 95 ? 'disabled' : ''}><b>${x.name}</b><span class="gain">+${x.sat}</span><span>есть ${p[x.id]}</span><small>${x.note}</small></button>`).join('')}</div>`
+        : '<div class="fnote">Запасов нет. Купи «с собой» в Пельменной или на рынке.</div>'}
+      <div class="row"><button type="button" data-act="place" data-p="cafe">🥟 Пельменная</button><button type="button" data-act="place" data-p="market">📦 Рынок</button></div>`;
+  }
+
+  /** Every place in one tap, with what is on there today. */
+  private goHtml(): string {
+    const c = this.c;
+    const b = this.placeBadges();
+    const WHAT: Partial<Record<PlaceId, string>> = {
+      flat: 'дом, сон, тренировка в подвале', cafe: 'еда и спортпит, с собой', market: 'работа грузчиком, доширак', site: 'работа на стройке',
+      bar: '«Подкова»: вышибала, пиво, кубок', hospital: 'лечение', arena: 'бои, календарь, рейтинг', gyms: 'залы города',
+    };
+    const BADGE: Record<string, string> = { БОЙ: 'бой сегодня', $: 'есть работа', '+': 'можно лечиться', Zz: 'пора спать', '!': 'тебя ждут' };
+    const places = PLACES.filter((p) => WHAT[p.id]).map((p) => `<button type="button" class="goline" data-act="place" data-p="${p.id}"><span>${p.icon}</span><b>${esc(p.name)}</b><small>${esc(WHAT[p.id]!)}</small>${b[p.id] ? `<em>${BADGE[b[p.id]!] ?? b[p.id]}</em>` : ''}</button>`).join('');
+    const extra = [
+      `<button type="button" class="goline" data-act="gymgo" data-t="stats"><span>💪</span><b>Твой зал</b><small>${esc(gymOf(c).name)}: тренировка</small></button>`,
+      ladder(c).open ? `<button type="button" class="goline" data-act="to" data-s="cup"><span>🏆</span><b>Кубок «Подковы»</b><small>сетка, ставки, свой бой</small></button>` : '',
+      `<button type="button" class="goline" data-act="to" data-s="cal"><span>📅</span><b>Бои</b><small>календарь и запись</small></button>`,
+      `<button type="button" class="goline" data-act="to" data-s="map"><span>🗺</span><b>Карта района</b><small>всё как на улице</small></button>`,
+    ].join('');
+    return `<div class="golist">${extra}${places}</div>`;
+  }
+
+  /** What is on today at each place (badges on the map and in «Куда пойти»). */
+  private placeBadges(): Partial<Record<PlaceId, string>> {
     const c = this.c;
     const f = this.me();
     const b: Partial<Record<PlaceId, string>> = {};
@@ -529,7 +581,12 @@ export class CareerUi {
     if (pend === 's4') b.alley = '!';
     if (pend === 's7') b.roof = '!';
     if (pend === 's8') b.bar = '!';
-    return mapSvg(b, this.visited, true);
+    return b;
+  }
+
+  /** The district with badges for what is on today. */
+  private cityMap(): string {
+    return mapSvg(this.placeBadges(), this.visited, true);
   }
 
   /** One place on the map: what can be done there. */
@@ -538,7 +595,9 @@ export class CareerUi {
     const f = this.me();
     const p = PLACE_BY_ID[this.placeId];
     const food = (ids: string[]) => `<div class="h2">Еда</div><div class="ibtns">${FOODS.filter((x) => ids.includes(x.id)).map((x) => `<button type="button" class="ibtn" data-act="eat" data-f="${x.id}" ${c.money < x.price ? 'disabled' : ''}>
-      <b>${x.name}</b><span class="gain">+${x.sat}</span><span>$${x.price}</span><small>${x.note}</small></button>`).join('')}</div>`;
+      <b>${x.name}</b><span class="gain">+${x.sat}</span><span>$${x.price}</span><small>${x.note}</small></button>`).join('')}</div>
+      <div class="h2">🎒 С собой <small>(в запасах: ${pantryCount(c)})</small></div><div class="buyrow">${FOODS.filter((x) => ids.includes(x.id)).map((x) => [1, 3].map((n) => `<button type="button" data-act="buy" data-f="${x.id}" data-n="${n}" ${c.money < x.price * n ? 'disabled' : ''}>${x.name} ×${n} · $${x.price * n}</button>`).join('')).join('')}</div>
+      <div class="fnote">Запасы не портятся. Есть их можно где угодно: кнопка 🍞 сверху.</div>`;
     const job = (id: string) => {
       const j = JOBS.find((x) => x.id === id)!;
       const why = jobClosed(c, f, j);
@@ -1479,6 +1538,7 @@ export class CareerUi {
         return this.go('home');
       case 'to':
         this.sheet = null;
+        this.qs = null;
         if (b.dataset.s === 'cup' && this.cupIntro()) return;
         if (b.dataset.s === 'preview') this.prepPick = 'none';
         return this.go(b.dataset.s as Screen);
@@ -1540,6 +1600,22 @@ export class CareerUi {
         const r = trainNow(c, me, this.stat, it, m as Craft | undefined);
         return say(r.ok ? `${short(me)}: ${r.text}` : r.text);
       }
+      case 'buy': {
+        const r = buyFood(c, FOODS.find((x) => x.id === b.dataset.f)!, Number(b.dataset.n) || 1);
+        return say(r.text);
+      }
+      case 'eatstock': {
+        const r = eatStock(c, me, b.dataset.f as 'cheap' | 'cafe' | 'sport');
+        return say(r.text);
+      }
+      case 'qs':
+        this.pSheet = null;
+        this.sheet = null;
+        this.qs = this.qs === b.dataset.q ? null : (b.dataset.q as 'eat' | 'go');
+        return say(null);
+      case 'qsx':
+        this.qs = null;
+        return say(null);
       case 'eat': {
         this.pSheet = null;
         const r = eat(c, me, FOODS.find((x) => x.id === b.dataset.f)!);
@@ -1757,10 +1833,13 @@ export class CareerUi {
       }
       case 'place':
         this.pSheet = null;
+        this.qs = null;
+        this.sheet = null;
         this.placeId = b.dataset.p as PlaceId;
         this.visited = this.placeId;
         return this.go('place');
       case 'gymgo':
+        this.qs = null;
         this.gymTab = b.dataset.t as 'stats' | 'halls';
         return this.go('gym');
       case 'gymtab':
@@ -1788,6 +1867,7 @@ export class CareerUi {
         save(c);
         return say('План боя сброшен: решает сам');
       case 'nextday': {
+        this.qs = null;
         const fz = forcedNow(c);
         if (fz) return say(`Сначала разберись: ${fz.title}`);
         const a3 = c.act3;

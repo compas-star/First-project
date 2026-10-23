@@ -184,6 +184,8 @@ export interface Career {
   act2?: Act2;
   /** Act 3 of the main story (act3.ts). */
   act3?: Act3;
+  /** Food bought to take away (city.ts `pantryOf`): eaten anywhere from the quick bar. */
+  pantry?: Partial<Record<'cheap' | 'cafe' | 'sport', number>>;
   /** What happened in the story, newest first (the TV's «Что было»). */
   storyLog?: string[];
 }

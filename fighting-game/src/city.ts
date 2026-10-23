@@ -176,11 +176,39 @@ export function eat(c: Career, f: CareerFighter, food: Food): { ok: boolean; tex
   if (c.money < food.price) return { ok: false, text: 'не хватает денег' };
   if (satOf(f) >= 95) return { ok: false, text: 'он сыт' };
   c.money -= food.price;
+  return feed(c, f, food);
+}
+
+function feed(c: Career, f: CareerFighter, food: Food): { ok: boolean; text: string } {
   f.sat = Math.min(100, satOf(f) + food.sat);
   addMood(f, food.mood);
   if (food.id === 'sport') f.boost = 1.2;
   save(c);
   return { ok: true, text: `${food.name}: сытость ${Math.round(satOf(f))}` };
+}
+
+// Food in stock (user: buy in the cafe or the market, then eat it anywhere, any time; it does
+// not go off). The fridge at home and the bag are the same stock.
+export const pantryOf = (c: Career): Partial<Record<Food['id'], number>> => (c.pantry ??= {});
+export const pantryCount = (c: Career) => Object.values(pantryOf(c)).reduce((s, n) => s + (n ?? 0), 0);
+
+export function buyFood(c: Career, food: Food, n = 1): { ok: boolean; text: string } {
+  const cost = food.price * n;
+  if (c.money < cost) return { ok: false, text: 'не хватает денег' };
+  c.money -= cost;
+  const p = pantryOf(c);
+  p[food.id] = (p[food.id] ?? 0) + n;
+  save(c);
+  return { ok: true, text: `${food.name} ×${n} в запасы (теперь ${p[food.id]})` };
+}
+
+/** Eats one from the stock: no money, no time. */
+export function eatStock(c: Career, f: CareerFighter, id: Food['id']): { ok: boolean; text: string } {
+  const p = pantryOf(c);
+  if (!p[id]) return { ok: false, text: 'этого нет в запасах' };
+  if (satOf(f) >= 95) return { ok: false, text: 'он сыт' };
+  p[id]! -= 1;
+  return feed(c, f, FOODS.find((x) => x.id === id)!);
 }
 
 export function rest(c: Career, f: CareerFighter): { ok: boolean; text: string } {

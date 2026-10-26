@@ -53,3 +53,49 @@ export async function importSave(code: string): Promise<string | null> {
     return 'Код повреждён: скопируй его целиком';
   }
 }
+
+/** Any data as a short text code with this prefix (gzip + base64), e.g. БОЙЦЫ1: for fighters. */
+export async function packCode(prefix: string, data: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(data));
+  if (typeof CompressionStream !== 'undefined') return `${prefix}1:` + b64(await pipe(bytes, new CompressionStream('gzip')));
+  return `${prefix}0:` + b64(bytes);
+}
+
+/** Reads a code made by packCode; null if it is not one or is broken. */
+export async function unpackCode<T>(prefix: string, code: string): Promise<T | null> {
+  const m = code.match(new RegExp(`${prefix}([01]):([A-Za-z0-9+/=\\s]+)`));
+  if (!m) return null;
+  try {
+    let bytes = unb64(m[2].replace(/\s+/g, ''));
+    if (m[1] === '1') bytes = await pipe(bytes, new DecompressionStream('gzip'));
+    return JSON.parse(new TextDecoder().decode(bytes)) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Offers text as a file: through claude.ai's downloads where it runs, else a plain link. */
+export async function saveTextFile(name: string, code: string): Promise<string> {
+  const c = (window as unknown as { claude?: { use(n: string): Promise<unknown> } }).claude;
+  const dl = c?.use ? ((await c.use('downloads').catch(() => null)) as { save(r: { filename: string; data: string }): Promise<unknown> } | null) : null;
+  if (dl) {
+    try {
+      await dl.save({ filename: name, data: code });
+      return `Файл ${name} сохранён`;
+    } catch (e) {
+      const why = (e as { code?: string }).code;
+      if (why === 'declined') return 'Скачивание отменено';
+      if (why === 'rate_limited') return 'Окно скачивания уже открыто';
+    }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([code], { type: 'text/plain' }));
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 2000);
+  return `Файл ${name} скачан`;
+}

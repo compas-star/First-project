@@ -602,6 +602,20 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   localStorage `arena-lang-v1`, default by the phone's language (ru/uk/be/kk = Russian); dock button
   🌐 switches and reloads. Untranslated Cyrillic seen on screen is collected in `__i18nMissing`;
   the Playwright script `miss.cjs` (scratchpad) plays the sandbox in English and dumps it.
+- **Own tournaments** (`custom.ts` + `customUi.ts`, the "Турниры" button by "Карьера"; user: a fighter
+  generator and editor, realistic, stats up to the story's maximum, a points budget so not all can be
+  maxed, tournaments of them, transfer between devices). `CustomFighter`: name/nick, style, height
+  1.60-2.05, weight 55-130, skin, aggression, `lv` 0..10 per stat (6 qualities + hands, legs);
+  level l costs ceil(l/2), budget `BUDGET` 100 (one stat to 10 = 30). `toFighter` -> CareerFighter
+  (stat = lo + (hi-lo) x lv/10, the career's range), fought through the same career fight hook
+  (`hooks` object shared by CareerUi and CustomUi in main.ts). Random man (`randomFighter`, BMI
+  weight, `autoSpend` by style lean), copy, sparring. Tournament `CTour` 4/8/16, rounds 0/1/3/5,
+  map; seeded; each fight Watch or Sim (`countMatch` by rating odds), "sim all of the round";
+  wins/losses/titles and a hall of fame. Stored in `arena-fighters-v1` (so the cloud copy and
+  СЕЙВ1 take it). Transfer: code `БОЙЦЫ1:` (all) / `БОЕЦ1:` (one) via `packCode`/`unpackCode`
+  in saveCode.ts, file via `saveTextFile`; import merges by id. Shares `#career` with the career
+  (`dataset.mode` 'custom' / 'career'; `CareerUi.open` is false in custom mode); buttons use
+  `data-cu`. English entries in i18nEn.ts. Playwright: `cu.cjs` / `cuen.cjs` in the scratchpad.
 - `labUi.ts` + `combos.ts`: combination lab ("Лаборатория связок" at the top of the setup
   sheet; the user rejected the slider strike editor: "миллион ползунков"). Tap blows in
   order (tap a step to cycle its zone), "Показать" plays it on a dummy (`Sim.lab`: striker

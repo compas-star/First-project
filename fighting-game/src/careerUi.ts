@@ -133,11 +133,12 @@ export class CareerUi {
   }
 
   get open(): boolean {
-    return !$('career').hidden;
+    return !$('career').hidden && $('career').dataset.mode !== 'custom';
   }
 
   show(): void {
     $('career').hidden = false;
+    $('career').dataset.mode = 'career';
     tick(this.c);
     actCheck(this.c);
     if (storyCheck(this.c).length) save(this.c);

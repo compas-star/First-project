@@ -14,7 +14,8 @@ const DISCIPLINE_IDS: string[] = DISCIPLINES.map((d) => d.id);
 import { View, type Figure } from './view';
 import { MAPS, MAP_BY_ID, type MapId } from './maps';
 import { SKINS, defaultSkin } from './skins';
-import { CareerUi } from './careerUi';
+import { CareerUi, type CareerHooks } from './careerUi';
+import { CustomUi } from './customUi';
 import { Sound } from './sound';
 import { LabUi } from './labUi';
 import { loadEdits } from './moveEdits';
@@ -419,7 +420,7 @@ function endCut(): void {
 }
 
 function setCareerDock(on: boolean): void {
-  for (const id of ['btnRestart', 'btnSetup', 'btnCareer']) $(id).hidden = on;
+  for (const id of ['btnRestart', 'btnSetup', 'btnCareer', 'btnCustom']) $(id).hidden = on;
 }
 
 function startFight(): void {
@@ -619,7 +620,7 @@ function frame(now: number): void {
   // kept fighting in the background), and the arena is only redrawn now and then.
   const careerUp = !$('career').hidden && !cutState;
   // Act 3: Титан spars with a copy of ours behind the career screen (tapes.ts).
-  if (careerUp) tapesStep(career.c, 7);
+  if (careerUp && career.open) tapesStep(career.c, 7);
   if (!paused && !training && !frozen && !careerUp) {
     // On a slow phone the physics may not keep up; then time simply runs slower.
     worldDt = sim.advance(realDt * viewScale * (sim.winner ? 1 : speed) * (lab.active ? lab.slow : 1));
@@ -1007,7 +1008,7 @@ try {
 saveHook.after = cloudDirty;
 
 const TVSPOT = { pos: TV_POS, facing: TV_FACING };
-const career = new CareerUi({
+const hooks: CareerHooks = {
   fight(me, opp, tier, title, done, tweak, opts) {
     careerFight = { done, belt: opts?.title && opts.cls ? opts.cls : undefined };
     setCareerDock(true);
@@ -1049,7 +1050,10 @@ const career = new CareerUi({
     $('btnPause').textContent = 'Пауза';
     if (careerFight) startFight();
   },
-});
+};
+const career = new CareerUi(hooks);
+// «Свои турниры»: own fighters and tournaments in the career's section (customUi.ts).
+const custom = new CustomUi(hooks);
 
 /** The bill of the fight, as a caption, whatever the words setting. */
 function showBill(title: string): void {
@@ -1156,6 +1160,11 @@ void cloudStart(hadLocal, () => {
   career.c = loadCareer() ?? career.c;
   loadEdits();
   if (career.open) career.render();
+});
+$('btnCustom').addEventListener('click', () => {
+  paused = true;
+  $('sheet').hidden = true;
+  custom.show();
 });
 $('btnCareer').addEventListener('click', () => {
   paused = true;

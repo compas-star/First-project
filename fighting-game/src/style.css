@@ -2639,3 +2639,36 @@ body.cutting #btnRec {
   font-size: 12px;
   color: var(--gold, #f2c14e);
 }
+/* «Свои турниры» (customUi.ts), drawn in the career's section. */
+#career .cutabs button { flex: 1; font-size: 9px; padding: 8px 4px; }
+#career .cucard .row button { font-size: 9px; padding: 7px 6px; }
+#career .cubars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 8px; margin: 6px 0; }
+#career .cubars span { position: relative; height: 14px; background: #2a2433; border: 1px solid #000; overflow: hidden; }
+#career .cubars span b { position: absolute; left: 0; top: 0; bottom: 0; background: var(--cyan, #4fe3ff); opacity: 0.55; }
+#career .cubars span i { position: relative; z-index: 1; font: 400 9px/14px 'Pixelify Sans', system-ui, sans-serif; font-style: normal; padding-left: 3px; }
+#career .cupts { position: sticky; top: 0; z-index: 5; background: var(--panel, #1d1824); border: 3px solid #000; padding: 8px 10px; font-size: 14px; }
+#career .cupts b { color: var(--gold, #f2c14e); font-size: 16px; }
+#career .cunames { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+#career .cunames label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+#career .cunames input { width: 100%; min-width: 0; padding: 7px 6px; font: 600 14px 'Pixelify Sans', system-ui, sans-serif; background: #120f17; color: #fff; border: 2px solid #000; }
+#career .cuchips { display: flex; flex-wrap: wrap; gap: 6px; }
+#career .cuchips button { font-size: 9px; padding: 7px 8px; }
+#career .curange { display: grid; grid-template-columns: 80px 1fr 64px; align-items: center; gap: 8px; font-size: 13px; }
+#career .curange output { text-align: right; color: var(--gold, #f2c14e); }
+#career .custat { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+#career .cuhead b { font: 400 10px/1.4 'Press Start 2P', monospace; display: block; }
+#career .cuhead small { font-size: 12px; opacity: 0.7; }
+#career .cuctl { display: grid; grid-template-columns: 44px 1fr 56px; gap: 8px; align-items: center; }
+#career .cuctl button { padding: 6px 0; font-size: 14px; }
+#career .cuctl button small { font-size: 9px; opacity: 0.8; }
+#career .culv { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; }
+#career .culv i { height: 16px; background: #2a2433; border: 1px solid #000; }
+#career .culv i.on { background: var(--gold, #f2c14e); }
+#career .cusave { position: sticky; bottom: 0; background: var(--panel, #1d1824); padding: 8px 0; }
+#career .cupicks { display: flex; flex-direction: column; gap: 6px; }
+#career .cupick { text-align: left; font-size: 10px; padding: 8px; }
+#career .cupick small { display: block; font-family: 'Pixelify Sans', system-ui, sans-serif; font-size: 12px; opacity: 0.7; }
+#career .cupick.on { border-color: var(--gold, #f2c14e); }
+#career .cupman { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+#career .cupman.won b { color: var(--gold, #f2c14e); }
+#career .cupman small { opacity: 0.7; font-size: 12px; }

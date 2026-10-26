@@ -33,6 +33,35 @@ export const EN: Record<string, string> = {
   // --- signs in the arenas (drawn on canvases) ---
   'АРЕНА': 'ARENA', 'НОЧЬ БОЁВ': 'FIGHT NIGHT', 'РАУНД 1': 'ROUND 1', 'КУВАЛДА': 'SLEDGE', 'ДРАКА': 'BRAWL', 'БОЙ!': 'FIGHT!', 'БАР 24': 'BAR 24',
   'ЛАПША': 'NOODLES', 'ОТЕЛЬ': 'HOTEL', 'КЛУБ': 'CLUB', 'БОИ': 'FIGHTS', 'ПИВО': 'BEER', 'БАР': 'BAR',
+  // --- own tournaments (customUi.ts) ---
+  'Турниры': 'Tournaments', 'Свои турниры': 'Own tournaments', '← Арена': '← Arena', '👥 Бойцы': '👥 Fighters', '🏆 Турнир': '🏆 Tournament', '📤 Перенос': '📤 Transfer',
+  'Очки:': 'Points:', 'рейтинг': 'rating', 'Скор': 'Spd', 'Реак': 'Reac', 'Техн': 'Tech', 'Укло': 'Evas', 'Выно': 'Card',
+  '👥 Мои бойцы': '👥 My fighters', '➕ Новый боец': '➕ New fighter', '🎲 Случайный': '🎲 Random', '🎲×8': '🎲×8',
+  'Бойцов пока нет. Создай своего или сгенерируй случайных.': 'No fighters yet. Make your own or generate random ones.',
+  '✏️ Изменить': '✏️ Edit', '👊 Бой': '👊 Fight', '⧉ Копия': '⧉ Copy', '📋 Код': '📋 Code', '🏆 Зал славы': '🏆 Hall of fame', '✏️ Боец': '✏️ Fighter',
+  'Имя': 'First name', 'Прозвище': 'Nickname', 'Фамилия': 'Last name', 'Стиль': 'Style', 'Тело': 'Body', 'Навыки': 'Skills', 'Внешность': 'Look',
+  'Тяжёлый бьёт сильнее и стоит крепче, но быстрее устаёт. Высокий дальше достаёт.': 'A heavy man hits harder and stands firmer but tires faster. A tall one reaches further.',
+  '🎲 Раскидать остаток': '🎲 Spend the rest', '↺ Сбросить очки': '↺ Reset points', '💾 Сохранить': '💾 Save', 'Отмена': 'Cancel',
+  'Сила удара': 'Power', 'Реакция': 'Reaction', 'Уклоны': 'Evasion', 'Выносливость': 'Cardio',
+  'Быстрее руки, ноги и шаги. Самое сильное в игре.': 'Faster hands, feet and steps. The strongest thing in the game.', 'Тяжелее удары.': 'Heavier blows.',
+  'Раньше видит удар, чаще решает.': 'Sees blows earlier, decides more often.', 'Чище удары, дистанция, защита.': 'Cleaner blows, distance, defence.',
+  'Чаще и точнее уворачивается.': 'Dodges more often and better.', 'Дольше не выдыхается.': 'Lasts longer before gassing out.',
+  'Удары руками: чаще, быстрее, сильнее; открывает сложные.': 'Punches: more often, faster, harder; unlocks advanced ones.',
+  'Удары ногами: чаще, быстрее, сильнее; открывает вертушки.': 'Kicks: more often, faster, harder; unlocks spinning kicks.',
+  'легенда': 'legend', 'чемпион города': 'city champion', 'боец города': 'city fighter', 'районный': 'district level', 'подвальный': 'basement level', 'новичок': 'rookie',
+  '🏆 Новый турнир': '🏆 New tournament', '▶ Вернуться к текущему турниру': '▶ Back to the current tournament', 'Участники': 'Entrants', 'Бой': 'Fight',
+  'До конца': 'To the finish', '1 раунд': '1 round', '🏆 Начать турнир': '🏆 Start the tournament', 'Своих бойцов нет — турнир соберётся из случайных.': 'No fighters of your own: the bracket fills with random ones.',
+  'Финал': 'Final', 'Полуфинал': 'Semi-final', 'Четвертьфинал': 'Quarter-final', '1/8 финала': 'Round of 16', '👁 Смотреть': '👁 Watch', '⏩ Досчитать': '⏩ Sim',
+  '⏩ Досчитать все бои раунда': '⏩ Sim all fights of the round', 'досчитан': 'simmed', 'Чемпион турнира!': 'Tournament champion!', 'Новый турнир': 'New tournament',
+  'до конца': 'to the finish', '📤 Перенос бойцов': '📤 Move fighters', 'Скачай файл с бойцами и открой его на другом устройстве. Или скопируй код и пришли его себе или другу.':
+    'Download a file with your fighters and open it on another device. Or copy the code and send it to yourself or a friend.',
+  '💾 Скачать файл': '💾 Download file', '📋 Код всех бойцов': '📋 Code of all fighters', 'Скопировать': 'Copy', 'Загрузить': 'Load', '📂 Загрузить файл': '📂 Load file',
+  'вставь сюда код бойца или бойцов': 'paste a fighter code here', 'Добавить из кода': 'Add from code',
+  'Загруженные бойцы добавятся к твоим. Боец с тем же номером заменится.': 'Loaded fighters are added to yours. One with the same id is replaced.',
+  'Добавлен случайный боец': 'A random fighter was added', 'Добавлено 8 случайных бойцов': '8 random fighters were added', 'Копия добавлена': 'Copy added',
+  'Код бойца скопирован': 'Fighter code copied', 'Очков больше, чем можно': 'More points than allowed', 'Бои раунда досчитаны': 'Round simmed', 'Это не код бойцов': 'This is not a fighter code',
+  'Победа!': 'Victory!', 'Поражение': 'Defeat', 'Текущий турнир не закончен. Начать новый?': 'The current tournament is not over. Start a new one?',
+  'Не получилось — выдели код и скопируй': 'Did not work: select the code and copy it', 'Чемпион турнира': 'Tournament champion', 'Да': 'Yes', 'Нет': 'No',
   // --- the page ---
   'Арена скорости': 'Speed Arena', 'Скопируй и пришли в чат, напиши, что не так.': 'Copy it and send it in the chat with what is wrong.', 'язык / language': 'language / язык', 'Красный': 'Red', 'Синий': 'Blue', 'ясно': 'clear', 'реальное время': 'real time', 'Реальное время': 'Real time',
   'Пауза': 'Pause', 'Дальше': 'Next', 'Глаза: быстрейший': 'Eyes: fastest', 'Глаза: Красный': 'Eyes: Red', 'Глаза: Синий': 'Eyes: Blue',
@@ -208,6 +237,18 @@ export const EN: Record<string, string> = {
 
 const nameRx = '([^:,]+?)';
 export const EN_RX: [RegExp, string | ((...p: string[]) => string)][] = [
+  // own tournaments
+  [/^\((.+)\)$/, '($1)'],
+  [/^Собери своего бойца: стиль, тело, внешность и (\d+) очков на навыки\. Один навык до максимума стоит 30 очков — всё сразу не прокачать\.$/, 'Build your fighter: style, body, look and $1 points for skills. One skill to the top costs 30 points: you cannot max everything.'],
+  [/^Очки: (\d+) из (\d+) · рейтинг (\d+) \((.+)\)$/, 'Points: $1 of $2 · rating $3 ($4)'], [/^Навыки · очки: (\d+)$/, 'Skills · points: $1'],
+  [/^(.+) · (\d\.\d\d) м · (\d+) кг · рейтинг (\d+) \((.+)\)$/, '$1 · $2 m · $3 kg · rating $4 ($5)'], [/^Бои (\d+)–(\d+)(.*)$/, (w, l, t) => `Record ${w}–${l}${t}`],
+  [/^(\d+) бойцов$/, '$1 fighters'], [/^(\d+) раунда$/, '$1 rounds'], [/^(\d+) раундов$/, '$1 rounds'], [/^Твои бойцы \((\d+)\/(\d+)\)$/, 'Your fighters ($1/$2)'],
+  [/^Остальные (\d+) — случайные бойцы\.$/, 'The other $1 are random fighters.'], [/^🏆 Турнир · (\d+) бойцов$/, '🏆 Tournament · $1 fighters'],
+  [/^(.+) · (\d+) раунд\.$/, '$1 · $2 rounds'], [/^Пробный бой: (.+) против (.+)$/, 'Test fight: $1 vs $2'], [/^(.+): (.+) против (.+)$/, '$1: $2 vs $3'],
+  [/^Победил (.+)$/, '$1 won'], [/^👑 (.+) — чемпион турнира!$/, '👑 $1 is the tournament champion!'], [/^Удалить (.+)\?$/, 'Delete $1?'],
+  [/^(.+) сохранён(?: \(остались неистраченные очки: (\d+)\))?$/, (n, p) => `${n} saved${p ? ` (${p} points left unspent)` : ''}`],
+  [/^Загружено бойцов: (\d+)$/, 'Fighters loaded: $1'], [/^Уже выбрано (\d+)$/, 'Already picked $1'], [/^(.+) · (\d+) кг · (\d+)$/, '$1 · $2 kg · $3'],
+  [/^Файл (.+) (сохранён|скачан)$/, 'File $1 saved'],
   // fight screen
   [/^(.+) ретировался\. Победил (.+)$/, '$1 retreated. $2 wins'],
   [/^(.+) сматывается\. Поражение$/, '$1 slips away. A loss'],

@@ -2672,3 +2672,9 @@ body.cutting #btnRec {
 #career .cupman { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
 #career .cupman.won b { color: var(--gold, #f2c14e); }
 #career .cupman small { opacity: 0.7; font-size: 12px; }
+#career .cupairs { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+#career .cupair { display: grid; grid-template-columns: 18px 1fr auto 1fr; gap: 6px; align-items: center; }
+#career .cupair b { font-size: 10px; color: #ff4fa3; }
+#career .cuslot { font-size: 9px; padding: 8px 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#career .cuslot.on { outline: 3px solid #ffd23f; }
+#career .cuslot:disabled { opacity: 0.55; }

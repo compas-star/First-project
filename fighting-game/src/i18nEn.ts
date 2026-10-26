@@ -35,6 +35,7 @@ export const EN: Record<string, string> = {
   'ЛАПША': 'NOODLES', 'ОТЕЛЬ': 'HOTEL', 'КЛУБ': 'CLUB', 'БОИ': 'FIGHTS', 'ПИВО': 'BEER', 'БАР': 'BAR',
   // --- own tournaments (customUi.ts) ---
   'Турниры': 'Tournaments', 'Свои турниры': 'Own tournaments', '← Арена': '← Arena', '👥 Бойцы': '👥 Fighters', '🏆 Турнир': '🏆 Tournament', '📤 Перенос': '📤 Transfer',
+  '⚔ Один бой': '⚔ Single fight', 'Пары': 'Pairs', 'По рейтингу': 'By rating', 'Жребий': 'By lot', '✋ Сам ставлю пары': '✋ I set the pairs', '🎲 случайный': '🎲 random', 'Кто против кого': 'Who fights whom', 'Пары первого круга': 'First-round pairs', 'Отмечай бойцов выше — встают по порядку. Нажми одного в паре, потом другого — поменяются местами.': 'Tick fighters above: they line up in order. Tap one in a pair, then another: they swap places.', '⚔ В бой': '⚔ Fight', '⚔ Бой': '⚔ Fight', 'Победитель': 'Winner', 'Ещё бой': 'Another fight', '＋ Новый турнир или бой': '＋ New tournament or fight',
   'Очки:': 'Points:', 'рейтинг': 'rating', 'Скор': 'Spd', 'Реак': 'Reac', 'Техн': 'Tech', 'Укло': 'Evas', 'Выно': 'Card',
   '👥 Мои бойцы': '👥 My fighters', '➕ Новый боец': '➕ New fighter', '🎲 Случайный': '🎲 Random', '🎲×8': '🎲×8',
   'Бойцов пока нет. Создай своего или сгенерируй случайных.': 'No fighters yet. Make your own or generate random ones.',

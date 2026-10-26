@@ -186,8 +186,15 @@ export function copyFighter(f: CustomFighter): CustomFighter {
 
 // ---------- Tournaments ----------
 
-/** A new bracket: the strongest are kept apart until late (seeded by rating). */
-export function startTour(men: CustomFighter[], rounds: number, map: MapId): CTour {
+export type Draw = 'seed' | 'random' | 'hand';
+
+/** A new bracket. 'seed': the strongest are kept apart until late; 'random': drawn by lot;
+ *  'hand': as given (1 vs 2, 3 vs 4...). Two men = a single fight. */
+export function startTour(men: CustomFighter[], rounds: number, map: MapId, draw: Draw = 'seed'): CTour {
+  if (draw !== 'seed') {
+    const order = draw === 'random' ? shuffle([...men]) : men;
+    return build(order.map((m) => m.id), rounds, map, men);
+  }
   const sorted = [...men].sort((a, b) => ratingOf(b) - ratingOf(a));
   const n = sorted.length;
   const SEED: Record<number, number[]> = {
@@ -196,6 +203,18 @@ export function startTour(men: CustomFighter[], rounds: number, map: MapId): CTo
     16: [0, 15, 7, 8, 4, 11, 3, 12, 1, 14, 6, 9, 5, 10, 2, 13],
   };
   const order = (SEED[n] ?? sorted.map((_, i) => i)).map((i) => sorted[i].id);
+  return build(order, rounds, map, men);
+}
+
+function shuffle<T>(a: T[]): T[] {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function build(order: string[], rounds: number, map: MapId, men: CustomFighter[]): CTour {
   const first: CMatch[] = [];
   for (let i = 0; i < order.length; i += 2) first.push({ a: order[i], b: order[i + 1], w: null });
   return { rounds, map, men: order, rounds_: [first], done: false, roster: men.map((m) => JSON.parse(JSON.stringify(m)) as CustomFighter) };
@@ -205,7 +224,7 @@ export const tourMan = (t: CTour, id: string) => t.roster.find((m) => m.id === i
 
 export function roundName(t: CTour, r: number): string {
   const left = t.men.length / 2 ** r;
-  return left === 2 ? 'Финал' : left === 4 ? 'Полуфинал' : left === 8 ? 'Четвертьфинал' : left === 16 ? '1/8 финала' : `Раунд ${r + 1}`;
+  return t.men.length === 2 ? 'Бой' : left === 2 ? 'Финал' : left === 4 ? 'Полуфинал' : left === 8 ? 'Четвертьфинал' : left === 16 ? '1/8 финала' : `Раунд ${r + 1}`;
 }
 
 /** Records a fight's winner and builds the next round once this one is done. */
@@ -224,6 +243,7 @@ export function decideMatch(s: CustomStore, m: CMatch, w: string, how: CMatch['h
   if (R.length === 1) {
     t.done = true;
     t.champ = w;
+    if (t.men.length === 2) return;
     const champ = tourMan(t, w);
     const mine = s.fighters.find((f) => f.id === w);
     if (mine) mine.titles++;

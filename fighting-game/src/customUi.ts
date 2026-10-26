@@ -4,7 +4,7 @@
 import {
   CSTATS, CSTAT_NAME, CSTAT_DESC, LEVELS, BUDGET, BODY, STYLES, levelCost, left, spent, fullName, shortName, ratingOf, chance,
   toFighter, blankFighter, randomFighter, copyFighter, autoSpend, loadStore, saveStore, startTour, tourMan, roundName,
-  decideMatch, countMatch, currentRound, type CustomFighter, type CustomStore, type CMatch,
+  decideMatch, countMatch, currentRound, type CustomFighter, type CustomStore, type CMatch, type Draw,
 } from './custom';
 import { DISCIPLINE_BY_ID } from './disciplines';
 import { SKINS, defaultSkin } from './skins';
@@ -27,7 +27,7 @@ export class CustomUi {
   private ed: CustomFighter | null = null;
   private toast = '';
   private asking: { text: string; yes: () => void } | null = null;
-  private setup = { size: 8, rounds: 3, map: 'ring' as MapId, picked: [] as string[] };
+  private setup = { size: 8, rounds: 3, map: 'ring' as MapId, picked: [] as string[], draw: 'seed' as Draw, sel: -1 };
   private code = '';
 
   constructor(private hooks: CareerHooks) {
@@ -174,7 +174,14 @@ export class CustomUi {
     const s = this.s;
     const st = this.setup;
     st.picked = st.picked.filter((id) => s.fighters.some((f) => f.id === id));
-    const sizes = [4, 8, 16].map((n) => `<button type="button" class="${st.size === n ? 'primary' : ''}" data-cu="size" data-v="${n}">${n} бойцов</button>`).join('');
+    const sizes = [2, 4, 8, 16].map((n) => `<button type="button" class="${st.size === n ? 'primary' : ''}" data-cu="size" data-v="${n}">${n === 2 ? '⚔ Один бой' : `${n} бойцов`}</button>`).join('');
+    const draws = ([['seed', 'По рейтингу'], ['random', 'Жребий'], ['hand', '✋ Сам ставлю пары']] as [Draw, string][]).map(([d, t]) => `<button type="button" class="${st.draw === d ? 'primary' : ''}" data-cu="draw" data-v="${d}">${t}</button>`).join('');
+    const hand = st.size === 2 || st.draw === 'hand';
+    const slot = (i: number) => {
+      const f = s.fighters.find((x) => x.id === st.picked[i]);
+      return `<button type="button" class="cuslot${st.sel === i ? ' on' : ''}" data-cu="slot" data-i="${i}"${f ? '' : ' disabled'}>${f ? esc(shortName(f)) : '🎲 случайный'}</button>`;
+    };
+    const pairs = hand ? Array.from({ length: st.size / 2 }, (_, k) => `<div class="cupair"><small>${k + 1}</small>${slot(2 * k)}<b>vs</b>${slot(2 * k + 1)}</div>`).join('') : '';
     const rounds = [[0, 'До конца'], [1, '1 раунд'], [3, '3 раунда'], [5, '5 раундов']].map(([n, t]) => `<button type="button" class="${st.rounds === n ? 'primary' : ''}" data-cu="rounds" data-v="${n}">${t}</button>`).join('');
     const maps = MAPS.map((m) => `<button type="button" class="${st.map === m ? 'primary' : ''}" data-cu="map" data-v="${m}">${esc(MAP_BY_ID[m].name)}</button>`).join('');
     const men = s.fighters.map((f) => {
@@ -185,12 +192,14 @@ export class CustomUi {
     return `<div class="h1">🏆 Новый турнир</div>
       ${s.tour && !s.tour.done ? '<button type="button" data-cu="to" data-s="tour">▶ Вернуться к текущему турниру</button>' : ''}
       <div class="h2">Участники</div><div class="cuchips">${sizes}</div>
+      ${st.size > 2 ? `<div class="h2">Пары</div><div class="cuchips">${draws}</div>` : ''}
       <div class="h2">Бой</div><div class="cuchips">${rounds}</div>
       <div class="h2">Арена</div><div class="cuchips">${maps}</div>
       <div class="h2">Твои бойцы (${st.picked.length}/${st.size})</div>
       <div class="cupicks">${men || '<div class="fnote">Своих бойцов нет — турнир соберётся из случайных.</div>'}</div>
       ${fill ? `<div class="fnote">Остальные ${fill} — случайные бойцы.</div>` : ''}
-      <button type="button" class="primary wide" data-cu="start">🏆 Начать турнир</button>`;
+      ${hand ? `<div class="h2">${st.size === 2 ? 'Кто против кого' : 'Пары первого круга'}</div><div class="fnote">Отмечай бойцов выше — встают по порядку. Нажми одного в паре, потом другого — поменяются местами.</div><div class="cupairs">${pairs}</div>` : ''}
+      <button type="button" class="primary wide" data-cu="start">${st.size === 2 ? '⚔ В бой' : '🏆 Начать турнир'}</button>`;
   }
 
   private tourView(): string {
@@ -206,11 +215,13 @@ export class CustomUi {
         ${!m.w && live ? `<div class="row"><button type="button" class="primary" data-cu="watch" data-i="${R.indexOf(m)}">👁 Смотреть</button><button type="button" data-cu="count" data-i="${R.indexOf(m)}">⏩ Досчитать</button></div>` : ''}</div>`;
     };
     const champ = t.done && t.champ ? tourMan(t, t.champ) : null;
-    return `<div class="h1">🏆 Турнир · ${t.men.length} бойцов</div>
+    const one = t.men.length === 2;
+    return `<div class="h1">${one ? '⚔ Бой' : `🏆 Турнир · ${t.men.length} бойцов`}</div>
       <div class="fnote">${esc(MAP_BY_ID[t.map].name)} · ${t.rounds ? `${t.rounds} раунд.` : 'до конца'}</div>
-      ${champ ? `<div class="poster"><div class="h1">👑 ${esc(fullName(champ))}</div><div class="fnote">Чемпион турнира!</div></div><button type="button" class="primary wide" data-cu="to" data-s="tsetup">Новый турнир</button>` : ''}
+      ${champ ? `<div class="poster"><div class="h1">👑 ${esc(fullName(champ))}</div><div class="fnote">${one ? 'Победитель' : 'Чемпион турнира!'}</div></div><button type="button" class="primary wide" data-cu="to" data-s="tsetup">${one ? 'Ещё бой' : 'Новый турнир'}</button>` : ''}
       ${!t.done ? `<div class="h2">${roundName(t, r)}</div>${R.map((m) => row(m, true)).join('')}
         ${R.filter((m) => !m.w).length > 1 ? '<button type="button" data-cu="countall">⏩ Досчитать все бои раунда</button>' : ''}` : ''}
+      ${!t.done ? '<button type="button" data-cu="to" data-s="tsetup">＋ Новый турнир или бой</button>' : ''}
       ${t.rounds_.slice(0, t.done ? t.rounds_.length : r).map((RR, k) => `<details${t.done && k === t.rounds_.length - 1 ? ' open' : ''}><summary>${roundName(t, k)}</summary>${RR.map((m) => row(m, false)).join('')}</details>`).join('')}`;
   }
 
@@ -358,7 +369,22 @@ export class CustomUi {
       case 'size':
         this.setup.size = Number(b.dataset.v);
         this.setup.picked = this.setup.picked.slice(0, this.setup.size);
+        this.setup.sel = -1;
         return this.render();
+      case 'draw':
+        this.setup.draw = b.dataset.v as Draw;
+        this.setup.sel = -1;
+        return this.render();
+      case 'slot': {
+        const st = this.setup;
+        const i = Number(b.dataset.i);
+        if (st.sel < 0) st.sel = i;
+        else {
+          if (st.sel !== i) [st.picked[st.sel], st.picked[i]] = [st.picked[i], st.picked[st.sel]];
+          st.sel = -1;
+        }
+        return this.render();
+      }
       case 'rounds':
         this.setup.rounds = Number(b.dataset.v);
         return this.render();
@@ -368,6 +394,7 @@ export class CustomUi {
       case 'pick': {
         const p = this.setup.picked;
         const i = p.indexOf(id!);
+        this.setup.sel = -1;
         if (i >= 0) p.splice(i, 1);
         else if (p.length < this.setup.size) p.push(id!);
         else return this.say(`Уже выбрано ${this.setup.size}`);
@@ -377,7 +404,7 @@ export class CustomUi {
         const go = () => {
           const men = this.setup.picked.map((x) => s.fighters.find((m) => m.id === x)!).filter(Boolean);
           while (men.length < this.setup.size) men.push(randomFighter());
-          s.tour = startTour(men, this.setup.rounds, this.setup.map);
+          s.tour = startTour(men, this.setup.rounds, this.setup.map, this.setup.size === 2 ? 'hand' : this.setup.draw);
           this.save();
           this.go('tour');
         };
@@ -389,7 +416,7 @@ export class CustomUi {
         const R = currentRound(t);
         const m = R[Number(b.dataset.i)];
         if (!m || m.w) return;
-        const final = R.length === 1;
+        const final = R.length === 1 && t.men.length > 2;
         const A = tourMan(t, m.a), B = tourMan(t, m.b);
         return this.fight(A, B, t.rounds, t.map, `${roundName(t, t.rounds_.length - 1)}: ${shortName(A)} против ${shortName(B)}`, final, (won) => {
           this.s = loadStore();

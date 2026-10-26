@@ -610,7 +610,8 @@ Vite + TypeScript + three.js + Rapier (`@dimforge/rapier3d-compat`, WASM inlined
   (stat = lo + (hi-lo) x lv/10, the career's range), fought through the same career fight hook
   (`hooks` object shared by CareerUi and CustomUi in main.ts). Random man (`randomFighter`, BMI
   weight, `autoSpend` by style lean), copy, sparring. Tournament `CTour` 4/8/16, rounds 0/1/3/5,
-  map; seeded; each fight Watch or Sim (`countMatch` by rating odds), "sim all of the round";
+  map; pairs by rating (seeded) / by lot / by hand (`Draw`; hand: picks fill slots 1v2, 3v4..., tap two
+  slots to swap); size 2 = a single fight (no title, no hall); each fight Watch or Sim (`countMatch` by rating odds), "sim all of the round";
   wins/losses/titles and a hall of fame. Stored in `arena-fighters-v1` (so the cloud copy and
   СЕЙВ1 take it). Transfer: code `БОЙЦЫ1:` (all) / `БОЕЦ1:` (one) via `packCode`/`unpackCode`
   in saveCode.ts, file via `saveTextFile`; import merges by id. Shares `#career` with the career

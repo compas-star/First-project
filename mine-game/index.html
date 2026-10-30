@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Песчаная шахта</title>
 <style>
   :root {
@@ -11,16 +11,20 @@
     --text: #efe6d8;
     --muted: #a89984;
     --accent: #e0b23a;
+    --danger: #e0664a;
     --btn: #2f2822;
     --btn-on: #5a4a2e;
     --border: #3d342b;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
     display: flex; flex-direction: column; align-items: center;
-    padding: 12px 16px 24px;
+    padding-block: 12px 24px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
   h1 { font-size: 18px; margin: 4px 0 8px; letter-spacing: .02em; }
   .bar {
@@ -30,111 +34,118 @@
   }
   button {
     background: var(--btn); color: var(--text); border: 1px solid var(--border);
-    border-radius: 7px; padding: 6px 10px; font: inherit; cursor: pointer;
+    border-radius: 7px; padding: 7px 11px; font: inherit; cursor: pointer;
   }
   button.on { background: var(--btn-on); border-color: var(--accent); }
   button:hover { filter: brightness(1.15); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #run { border-color: var(--accent); font-weight: 600; }
   .sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
-  .stats { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; color: var(--muted); margin-bottom: 8px; }
+  .stats {
+    display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+    color: var(--muted); margin-bottom: 6px; font-variant-numeric: tabular-nums;
+  }
   .stats b { color: var(--text); }
+  #status { color: var(--accent); margin-bottom: 8px; min-height: 1.4em; text-align: center; }
   .wrap { position: relative; width: 100%; max-width: 960px; }
   canvas {
-    display: block; width: 100%; aspect-ratio: 3 / 2;
-    image-rendering: pixelated; image-rendering: crisp-edges;
+    display: block; width: 100%; max-width: 100%; aspect-ratio: 3 / 2;
     border-radius: 8px; border: 1px solid var(--border);
     touch-action: none; cursor: crosshair; background: #000;
   }
   .banner {
-    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
-    font-size: 28px; font-weight: 700; color: var(--accent);
-    background: rgba(0,0,0,.45); border-radius: 8px; pointer-events: none;
+    position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px;
+    align-items: center; justify-content: center; text-align: center;
+    background: rgba(0,0,0,.55); border-radius: 8px; padding: 16px;
   }
-  .hint { color: var(--muted); max-width: 960px; text-align: center; margin-top: 10px; }
+  .banner[hidden] { display: none; }
+  .banner h2 { margin: 0; font-size: 26px; }
+  .banner.win h2 { color: var(--accent); }
+  .banner.lose h2 { color: var(--danger); }
+  .hint { color: var(--muted); max-width: 960px; margin-top: 10px; }
+  .hint p { margin: 4px 0; }
 </style>
 </head>
 <body>
-<h1>Песчаная шахта: прототип</h1>
+<h1>Песчаная шахта</h1>
 
 <div class="bar">
-  <button data-tool="dig" class="on">⛏ Копать [1]</button>
-  <button data-tool="wood">🪵 Крепь [2]</button>
-  <button data-tool="sand">Песок [3]</button>
-  <button data-tool="water">Вода [4]</button>
+  <button data-tool="tunnel" class="on">━ Штрек [1]</button>
+  <button data-tool="shaft">┃ Ствол [2]</button>
+  <button data-tool="frame">⊓ Крепь [3]</button>
+  <button data-tool="erase">✕ Убрать [4]</button>
   <span class="sep"></span>
-  <button id="brushDown">−</button>
-  <span>Кисть: <b id="brushVal">3</b></span>
-  <button id="brushUp">+</button>
-  <span class="sep"></span>
-  <button id="quake">💥 Толчок [Q]</button>
-  <button id="pause">⏸ Пауза [Пробел]</button>
-  <button id="reset">↺ Заново [R]</button>
+  <button id="run">▶ Пуск</button>
+  <button id="speed">×1</button>
+  <button id="reset">↺ Заново</button>
 </div>
 
 <div class="stats">
+  <span>Деньги: <b id="money">0</b></span>
+  <span>По плану: <b id="planCost">0</b></span>
   <span>Золото: <b id="gold">0</b> / <b id="goal">0</b></span>
-  <span>Дерево: <b id="wood">0</b></span>
-  <span>Обрушилось клеток: <b id="fallen">0</b></span>
+  <span>Рабочие: <b id="crew">0</b></span>
 </div>
+<div id="status"></div>
 
 <div class="wrap">
-  <canvas id="c" width="240" height="160"></canvas>
-  <div class="banner" id="banner">Жила выработана! 🏆</div>
+  <canvas id="c" width="768" height="512"></canvas>
+  <div class="banner" id="banner" hidden>
+    <h2 id="bannerTitle"></h2>
+    <div id="bannerText"></div>
+    <button id="bannerBtn">↺ Заново</button>
+  </div>
 </div>
 
-<p class="hint">
-  Копайте от поверхности вниз к золотой жиле. Узкие тоннели держатся сами, а широкие пролёты
-  постепенно осыпаются куполом. Ставьте деревянные стойки и балки, чтобы держать потолок.
-  Песчаные линзы высыпаются, как только их вскроешь, а в подземных карманах прячется вода.
-  «Толчок» трясёт гору и проверяет крепь на прочность.
-</p>
+<div class="hint">
+  <p><b>Цель:</b> добыть золото из жилы в правом нижнем углу и никого не похоронить.</p>
+  <p><b>Ствол</b> — вертикальная шахта с лестницей, тяните от поверхности вниз. <b>Штрек</b> — горизонтальный тоннель,
+    тяните вдоль пола. <b>Крепь</b> — деревянная рама, кликните по тоннелю. Рабочие выполняют план по порядку,
+    а готовую крепь ставят в первую очередь.</p>
+  <p>Длинный незакреплённый пролёт осыпается, песок из линз течёт в выработки, камень копается долго и дорого.
+    Завалы рабочие разбирают сами, но за деньги. План можно править и во время работы.</p>
+</div>
 
 <script>
 (() => {
-  const W = 240, H = 160, N = W * H;
+  // ---------- Мир ----------
+  const T = 4, TW = 48, TH = 32, W = TW * T, H = TH * T, N = W * H, S = 4;
+  const SURF = 5, BEDROCK = 30;
+  const E = 0, SAND = 1, SOIL = 2, ROCK = 3, WOOD = 4, GOLD = 6, GOLDL = 7, DEBRIS = 8, LOOSE = 9;
+  const COST = { dig: 3, rock: 20, frame: 12 };
+  const TIME = { dig: 0.9, rock: 3.2, frame: 1.5 };
+  const START_MONEY = 500, GOAL = 120, CREW = 3;
 
-  // Материалы
-  const E = 0, SAND = 1, SOIL = 2, ROCK = 3, WOOD = 4, WATER = 5, GOLD = 6, GOLDL = 7, DEBRIS = 8, LOOSE = 9;
-
-  const mat = new Uint8Array(N);
-  const col = new Uint32Array(N);
-  const stamp = new Uint32Array(N);
-  const bg = new Uint32Array(N);
+  const mat = new Uint8Array(N), col = new Uint32Array(N), stamp = new Uint32Array(N), bg = new Uint32Array(N);
   let frame = 1;
 
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
-  const img = ctx.createImageData(W, H);
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const octx = off.getContext('2d');
+  const img = octx.createImageData(W, H);
   const buf = new Uint32Array(img.data.buffer);
 
   const clamp = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
   const rgb = (r, g, b) => ((255 << 24) | (clamp(b) << 16) | (clamp(g) << 8) | clamp(r)) >>> 0;
-  const jit = (c, j) => { const v = (Math.random() * 2 - 1) * j; return rgb(c[0] + v, c[1] + v, c[2] + v); };
-
+  const jit = (c, j, R = Math.random) => { const v = (R() * 2 - 1) * j; return rgb(c[0] + v, c[1] + v, c[2] + v); };
   const BASE = {
     [SAND]: [214, 182, 112], [ROCK]: [104, 104, 112], [WOOD]: [168, 116, 62],
-    [WATER]: [48, 112, 205], [GOLD]: [232, 190, 44], [GOLDL]: [240, 200, 60], [DEBRIS]: [110, 76, 44],
+    [GOLD]: [232, 190, 44], [GOLDL]: [240, 200, 60], [DEBRIS]: [110, 76, 44],
   };
-
-  function colorFor(m, y) {
-    if (m === SOIL) { const d = Math.max(0, y - 25) * 0.35; return jit([132 - d, 92 - d * 0.8, 58 - d * 0.5], 10); }
-    if (m === ROCK) return jit(BASE[ROCK], 14);
-    if (m === WATER) return jit(BASE[WATER], 8);
-    return jit(BASE[m], 12);
+  function colorFor(m, y, R) {
+    if (m === SOIL) { const d = Math.max(0, y - 20) * 0.35; return jit([132 - d, 92 - d * 0.8, 58 - d * 0.5], 10, R); }
+    return jit(BASE[m], m === ROCK ? 14 : 12, R);
   }
 
-  const solid = m => m !== E && m !== WATER;
-  const fluidLike = m => m === E || m === WATER;
-
-  // Устойчивость конструкционных материалов:
-  // safe — пролёт, который держится без проблем; k — рост риска обвала с пролётом; kt — риск при толчке
+  // ---------- Физика сыпучего грунта ----------
   const PROPS = {
-    [SOIL]: { safe: 3, k: 0.00002, kt: 0.00008, loose: LOOSE },
-    [GOLD]: { safe: 3, k: 0.00002, kt: 0.00008, loose: GOLDL },
-    [WOOD]: { safe: 10, k: 0.00002, kt: 0.000004, loose: DEBRIS },
+    [SOIL]: { safe: 3, k: 0.000015, loose: LOOSE },
+    [GOLD]: { safe: 3, k: 0.000015, loose: GOLDL },
+    [WOOD]: { safe: 10, k: 0.00002, loose: DEBRIS },
   };
   const MAXS = 40;
-
-  let tremor = 1, gold = 0, goal = 0, woodLeft = 0, fallen = 0, paused = false, won = false;
 
   function swap(i, j) {
     const m = mat[i]; mat[i] = mat[j]; mat[j] = m;
@@ -146,7 +157,6 @@
     mat[i] = PROPS[m].loose;
     if (m === WOOD) col[i] = colorFor(DEBRIS);
     stamp[i] = frame;
-    fallen++;
   }
 
   // Расстояние вдоль ряда до ближайшей точки, у которой снизу есть опора
@@ -156,19 +166,19 @@
     for (let d = 1; d <= MAXS; d++) {
       const nx = x - d;
       if (nx < 0) { dl = d; break; }
-      if (!solid(mat[row + nx])) break;
-      if (solid(mat[below + nx])) { dl = d; break; }
+      if (mat[row + nx] === E) break;
+      if (mat[below + nx] !== E) { dl = d; break; }
       if (d === MAXS) dl = MAXS;
     }
     for (let d = 1; d <= MAXS; d++) {
       const nx = x + d;
       if (nx >= W) { dr = d; break; }
-      if (!solid(mat[row + nx])) break;
-      if (solid(mat[below + nx])) { dr = d; break; }
+      if (mat[row + nx] === E) break;
+      if (mat[below + nx] !== E) { dr = d; break; }
       if (d === MAXS) dr = MAXS;
     }
-    if (dl < 0 && dr < 0) return -1;     // висит в воздухе
-    if (dl < 0) return Math.ceil(dr * 1.5); // консоль держится хуже
+    if (dl < 0 && dr < 0) return -1;
+    if (dl < 0) return Math.ceil(dr * 1.5);
     if (dr < 0) return Math.ceil(dl * 1.5);
     return Math.min(dl, dr);
   }
@@ -176,26 +186,12 @@
   function loadF(x, y) {
     let n = 0;
     for (let yy = y - 1; yy >= 0 && n < 30; yy--) {
-      if (solid(mat[yy * W + x])) n++; else break;
+      if (mat[yy * W + x] !== E) n++; else break;
     }
     return 0.4 + n / 25;
   }
 
   function updatePowder(x, i) {
-    const b = i + W, mb = mat[b];
-    if (fluidLike(mb)) {
-      if (mb === WATER && Math.random() < 0.5) return; // в воде тонет медленнее
-      swap(i, b); return;
-    }
-    const d = Math.random() < 0.5 ? -1 : 1;
-    for (let k = 0; k < 2; k++) {
-      const s = k ? -d : d, nx = x + s;
-      if (nx < 0 || nx >= W) continue;
-      if (fluidLike(mat[b + s]) && fluidLike(mat[i + s])) { swap(i, b + s); return; }
-    }
-  }
-
-  function updateWater(x, i) {
     const b = i + W;
     if (mat[b] === E) { swap(i, b); return; }
     const d = Math.random() < 0.5 ? -1 : 1;
@@ -204,31 +200,14 @@
       if (nx < 0 || nx >= W) continue;
       if (mat[b + s] === E && mat[i + s] === E) { swap(i, b + s); return; }
     }
-    for (let k = 0; k < 2; k++) {
-      const s = k ? -d : d, nx = x + s;
-      if (nx < 0 || nx >= W) continue;
-      if (mat[i + s] === E) { swap(i, i + s); return; }
-    }
   }
 
   function updateStruct(x, y, i, m) {
-    const P = PROPS[m];
-    if (solid(mat[i + W])) {
-      if (tremor > 1.3) {
-        if (m === WOOD) {
-          // Стойка под нагрузкой может сломаться при толчке
-          if (Math.random() < 0.05 && Math.random() < 0.0004 * (tremor - 1) * loadF(x, y)) loosen(i, m);
-        } else if ((x > 0 && mat[i - 1] === E) || (x < W - 1 && mat[i + 1] === E)) {
-          if (Math.random() < 0.0015 * tremor) loosen(i, m); // стенки осыпаются
-        }
-      }
-      return;
-    }
+    if (mat[i + W] !== E) return;
     const sp = span(x, y);
     if (sp < 0) { loosen(i, m); return; }
-    const ex = Math.max(0, sp - P.safe);
-    const p = P.k * ex * ex * loadF(x, y) * tremor + P.kt * (tremor - 1) * sp;
-    if (Math.random() < p) loosen(i, m);
+    const P = PROPS[m], ex = Math.max(0, sp - P.safe);
+    if (Math.random() < P.k * ex * ex * loadF(x, y)) loosen(i, m);
   }
 
   function step() {
@@ -237,164 +216,575 @@
       const ltr = (frame + y) & 1;
       for (let k = 0; k < W; k++) {
         const x = ltr ? k : W - 1 - k;
-        const i = y * W + x;
-        const m = mat[i];
+        const i = y * W + x, m = mat[i];
         if (m === E || m === ROCK || stamp[i] === frame) continue;
-        switch (m) {
-          case SAND: case LOOSE: case GOLDL: case DEBRIS: updatePowder(x, i); break;
-          case WATER: updateWater(x, i); break;
-          default: updateStruct(x, y, i, m);
-        }
+        if (m === SAND || m === LOOSE || m === GOLDL || m === DEBRIS) updatePowder(x, i);
+        else updateStruct(x, y, i, m);
       }
     }
-    tremor = 1 + (tremor - 1) * 0.985;
-    if (tremor < 1.01) tremor = 1;
   }
 
-  // ---------- Генерация уровня ----------
+  // ---------- Уровень ----------
+  function mulberry32(a) {
+    return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  }
+
   function generate() {
-    const R = Math.random;
-    const ph = Array.from({ length: 8 }, () => R() * 100);
-    const surf = new Int16Array(W);
-    for (let x = 0; x < W; x++) surf[x] = Math.round(24 + 3 * Math.sin(x * 0.03 + ph[0]) + 2 * Math.sin(x * 0.08 + ph[1]));
-
-    const blobs = [];
-    const addBlobs = (n, m, y0, y1, rx, ry) => {
-      for (let k = 0; k < n; k++) blobs.push({ m, cx: 10 + R() * (W - 20), cy: y0 + R() * (y1 - y0), rx: rx[0] + R() * rx[1], ry: ry[0] + R() * ry[1] });
-    };
-    addBlobs(7, SAND, 35, 125, [8, 14], [4, 6]);
-    addBlobs(2, WATER, 90, 130, [10, 10], [4, 4]);
-    addBlobs(5, GOLD, 128, 150, [5, 9], [2, 4]);
-
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const i = y * W + x;
-        // фон: небо или тёмная полость
-        if (y < surf[x]) {
-          const t = y / 30;
-          bg[i] = rgb(120 + 60 * t, 170 + 40 * t, 220 + 20 * t);
-          mat[i] = E; col[i] = 0; continue;
-        }
-        bg[i] = jit([34, 26, 20], 4);
-
-        let m = SOIL;
-        const rockTop = 68 + 4 * Math.sin(x * 0.05 + ph[2]);
-        const rockBot = rockTop + 6 + 3 * Math.sin(x * 0.11 + ph[3]);
-        const gap = Math.sin(x * 0.045 + ph[4]) > 0.8;
-        if (y >= rockTop && y <= rockBot && !gap) m = ROCK;
-        for (const b of blobs) {
-          const dx = (x - b.cx) / b.rx, dy = (y - b.cy) / b.ry;
-          if (dx * dx + dy * dy < 1) { m = b.m; break; }
-        }
-        if (y >= H - 4 + Math.round(Math.sin(x * 0.2 + ph[5]))) m = ROCK;
-
-        mat[i] = m;
-        col[i] = (m === SOIL && y - surf[x] < 2) ? jit([72, 140, 52], 12) : colorFor(m, y);
+    const R = mulberry32(7);
+    const blobs = [
+      { m: SAND, cx: 80, cy: 38, rx: 26, ry: 8 },   // песчаная линза над прямым путём
+      { m: SAND, cx: 148, cy: 90, rx: 14, ry: 6 },  // линза у жилы
+      { m: GOLD, cx: 164, cy: 108, rx: 15, ry: 6 }, // золотая жила
+    ];
+    const top = SURF * T;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (y < top) {
+        const t = y / top;
+        bg[i] = rgb(118 + 50 * t, 168 + 36 * t, 220 + 16 * t);
+        mat[i] = E; col[i] = 0; continue;
       }
+      bg[i] = jit([34, 26, 20], 4, R);
+      let m = SOIL;
+      if (y >= 15 * T && y < 17 * T && !(x >= 30 * T && x < 34 * T)) m = ROCK; // каменный пласт с разломом
+      if (y >= BEDROCK * T) m = ROCK;
+      for (const b of blobs) {
+        const dx = (x - b.cx) / b.rx, dy = (y - b.cy) / b.ry;
+        if (dx * dx + dy * dy < 1) { m = b.m; break; }
+      }
+      mat[i] = m;
+      col[i] = (m === SOIL && y - top < 2) ? jit([72, 140, 52], 12, R) : colorFor(m, y, R);
     }
-    let total = 0;
-    for (let i = 0; i < N; i++) if (mat[i] === GOLD) total++;
-    goal = Math.max(40, Math.floor(total * 0.6));
-    gold = 0; fallen = 0; woodLeft = 600; tremor = 1; won = false;
-    document.getElementById('banner').style.display = 'none';
   }
 
-  // ---------- Инструменты ----------
-  let tool = 'dig', brush = 3;
+  // ---------- Тайлы и план ----------
+  const NT = TW * TH;
+  const tileFill = new Uint8Array(NT), tileRock = new Uint8Array(NT);
+  const planT = new Uint8Array(NT);   // 0 нет, 1 копать, 2 копать + лестница
+  const claimed = new Uint8Array(NT);
+  const ladderL = new Uint8Array(NT); // левая колонка ствола — там рисуется лестница
+  let digOrder = [], frames = [];
 
-  function paint(cx, cy) {
-    if (tool === 'wood') {
-      for (let y = cy; y <= cy + 1; y++) for (let x = cx; x <= cx + 1; x++) {
-        if (x < 0 || y < 0 || x >= W || y >= H || woodLeft <= 0) continue;
-        const i = y * W + x;
-        if (mat[i] === E || mat[i] === LOOSE || mat[i] === SAND) {
-          mat[i] = WOOD; col[i] = colorFor(WOOD); woodLeft--;
-        }
+  const inb = (x, y) => x >= 0 && x < TW && y >= 0 && y < TH;
+  const ti = (x, y) => y * TW + x;
+
+  function computeTiles() {
+    for (let ty = 0; ty < TH; ty++) for (let tx = 0; tx < TW; tx++) {
+      let f = 0, r = 0;
+      for (let y = ty * T; y < ty * T + T; y++) for (let x = tx * T; x < tx * T + T; x++) {
+        const m = mat[y * W + x];
+        if (m !== E && m !== WOOD) f++;
+        if (m === ROCK) r++;
       }
+      tileFill[ti(tx, ty)] = f; tileRock[ti(tx, ty)] = r;
+    }
+  }
+
+  const open = (x, y) => inb(x, y) && tileFill[ti(x, y)] <= 6;
+  const isLadder = (x, y) => inb(x, y) && planT[ti(x, y)] === 2 && open(x, y);
+  const standable = (x, y) => open(x, y) && (isLadder(x, y) || !open(x, y + 1) || isLadder(x, y + 1));
+
+  function canMove(ax, ay, bx, by) {
+    if (!open(bx, by)) return false;
+    if (by === ay) return standable(bx, by);
+    return isLadder(bx, by) || isLadder(ax, ay);
+  }
+
+  function bfs(sx, sy) {
+    const dist = new Int16Array(NT).fill(-1), prev = new Int16Array(NT).fill(-1);
+    const q = [ti(sx, sy)]; dist[q[0]] = 0;
+    for (let h = 0; h < q.length; h++) {
+      const c = q[h], cx = c % TW, cy = (c / TW) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, -1], [0, 1]]) {
+        const nx = cx + dx, ny = cy + dy;
+        if (!inb(nx, ny)) continue;
+        const n = ti(nx, ny);
+        if (dist[n] >= 0 || !canMove(cx, cy, nx, ny)) continue;
+        dist[n] = dist[c] + 1; prev[n] = c; q.push(n);
+      }
+    }
+    return { dist, prev };
+  }
+
+  function pathTo(prev, from, to) {
+    const p = [];
+    for (let c = to; c !== from && c >= 0; c = prev[c]) p.push(c);
+    return p.reverse().map(c => [c % TW, (c / TW) | 0]);
+  }
+
+  const isRockTile = (x, y) => tileRock[ti(x, y)] >= 4;
+  const digCost = (x, y) => isRockTile(x, y) ? COST.rock : COST.dig;
+
+  function addTile(x, y, type) {
+    if (!inb(x, y) || y < SURF || y >= BEDROCK) return;
+    const i = ti(x, y);
+    if (planT[i] === 0) digOrder.push(i);
+    planT[i] = Math.max(planT[i], type);
+  }
+
+  function tunnelTiles(sx, sy, cx) {
+    const fy = Math.max(SURF + 1, Math.min(BEDROCK - 1, sy));
+    const out = [], d = cx >= sx ? 1 : -1;
+    for (let x = sx; ; x += d) {
+      if (x >= 0 && x < TW) { out.push([x, fy, 1], [x, fy - 1, 1]); }
+      if (x === cx) break;
+    }
+    return out;
+  }
+
+  function shaftTiles(sx, sy, cy) {
+    const x0 = Math.min(sx, TW - 2), out = [];
+    const a = Math.max(SURF, Math.min(BEDROCK - 1, sy)), b = Math.max(SURF, Math.min(BEDROCK - 1, cy));
+    const d = b >= a ? 1 : -1;
+    for (let y = a; ; y += d) {
+      out.push([x0, y, 2], [x0 + 1, y, 2]);
+      if (y === b) break;
+    }
+    return out;
+  }
+
+  function frameAt(tx, ty) {
+    if (!inb(tx, ty) || !planT[ti(tx, ty)]) return null;
+    const fy = inb(tx, ty + 1) && planT[ti(tx, ty + 1)] ? ty + 1 : ty;
+    if (!inb(tx, fy - 1) || !planT[ti(tx, fy - 1)] || fy - 1 < SURF) return null;
+    return { tx, fy };
+  }
+
+  function addFrame(tx, ty) {
+    const f = frameAt(tx, ty);
+    if (!f) return false;
+    if (frames.some(o => o.fy === f.fy && Math.abs(o.tx - f.tx) < 2)) return false;
+    frames.push({ tx: f.tx, fy: f.fy, done: false, claimed: false });
+    return true;
+  }
+
+  function erase(tx, ty) {
+    const fi = frames.findIndex(f => !f.done && f.tx === tx && (f.fy === ty || f.fy - 1 === ty));
+    if (fi >= 0) {
+      for (const w of workers) if (w.job && w.job.frame === frames[fi]) dropJob(w);
+      frames.splice(fi, 1); return;
+    }
+    if (!inb(tx, ty)) return;
+    const i = ti(tx, ty);
+    if (!planT[i] || open(tx, ty)) return;
+    for (const w of workers) if (w.job && w.job.tile === i) dropJob(w);
+    planT[i] = 0; ladderL[i] = 0;
+    digOrder = digOrder.filter(t => t !== i);
+  }
+
+  function planCost() {
+    let c = 0;
+    for (const t of digOrder) { const x = t % TW, y = (t / TW) | 0; if (!open(x, y)) c += digCost(x, y); }
+    for (const f of frames) if (!f.done) c += COST.frame;
+    return c;
+  }
+
+  // ---------- Рабочие ----------
+  let workers = [], money = 0, gold = 0, state = 'plan', speed = 1, noMoney = false;
+
+  function spawnWorkers() {
+    workers = [];
+    for (let k = 0; k < CREW; k++) {
+      const tx = 2 + k, ty = SURF - 1;
+      workers.push({ tx, ty, fx: tx * T + 2, fy: ty * T + T, moving: false, mx: 0, my: 0, mt: [0, 0],
+        path: [], job: null, think: k * 0.15, alive: true, dir: 1, anim: Math.random() * 6, working: false });
+    }
+  }
+
+  function dropJob(w) {
+    if (!w.job) return;
+    if (w.job.tile !== undefined) claimed[w.job.tile] = 0;
+    if (w.job.frame) w.job.frame.claimed = false;
+    w.job = null; w.path = []; w.working = false;
+  }
+
+  function bestStand(dist, cands) {
+    let best = -1, bd = 1e9;
+    for (const [x, y] of cands) {
+      if (!inb(x, y)) continue;
+      const i = ti(x, y);
+      if (dist[i] >= 0 && dist[i] < bd && standable(x, y)) { bd = dist[i]; best = i; }
+    }
+    return best;
+  }
+
+  function pickJob(w) {
+    const { dist, prev } = bfs(w.tx, w.ty);
+    const from = ti(w.tx, w.ty);
+    // Готовая к установке крепь — в первую очередь
+    for (const f of frames) {
+      if (f.done || f.claimed || !open(f.tx, f.fy) || !open(f.tx, f.fy - 1)) continue;
+      if (money < COST.frame) { noMoney = true; continue; }
+      const st = bestStand(dist, [[f.tx, f.fy], [f.tx - 1, f.fy], [f.tx + 1, f.fy]]);
+      if (st < 0) continue;
+      f.claimed = true;
+      w.job = { frame: f, t: 0, dur: TIME.frame, started: false };
+      w.path = pathTo(prev, from, st);
       return;
     }
-    const r = brush;
-    for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
-      if (x < 0 || y < 0 || x >= W || y >= H) continue;
-      if ((x - cx) ** 2 + (y - cy) ** 2 > r * r + r) continue;
-      const i = y * W + x, m = mat[i];
-      if (tool === 'dig') {
-        if (m === ROCK || m === E) continue;
-        if (m === GOLD || m === GOLDL) gold++;
-        if (m === WOOD) woodLeft++;
-        mat[i] = E;
-      } else if (m === E && Math.random() < 0.5) {
-        const nm = tool === 'sand' ? SAND : WATER;
-        mat[i] = nm; col[i] = colorFor(nm, y);
-      }
+    for (const t of digOrder) {
+      if (claimed[t]) continue;
+      const x = t % TW, y = (t / TW) | 0;
+      if (open(x, y)) continue;
+      if (money < digCost(x, y)) { noMoney = true; continue; }
+      const st = bestStand(dist, [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1], [x - 1, y + 1], [x + 1, y + 1]]);
+      if (st < 0) continue;
+      claimed[t] = 1;
+      w.job = { tile: t, x, y, t: 0, started: false };
+      w.path = pathTo(prev, from, st);
+      return;
     }
   }
 
-  let drawing = false, last = null;
-  function toGrid(e) {
-    const r = canvas.getBoundingClientRect();
-    return [Math.floor((e.clientX - r.left) / r.width * W), Math.floor((e.clientY - r.top) / r.height * H)];
+  function startMove(w, nx, ny, fast) {
+    w.moving = true; w.mx = nx; w.my = ny; w.fast = fast;
+    if (nx !== w.tx) w.dir = nx > w.tx ? 1 : -1;
   }
-  function strokeTo(p) {
-    if (!last) { paint(p[0], p[1]); last = p; return; }
-    const dx = p[0] - last[0], dy = p[1] - last[1];
-    const n = Math.max(1, Math.abs(dx), Math.abs(dy));
-    for (let k = 1; k <= n; k++) paint(Math.round(last[0] + dx * k / n), Math.round(last[1] + dy * k / n));
-    last = p;
+
+  function buried(w) {
+    let n = 0;
+    const cx = Math.round(w.fx), by = Math.round(w.fy);
+    for (let y = by - 6; y < by; y++) for (let x = cx - 1; x <= cx + 1; x++) {
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      const m = mat[y * W + x];
+      if (m !== E && m !== WOOD) n++;
+    }
+    return n >= 10;
   }
-  canvas.addEventListener('pointerdown', e => { drawing = true; last = null; canvas.setPointerCapture(e.pointerId); strokeTo(toGrid(e)); });
-  canvas.addEventListener('pointermove', e => { if (drawing) strokeTo(toGrid(e)); });
-  const stop = () => { drawing = false; last = null; };
-  canvas.addEventListener('pointerup', stop);
-  canvas.addEventListener('pointercancel', stop);
+
+  function removeCell(i) {
+    const m = mat[i];
+    if (m === E || m === WOOD) return;
+    if (m === GOLD || m === GOLDL) gold++;
+    mat[i] = E;
+  }
+
+  function placeFrame(f) {
+    const top = (f.fy - 1) * T, floor = f.fy * T + T - 1;
+    const x0 = f.tx * T - 4, x1 = f.tx * T + T + 3;
+    const put = (x, y) => {
+      if (x < 0 || x >= W) return;
+      const i = y * W + x;
+      if (mat[i] === E) { mat[i] = WOOD; col[i] = colorFor(WOOD); }
+    };
+    for (let x = x0; x <= x1; x++) put(x, top);
+    for (let y = top + 1; y <= floor; y++) { put(x0, y); put(x1, y); }
+  }
+
+  function work(w, dt) {
+    const j = w.job;
+    if (j.frame) {
+      if (!j.started) {
+        if (money < COST.frame) { dropJob(w); return; }
+        money -= COST.frame; j.started = true;
+      }
+      w.working = true; j.t += dt;
+      if (j.t >= j.dur) { placeFrame(j.frame); j.frame.done = true; j.frame.claimed = false; w.job = null; w.working = false; }
+      return;
+    }
+    if (!j.started) {
+      if (open(j.x, j.y)) { dropJob(w); return; }
+      const c = digCost(j.x, j.y);
+      if (money < c) { dropJob(w); return; }
+      money -= c; j.started = true;
+      j.dur = isRockTile(j.x, j.y) ? TIME.rock : TIME.dig;
+      j.cells = [];
+      for (let y = j.y * T; y < j.y * T + T; y++) for (let x = j.x * T; x < j.x * T + T; x++) j.cells.push(y * W + x);
+      j.cells.sort(() => Math.random() - 0.5);
+      if (j.x !== w.tx) w.dir = j.x > w.tx ? 1 : -1;
+    }
+    w.working = true; j.t += dt;
+    const n = Math.min(j.cells.length, Math.floor(j.cells.length * j.t / j.dur));
+    for (let k = 0; k < n; k++) removeCell(j.cells[k]);
+    if (j.t >= j.dur) {
+      for (const i of j.cells) removeCell(i);
+      claimed[j.tile] = 0; w.job = null; w.working = false;
+    }
+  }
+
+  function updateWorker(w, dt) {
+    if (!w.alive) return;
+    w.anim += dt;
+    if (buried(w)) { w.alive = false; dropJob(w); lose('Рабочего засыпало', 'Потолок обвалился прямо на шахтёра. Ставьте крепь чаще и обходите песок.'); return; }
+    if (w.moving) {
+      const tx = w.mx * T + 2, ty = w.my * T + T;
+      const v = (w.fast ? 26 : 12) * dt;
+      const dx = tx - w.fx, dy = ty - w.fy, d = Math.hypot(dx, dy);
+      if (d <= v) { w.fx = tx; w.fy = ty; w.tx = w.mx; w.ty = w.my; w.moving = false; }
+      else { w.fx += dx / d * v; w.fy += dy / d * v; }
+      return;
+    }
+    // Гравитация: без опоры и без лестницы — падает
+    if (!standable(w.tx, w.ty) && open(w.tx, w.ty + 1)) { if (!w.working) dropJob(w); startMove(w, w.tx, w.ty + 1, true); return; }
+    if (w.job) {
+      if (w.path.length) {
+        const [nx, ny] = w.path[0];
+        if (!canMove(w.tx, w.ty, nx, ny)) { dropJob(w); return; }
+        w.path.shift(); w.working = false;
+        startMove(w, nx, ny, false);
+      } else work(w, dt);
+      return;
+    }
+    w.working = false;
+    w.think -= dt;
+    if (w.think <= 0) { pickJob(w); w.think = 0.25; }
+  }
+
+  // ---------- Состояние игры ----------
+  const $ = id => document.getElementById(id);
+  const banner = $('banner');
+
+  function lose(title, text) {
+    if (state === 'lost' || state === 'won') return;
+    state = 'lost';
+    banner.className = 'banner lose'; banner.hidden = false;
+    $('bannerTitle').textContent = title; $('bannerText').textContent = text;
+    updateRunBtn();
+  }
+
+  function win() {
+    state = 'won';
+    banner.className = 'banner win'; banner.hidden = false;
+    $('bannerTitle').textContent = 'Жила вскрыта! 🏆';
+    $('bannerText').textContent = `Добыто ${gold} золота, осталось денег: ${money}. Попробуйте потратить меньше.`;
+    updateRunBtn();
+  }
+
+  function reset() {
+    generate();
+    frame = 1; stamp.fill(0);
+    planT.fill(0); claimed.fill(0); ladderL.fill(0); digOrder = []; frames = [];
+    money = START_MONEY; gold = 0; state = 'plan'; noMoney = false;
+    computeTiles(); spawnWorkers();
+    banner.hidden = true;
+    updateRunBtn();
+  }
+
+  // ---------- Ввод ----------
+  let tool = 'tunnel', drag = null, hover = null;
 
   const toolBtns = document.querySelectorAll('[data-tool]');
   function setTool(t) { tool = t; toolBtns.forEach(b => b.classList.toggle('on', b.dataset.tool === t)); }
   toolBtns.forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
 
-  const brushVal = document.getElementById('brushVal');
-  const setBrush = v => { brush = Math.max(1, Math.min(8, v)); brushVal.textContent = brush; };
-  document.getElementById('brushDown').onclick = () => setBrush(brush - 1);
-  document.getElementById('brushUp').onclick = () => setBrush(brush + 1);
+  function toTile(e) {
+    const r = canvas.getBoundingClientRect();
+    return [Math.floor((e.clientX - r.left) / r.width * TW), Math.floor((e.clientY - r.top) / r.height * TH)];
+  }
 
-  const quake = () => { tremor = 8; };
-  const pauseBtn = document.getElementById('pause');
-  const togglePause = () => { paused = !paused; pauseBtn.textContent = paused ? '▶ Пуск [Пробел]' : '⏸ Пауза [Пробел]'; };
-  document.getElementById('quake').onclick = quake;
-  pauseBtn.onclick = togglePause;
-  document.getElementById('reset').onclick = generate;
+  function previewTiles() {
+    if (!drag) return [];
+    const [sx, sy] = drag.start, [cx, cy] = drag.cur;
+    if (tool === 'tunnel') return tunnelTiles(sx, sy, Math.max(0, Math.min(TW - 1, cx)));
+    if (tool === 'shaft') return shaftTiles(sx, sy, cy);
+    return [];
+  }
 
+  function previewCost(tiles) {
+    let c = 0;
+    for (const [x, y] of tiles) if (inb(x, y) && !planT[ti(x, y)] && !open(x, y)) c += digCost(x, y);
+    return c;
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    if (state === 'won' || state === 'lost') return;
+    canvas.setPointerCapture(e.pointerId);
+    const t = toTile(e);
+    drag = { start: t, cur: t };
+    if (tool === 'erase') erase(t[0], t[1]);
+  });
+  canvas.addEventListener('pointermove', e => {
+    hover = toTile(e);
+    if (!drag) return;
+    drag.cur = hover;
+    if (tool === 'erase') erase(hover[0], hover[1]);
+  });
+  canvas.addEventListener('pointerup', e => {
+    if (!drag) return;
+    if (tool === 'tunnel' || tool === 'shaft') {
+      const tiles = previewTiles();
+      for (const [x, y, type] of tiles) addTile(x, y, type);
+      if (tool === 'shaft') for (let k = 0; k < tiles.length; k += 2) { const [x, y] = tiles[k]; if (y >= SURF && y < BEDROCK) ladderL[ti(x, y)] = 1; }
+    }
+    else if (tool === 'frame') addFrame(drag.cur[0], drag.cur[1]);
+    drag = null;
+  });
+  canvas.addEventListener('pointercancel', () => { drag = null; });
+  canvas.addEventListener('pointerleave', () => { if (!drag) hover = null; });
+
+  function updateRunBtn() {
+    $('run').textContent = state === 'run' ? '⏸ Пауза' : '▶ Пуск';
+  }
+  function toggleRun() {
+    if (state === 'won' || state === 'lost') return;
+    state = state === 'run' ? 'pause' : 'run';
+    updateRunBtn();
+  }
+  function toggleSpeed() { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; $('speed').textContent = '×' + speed; }
+
+  $('run').onclick = toggleRun;
+  $('speed').onclick = toggleSpeed;
+  $('reset').onclick = reset;
+  $('bannerBtn').onclick = reset;
   window.addEventListener('keydown', e => {
-    if (e.key >= '1' && e.key <= '4') setTool(['dig', 'wood', 'sand', 'water'][e.key - 1]);
-    else if (e.key === ' ') { e.preventDefault(); togglePause(); }
-    else if (e.key === 'q' || e.key === 'Q' || e.key === 'й' || e.key === 'Й') quake();
-    else if (e.key === 'r' || e.key === 'R' || e.key === 'к' || e.key === 'К') generate();
-    else if (e.key === '+' || e.key === '=') setBrush(brush + 1);
-    else if (e.key === '-') setBrush(brush - 1);
+    if (e.key >= '1' && e.key <= '4') setTool(['tunnel', 'shaft', 'frame', 'erase'][e.key - 1]);
+    else if (e.key === ' ') { e.preventDefault(); toggleRun(); }
+    else if (e.key === 'r' || e.key === 'R' || e.key === 'к' || e.key === 'К') reset();
+    else if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') toggleSpeed();
   });
 
-  // ---------- Цикл ----------
-  const $gold = document.getElementById('gold'), $goal = document.getElementById('goal');
-  const $wood = document.getElementById('wood'), $fallen = document.getElementById('fallen');
+  // ---------- Отрисовка ----------
+  const TS = T * S;
+
+  function drawLadder(x, y) {
+    const px = x * TS, py = y * TS;
+    ctx.strokeStyle = '#8a5a2b'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px + 10, py); ctx.lineTo(px + 10, py + TS);
+    ctx.moveTo(px + 22, py); ctx.lineTo(px + 22, py + TS);
+    for (let k = 3; k < TS; k += 6) { ctx.moveTo(px + 10, py + k); ctx.lineTo(px + 22, py + k); }
+    ctx.stroke();
+  }
+
+  function drawFrameGhost(f) {
+    const top = (f.fy - 1) * T * S, floor = (f.fy + 1) * T * S;
+    const x0 = (f.tx * T - 4) * S, x1 = (f.tx * T + T + 4) * S;
+    ctx.strokeStyle = f.claimed ? 'rgba(255,220,140,.95)' : 'rgba(255,200,120,.7)';
+    ctx.setLineDash([4, 3]); ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x0 + 2, floor); ctx.lineTo(x0 + 2, top + 2); ctx.lineTo(x1 - 2, top + 2); ctx.lineTo(x1 - 2, floor);
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  function drawHut() {
+    const x = 0.5 * TS, y = SURF * TS, w = 2.2 * TS, h = 1.6 * TS;
+    ctx.fillStyle = '#6b4a2e'; ctx.fillRect(x, y - h, w, h);
+    ctx.fillStyle = '#8c3b2a';
+    ctx.beginPath(); ctx.moveTo(x - 6, y - h); ctx.lineTo(x + w / 2, y - h - 18); ctx.lineTo(x + w + 6, y - h); ctx.fill();
+    ctx.fillStyle = '#2b1d12'; ctx.fillRect(x + w / 2 - 6, y - 18, 12, 18);
+  }
+
+  function drawWorker(w) {
+    if (!w.alive) return;
+    ctx.save();
+    ctx.translate(w.fx * S, w.fy * S);
+    if (w.dir < 0) ctx.scale(-1, 1);
+    const walk = w.moving ? Math.sin(w.anim * 16) * 3 : 0;
+    ctx.strokeStyle = '#2a2622'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-2, -8); ctx.lineTo(-2 + walk, 0);
+    ctx.moveTo(2, -8); ctx.lineTo(2 - walk, 0);
+    ctx.stroke();
+    ctx.fillStyle = '#d9822b'; ctx.fillRect(-4, -17, 8, 10);
+    ctx.fillStyle = '#f0c8a0'; ctx.beginPath(); ctx.arc(0, -20, 3.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f2d22e'; ctx.beginPath(); ctx.arc(0, -21, 4, Math.PI, 0); ctx.fill();
+    ctx.fillRect(-5, -21.5, 10, 1.6);
+    ctx.fillStyle = '#fff6b0'; ctx.fillRect(3, -24, 2, 2);
+    if (w.working) {
+      const a = -0.6 + Math.sin(w.anim * 14) * 0.9;
+      ctx.strokeStyle = '#5a3a1e'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(2, -14); const hx = 2 + Math.cos(a) * 9, hy = -14 + Math.sin(a) * 9; ctx.lineTo(hx, hy); ctx.stroke();
+      ctx.strokeStyle = '#9aa0a8'; ctx.beginPath(); ctx.moveTo(hx - 3 * Math.sin(a), hy + 3 * Math.cos(a)); ctx.lineTo(hx + 3 * Math.sin(a), hy - 3 * Math.cos(a)); ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   function render() {
     for (let i = 0; i < N; i++) buf[i] = mat[i] ? col[i] : bg[i];
-    ctx.putImageData(img, 0, 0);
-    const s = tremor > 1.05 ? (tremor - 1) * 0.6 : 0;
-    canvas.style.transform = s ? `translate(${(Math.random() - .5) * s}px, ${(Math.random() - .5) * s}px)` : '';
+    octx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(off, 0, 0, W * S, H * S);
+
+    if (state !== 'run') {
+      ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 1; x < TW; x++) { ctx.moveTo(x * TS + .5, SURF * TS); ctx.lineTo(x * TS + .5, H * S); }
+      for (let y = SURF + 1; y < TH; y++) { ctx.moveTo(0, y * TS + .5); ctx.lineTo(W * S, y * TS + .5); }
+      ctx.stroke();
+    }
+
+    for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++) {
+      const i = ti(x, y), p = planT[i];
+      if (!p) continue;
+      if (!open(x, y)) {
+        ctx.fillStyle = claimed[i] ? 'rgba(255,225,120,.38)' : isRockTile(x, y) ? 'rgba(255,140,90,.25)' : 'rgba(240,200,90,.2)';
+        ctx.fillRect(x * TS, y * TS, TS, TS);
+        ctx.strokeStyle = 'rgba(240,200,90,.45)'; ctx.lineWidth = 1;
+        ctx.strokeRect(x * TS + .5, y * TS + .5, TS - 1, TS - 1);
+      }
+      if (ladderL[i] && open(x, y)) drawLadder(x + 0.5, y);
+    }
+    for (const f of frames) if (!f.done) drawFrameGhost(f);
+
+    // Превью перетаскивания
+    if (drag && (tool === 'tunnel' || tool === 'shaft')) {
+      const tiles = previewTiles();
+      ctx.fillStyle = 'rgba(255,255,255,.22)';
+      for (const [x, y] of tiles) if (inb(x, y)) ctx.fillRect(x * TS, y * TS, TS, TS);
+      const c = previewCost(tiles), [hx, hy] = drag.cur;
+      ctx.font = 'bold 15px system-ui, sans-serif';
+      ctx.fillStyle = c > money ? '#ff8a70' : '#fff';
+      ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 3;
+      const tx = Math.min(hx * TS + 18, W * S - 70), ty = Math.max(hy * TS - 6, 18);
+      ctx.strokeText(c + ' ₽', tx, ty); ctx.fillText(c + ' ₽', tx, ty);
+    } else if (hover && state !== 'won' && state !== 'lost') {
+      const [x, y] = hover;
+      if (tool === 'frame') {
+        const f = frameAt(x, y);
+        if (f) drawFrameGhost({ ...f, claimed: true });
+      } else {
+        ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1.5;
+        if (tool === 'shaft') ctx.strokeRect(Math.min(x, TW - 2) * TS, y * TS, TS * 2, TS);
+        else if (tool === 'tunnel') ctx.strokeRect(x * TS, (y - 1) * TS, TS, TS * 2);
+        else ctx.strokeRect(x * TS, y * TS, TS, TS);
+      }
+    }
+
+    drawHut();
+    for (const w of workers) drawWorker(w);
   }
 
-  function loop() {
-    if (!paused) { step(); step(); }
+  const $money = $('money'), $plan = $('planCost'), $gold = $('gold'), $goal = $('goal'), $crew = $('crew'), $status = $('status');
+
+  function hud() {
+    $money.textContent = money; $plan.textContent = planCost();
+    $gold.textContent = gold; $goal.textContent = GOAL;
+    $crew.textContent = workers.filter(w => w.alive).length + ' / ' + CREW;
+    let s = '';
+    if (state === 'plan') s = 'Разметьте ствол и штреки до жилы, расставьте крепь и нажмите «Пуск». Мир пока стоит.';
+    else if (state === 'pause') s = 'Пауза: можно спокойно править план.';
+    else if (state === 'run') {
+      const busy = workers.some(w => w.job);
+      if (noMoney && !busy) s = 'Не хватает денег на следующую работу.';
+      else if (!busy) s = 'Работы по плану нет: продлите выработки.';
+      else s = 'Идёт проходка…';
+    }
+    $status.textContent = s;
+  }
+
+  let last = performance.now(), hudT = 0;
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (state === 'run') {
+      for (let k = 0; k < speed; k++) {
+        step(); step();
+        computeTiles();
+        noMoney = false;
+        for (const w of workers) updateWorker(w, dt);
+        if (state !== 'run') break;
+      }
+      computeTiles();
+      if (state === 'run' && gold >= GOAL) win();
+    } else if (state === 'plan' || state === 'pause') {
+      computeTiles();
+    }
     render();
-    $gold.textContent = gold; $goal.textContent = goal;
-    $wood.textContent = woodLeft; $fallen.textContent = fallen;
-    if (!won && gold >= goal) { won = true; document.getElementById('banner').style.display = 'flex'; }
+    if ((hudT += dt) > 0.1) { hudT = 0; hud(); }
     requestAnimationFrame(loop);
   }
 
-  generate();
-  loop();
+  reset();
+  requestAnimationFrame(loop);
 })();
 </script>
 </body>

@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Песчаная шахта</title>
+<style>
+  :root {
+    --bg: #15120f;
+    --panel: #221d18;
+    --text: #efe6d8;
+    --muted: #a89984;
+    --accent: #e0b23a;
+    --btn: #2f2822;
+    --btn-on: #5a4a2e;
+    --border: #3d342b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 12px 16px 24px;
+  }
+  h1 { font-size: 18px; margin: 4px 0 8px; letter-spacing: .02em; }
+  .bar {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px; margin-bottom: 8px; max-width: 960px; width: 100%;
+  }
+  button {
+    background: var(--btn); color: var(--text); border: 1px solid var(--border);
+    border-radius: 7px; padding: 6px 10px; font: inherit; cursor: pointer;
+  }
+  button.on { background: var(--btn-on); border-color: var(--accent); }
+  button:hover { filter: brightness(1.15); }
+  .sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+  .stats { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; color: var(--muted); margin-bottom: 8px; }
+  .stats b { color: var(--text); }
+  .wrap { position: relative; width: 100%; max-width: 960px; }
+  canvas {
+    display: block; width: 100%; aspect-ratio: 3 / 2;
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    border-radius: 8px; border: 1px solid var(--border);
+    touch-action: none; cursor: crosshair; background: #000;
+  }
+  .banner {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    font-size: 28px; font-weight: 700; color: var(--accent);
+    background: rgba(0,0,0,.45); border-radius: 8px; pointer-events: none;
+  }
+  .hint { color: var(--muted); max-width: 960px; text-align: center; margin-top: 10px; }
+</style>
+</head>
+<body>
+<h1>Песчаная шахта: прототип</h1>
+
+<div class="bar">
+  <button data-tool="dig" class="on">⛏ Копать [1]</button>
+  <button data-tool="wood">🪵 Крепь [2]</button>
+  <button data-tool="sand">Песок [3]</button>
+  <button data-tool="water">Вода [4]</button>
+  <span class="sep"></span>
+  <button id="brushDown">−</button>
+  <span>Кисть: <b id="brushVal">3</b></span>
+  <button id="brushUp">+</button>
+  <span class="sep"></span>
+  <button id="quake">💥 Толчок [Q]</button>
+  <button id="pause">⏸ Пауза [Пробел]</button>
+  <button id="reset">↺ Заново [R]</button>
+</div>
+
+<div class="stats">
+  <span>Золото: <b id="gold">0</b> / <b id="goal">0</b></span>
+  <span>Дерево: <b id="wood">0</b></span>
+  <span>Обрушилось клеток: <b id="fallen">0</b></span>
+</div>
+
+<div class="wrap">
+  <canvas id="c" width="240" height="160"></canvas>
+  <div class="banner" id="banner">Жила выработана! 🏆</div>
+</div>
+
+<p class="hint">
+  Копайте от поверхности вниз к золотой жиле. Узкие тоннели держатся сами, а широкие пролёты
+  постепенно осыпаются куполом. Ставьте деревянные стойки и балки, чтобы держать потолок.
+  Песчаные линзы высыпаются, как только их вскроешь, а в подземных карманах прячется вода.
+  «Толчок» трясёт гору и проверяет крепь на прочность.
+</p>
+
+<script>
+(() => {
+  const W = 240, H = 160, N = W * H;
+
+  // Материалы
+  const E = 0, SAND = 1, SOIL = 2, ROCK = 3, WOOD = 4, WATER = 5, GOLD = 6, GOLDL = 7, DEBRIS = 8, LOOSE = 9;
+
+  const mat = new Uint8Array(N);
+  const col = new Uint32Array(N);
+  const stamp = new Uint32Array(N);
+  const bg = new Uint32Array(N);
+  let frame = 1;
+
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  const buf = new Uint32Array(img.data.buffer);
+
+  const clamp = v => v < 0 ? 0 : v > 255 ? 255 : v | 0;
+  const rgb = (r, g, b) => ((255 << 24) | (clamp(b) << 16) | (clamp(g) << 8) | clamp(r)) >>> 0;
+  const jit = (c, j) => { const v = (Math.random() * 2 - 1) * j; return rgb(c[0] + v, c[1] + v, c[2] + v); };
+
+  const BASE = {
+    [SAND]: [214, 182, 112], [ROCK]: [104, 104, 112], [WOOD]: [168, 116, 62],
+    [WATER]: [48, 112, 205], [GOLD]: [232, 190, 44], [GOLDL]: [240, 200, 60], [DEBRIS]: [110, 76, 44],
+  };
+
+  function colorFor(m, y) {
+    if (m === SOIL) { const d = Math.max(0, y - 25) * 0.35; return jit([132 - d, 92 - d * 0.8, 58 - d * 0.5], 10); }
+    if (m === ROCK) return jit(BASE[ROCK], 14);
+    if (m === WATER) return jit(BASE[WATER], 8);
+    return jit(BASE[m], 12);
+  }
+
+  const solid = m => m !== E && m !== WATER;
+  const fluidLike = m => m === E || m === WATER;
+
+  // Устойчивость конструкционных материалов:
+  // safe — пролёт, который держится без проблем; k — рост риска обвала с пролётом; kt — риск при толчке
+  const PROPS = {
+    [SOIL]: { safe: 3, k: 0.00002, kt: 0.00008, loose: LOOSE },
+    [GOLD]: { safe: 3, k: 0.00002, kt: 0.00008, loose: GOLDL },
+    [WOOD]: { safe: 10, k: 0.00002, kt: 0.000004, loose: DEBRIS },
+  };
+  const MAXS = 40;
+
+  let tremor = 1, gold = 0, goal = 0, woodLeft = 0, fallen = 0, paused = false, won = false;
+
+  function swap(i, j) {
+    const m = mat[i]; mat[i] = mat[j]; mat[j] = m;
+    const c = col[i]; col[i] = col[j]; col[j] = c;
+    stamp[i] = frame; stamp[j] = frame;
+  }
+
+  function loosen(i, m) {
+    mat[i] = PROPS[m].loose;
+    if (m === WOOD) col[i] = colorFor(DEBRIS);
+    stamp[i] = frame;
+    fallen++;
+  }
+
+  // Расстояние вдоль ряда до ближайшей точки, у которой снизу есть опора
+  function span(x, y) {
+    const row = y * W, below = row + W;
+    let dl = -1, dr = -1;
+    for (let d = 1; d <= MAXS; d++) {
+      const nx = x - d;
+      if (nx < 0) { dl = d; break; }
+      if (!solid(mat[row + nx])) break;
+      if (solid(mat[below + nx])) { dl = d; break; }
+      if (d === MAXS) dl = MAXS;
+    }
+    for (let d = 1; d <= MAXS; d++) {
+      const nx = x + d;
+      if (nx >= W) { dr = d; break; }
+      if (!solid(mat[row + nx])) break;
+      if (solid(mat[below + nx])) { dr = d; break; }
+      if (d === MAXS) dr = MAXS;
+    }
+    if (dl < 0 && dr < 0) return -1;     // висит в воздухе
+    if (dl < 0) return Math.ceil(dr * 1.5); // консоль держится хуже
+    if (dr < 0) return Math.ceil(dl * 1.5);
+    return Math.min(dl, dr);
+  }
+
+  function loadF(x, y) {
+    let n = 0;
+    for (let yy = y - 1; yy >= 0 && n < 30; yy--) {
+      if (solid(mat[yy * W + x])) n++; else break;
+    }
+    return 0.4 + n / 25;
+  }
+
+  function updatePowder(x, i) {
+    const b = i + W, mb = mat[b];
+    if (fluidLike(mb)) {
+      if (mb === WATER && Math.random() < 0.5) return; // в воде тонет медленнее
+      swap(i, b); return;
+    }
+    const d = Math.random() < 0.5 ? -1 : 1;
+    for (let k = 0; k < 2; k++) {
+      const s = k ? -d : d, nx = x + s;
+      if (nx < 0 || nx >= W) continue;
+      if (fluidLike(mat[b + s]) && fluidLike(mat[i + s])) { swap(i, b + s); return; }
+    }
+  }
+
+  function updateWater(x, i) {
+    const b = i + W;
+    if (mat[b] === E) { swap(i, b); return; }
+    const d = Math.random() < 0.5 ? -1 : 1;
+    for (let k = 0; k < 2; k++) {
+      const s = k ? -d : d, nx = x + s;
+      if (nx < 0 || nx >= W) continue;
+      if (mat[b + s] === E && mat[i + s] === E) { swap(i, b + s); return; }
+    }
+    for (let k = 0; k < 2; k++) {
+      const s = k ? -d : d, nx = x + s;
+      if (nx < 0 || nx >= W) continue;
+      if (mat[i + s] === E) { swap(i, i + s); return; }
+    }
+  }
+
+  function updateStruct(x, y, i, m) {
+    const P = PROPS[m];
+    if (solid(mat[i + W])) {
+      if (tremor > 1.3) {
+        if (m === WOOD) {
+          // Стойка под нагрузкой может сломаться при толчке
+          if (Math.random() < 0.05 && Math.random() < 0.0004 * (tremor - 1) * loadF(x, y)) loosen(i, m);
+        } else if ((x > 0 && mat[i - 1] === E) || (x < W - 1 && mat[i + 1] === E)) {
+          if (Math.random() < 0.0015 * tremor) loosen(i, m); // стенки осыпаются
+        }
+      }
+      return;
+    }
+    const sp = span(x, y);
+    if (sp < 0) { loosen(i, m); return; }
+    const ex = Math.max(0, sp - P.safe);
+    const p = P.k * ex * ex * loadF(x, y) * tremor + P.kt * (tremor - 1) * sp;
+    if (Math.random() < p) loosen(i, m);
+  }
+
+  function step() {
+    frame++;
+    for (let y = H - 2; y >= 0; y--) {
+      const ltr = (frame + y) & 1;
+      for (let k = 0; k < W; k++) {
+        const x = ltr ? k : W - 1 - k;
+        const i = y * W + x;
+        const m = mat[i];
+        if (m === E || m === ROCK || stamp[i] === frame) continue;
+        switch (m) {
+          case SAND: case LOOSE: case GOLDL: case DEBRIS: updatePowder(x, i); break;
+          case WATER: updateWater(x, i); break;
+          default: updateStruct(x, y, i, m);
+        }
+      }
+    }
+    tremor = 1 + (tremor - 1) * 0.985;
+    if (tremor < 1.01) tremor = 1;
+  }
+
+  // ---------- Генерация уровня ----------
+  function generate() {
+    const R = Math.random;
+    const ph = Array.from({ length: 8 }, () => R() * 100);
+    const surf = new Int16Array(W);
+    for (let x = 0; x < W; x++) surf[x] = Math.round(24 + 3 * Math.sin(x * 0.03 + ph[0]) + 2 * Math.sin(x * 0.08 + ph[1]));
+
+    const blobs = [];
+    const addBlobs = (n, m, y0, y1, rx, ry) => {
+      for (let k = 0; k < n; k++) blobs.push({ m, cx: 10 + R() * (W - 20), cy: y0 + R() * (y1 - y0), rx: rx[0] + R() * rx[1], ry: ry[0] + R() * ry[1] });
+    };
+    addBlobs(7, SAND, 35, 125, [8, 14], [4, 6]);
+    addBlobs(2, WATER, 90, 130, [10, 10], [4, 4]);
+    addBlobs(5, GOLD, 128, 150, [5, 9], [2, 4]);
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        // фон: небо или тёмная полость
+        if (y < surf[x]) {
+          const t = y / 30;
+          bg[i] = rgb(120 + 60 * t, 170 + 40 * t, 220 + 20 * t);
+          mat[i] = E; col[i] = 0; continue;
+        }
+        bg[i] = jit([34, 26, 20], 4);
+
+        let m = SOIL;
+        const rockTop = 68 + 4 * Math.sin(x * 0.05 + ph[2]);
+        const rockBot = rockTop + 6 + 3 * Math.sin(x * 0.11 + ph[3]);
+        const gap = Math.sin(x * 0.045 + ph[4]) > 0.8;
+        if (y >= rockTop && y <= rockBot && !gap) m = ROCK;
+        for (const b of blobs) {
+          const dx = (x - b.cx) / b.rx, dy = (y - b.cy) / b.ry;
+          if (dx * dx + dy * dy < 1) { m = b.m; break; }
+        }
+        if (y >= H - 4 + Math.round(Math.sin(x * 0.2 + ph[5]))) m = ROCK;
+
+        mat[i] = m;
+        col[i] = (m === SOIL && y - surf[x] < 2) ? jit([72, 140, 52], 12) : colorFor(m, y);
+      }
+    }
+    let total = 0;
+    for (let i = 0; i < N; i++) if (mat[i] === GOLD) total++;
+    goal = Math.max(40, Math.floor(total * 0.6));
+    gold = 0; fallen = 0; woodLeft = 600; tremor = 1; won = false;
+    document.getElementById('banner').style.display = 'none';
+  }
+
+  // ---------- Инструменты ----------
+  let tool = 'dig', brush = 3;
+
+  function paint(cx, cy) {
+    if (tool === 'wood') {
+      for (let y = cy; y <= cy + 1; y++) for (let x = cx; x <= cx + 1; x++) {
+        if (x < 0 || y < 0 || x >= W || y >= H || woodLeft <= 0) continue;
+        const i = y * W + x;
+        if (mat[i] === E || mat[i] === LOOSE || mat[i] === SAND) {
+          mat[i] = WOOD; col[i] = colorFor(WOOD); woodLeft--;
+        }
+      }
+      return;
+    }
+    const r = brush;
+    for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      if ((x - cx) ** 2 + (y - cy) ** 2 > r * r + r) continue;
+      const i = y * W + x, m = mat[i];
+      if (tool === 'dig') {
+        if (m === ROCK || m === E) continue;
+        if (m === GOLD || m === GOLDL) gold++;
+        if (m === WOOD) woodLeft++;
+        mat[i] = E;
+      } else if (m === E && Math.random() < 0.5) {
+        const nm = tool === 'sand' ? SAND : WATER;
+        mat[i] = nm; col[i] = colorFor(nm, y);
+      }
+    }
+  }
+
+  let drawing = false, last = null;
+  function toGrid(e) {
+    const r = canvas.getBoundingClientRect();
+    return [Math.floor((e.clientX - r.left) / r.width * W), Math.floor((e.clientY - r.top) / r.height * H)];
+  }
+  function strokeTo(p) {
+    if (!last) { paint(p[0], p[1]); last = p; return; }
+    const dx = p[0] - last[0], dy = p[1] - last[1];
+    const n = Math.max(1, Math.abs(dx), Math.abs(dy));
+    for (let k = 1; k <= n; k++) paint(Math.round(last[0] + dx * k / n), Math.round(last[1] + dy * k / n));
+    last = p;
+  }
+  canvas.addEventListener('pointerdown', e => { drawing = true; last = null; canvas.setPointerCapture(e.pointerId); strokeTo(toGrid(e)); });
+  canvas.addEventListener('pointermove', e => { if (drawing) strokeTo(toGrid(e)); });
+  const stop = () => { drawing = false; last = null; };
+  canvas.addEventListener('pointerup', stop);
+  canvas.addEventListener('pointercancel', stop);
+
+  const toolBtns = document.querySelectorAll('[data-tool]');
+  function setTool(t) { tool = t; toolBtns.forEach(b => b.classList.toggle('on', b.dataset.tool === t)); }
+  toolBtns.forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+
+  const brushVal = document.getElementById('brushVal');
+  const setBrush = v => { brush = Math.max(1, Math.min(8, v)); brushVal.textContent = brush; };
+  document.getElementById('brushDown').onclick = () => setBrush(brush - 1);
+  document.getElementById('brushUp').onclick = () => setBrush(brush + 1);
+
+  const quake = () => { tremor = 8; };
+  const pauseBtn = document.getElementById('pause');
+  const togglePause = () => { paused = !paused; pauseBtn.textContent = paused ? '▶ Пуск [Пробел]' : '⏸ Пауза [Пробел]'; };
+  document.getElementById('quake').onclick = quake;
+  pauseBtn.onclick = togglePause;
+  document.getElementById('reset').onclick = generate;
+
+  window.addEventListener('keydown', e => {
+    if (e.key >= '1' && e.key <= '4') setTool(['dig', 'wood', 'sand', 'water'][e.key - 1]);
+    else if (e.key === ' ') { e.preventDefault(); togglePause(); }
+    else if (e.key === 'q' || e.key === 'Q' || e.key === 'й' || e.key === 'Й') quake();
+    else if (e.key === 'r' || e.key === 'R' || e.key === 'к' || e.key === 'К') generate();
+    else if (e.key === '+' || e.key === '=') setBrush(brush + 1);
+    else if (e.key === '-') setBrush(brush - 1);
+  });
+
+  // ---------- Цикл ----------
+  const $gold = document.getElementById('gold'), $goal = document.getElementById('goal');
+  const $wood = document.getElementById('wood'), $fallen = document.getElementById('fallen');
+
+  function render() {
+    for (let i = 0; i < N; i++) buf[i] = mat[i] ? col[i] : bg[i];
+    ctx.putImageData(img, 0, 0);
+    const s = tremor > 1.05 ? (tremor - 1) * 0.6 : 0;
+    canvas.style.transform = s ? `translate(${(Math.random() - .5) * s}px, ${(Math.random() - .5) * s}px)` : '';
+  }
+
+  function loop() {
+    if (!paused) { step(); step(); }
+    render();
+    $gold.textContent = gold; $goal.textContent = goal;
+    $wood.textContent = woodLeft; $fallen.textContent = fallen;
+    if (!won && gold >= goal) { won = true; document.getElementById('banner').style.display = 'flex'; }
+    requestAnimationFrame(loop);
+  }
+
+  generate();
+  loop();
+})();
+</script>
+</body>
+</html>

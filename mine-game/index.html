@@ -34,8 +34,9 @@
   }
   button {
     background: var(--btn); color: var(--text); border: 1px solid var(--border);
-    border-radius: 7px; padding: 7px 11px; font: inherit; cursor: pointer;
+    border-radius: 7px; padding: 7px 10px; font: inherit; cursor: pointer;
   }
+  button small { color: var(--muted); font-variant-numeric: tabular-nums; }
   button.on { background: var(--btn-on); border-color: var(--accent); }
   button:hover { filter: brightness(1.15); }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -70,10 +71,14 @@
 <h1>Песчаная шахта</h1>
 
 <div class="bar">
-  <button data-tool="tunnel" class="on">━ Штрек [1]</button>
-  <button data-tool="shaft">┃ Ствол [2]</button>
-  <button data-tool="frame">⊓ Крепь [3]</button>
-  <button data-tool="erase">✕ Убрать [4]</button>
+  <button data-tool="tunnel" class="on">━ Штрек</button>
+  <button data-tool="shaft">┃ Ствол</button>
+  <button data-tool="wood">⊓ Дерево <small>12</small></button>
+  <button data-tool="steel">⊓ Сталь <small>35</small></button>
+  <button data-tool="charge">✱ Заряд <small>25</small></button>
+  <button data-tool="pump">◉ Насос <small>40</small></button>
+  <button data-tool="probe">⇣ Бур <small>15</small></button>
+  <button data-tool="erase">✕ Убрать</button>
   <span class="sep"></span>
   <button id="run">▶ Пуск</button>
   <button id="speed">×1</button>
@@ -83,7 +88,7 @@
 <div class="stats">
   <span>Деньги: <b id="money">0</b></span>
   <span>По плану: <b id="planCost">0</b></span>
-  <span>Золото: <b id="gold">0</b> / <b id="goal">0</b></span>
+  <span>Золото наверху: <b id="gold">0</b> / <b id="goal">0</b></span>
   <span>Рабочие: <b id="crew">0</b></span>
 </div>
 <div id="status"></div>
@@ -98,26 +103,32 @@
 </div>
 
 <div class="hint">
-  <p><b>Цель:</b> добыть золото из жилы в правом нижнем углу и никого не похоронить.</p>
-  <p><b>Ствол</b> — вертикальная шахта с лестницей, тяните от поверхности вниз. <b>Штрек</b> — горизонтальный тоннель,
-    тяните вдоль пола. <b>Крепь</b> — деревянная рама, кликните по тоннелю. Рабочие выполняют план по порядку,
-    а готовую крепь ставят в первую очередь.</p>
-  <p>Длинный незакреплённый пролёт осыпается, песок из линз течёт в выработки, камень копается долго и дорого.
-    Завалы рабочие разбирают сами, но за деньги. План можно править и во время работы.</p>
+  <p><b>Цель:</b> поднять 120 золота из жилы справа внизу в домик. Шахтёры носят руду мешками, а каждая секунда
+    стоит зарплаты, так что длинный путь обходится дорого.</p>
+  <p><b>Порода скрыта.</b> Видно только то, что рядом с выработками. <b>Бур</b> вскрывает разрез на всю глубину.</p>
+  <p><b>Крепь</b> держит потолок, но у неё есть предел. Полоска под балкой показывает нагрузку: красная — крепь скоро
+    сломается. Песок и глубина давят сильнее, камень над балкой держит себя сам. Сталь в три раза прочнее дерева,
+    а рамы, поставленные часто, делят нагрузку.</p>
+  <p><b>Заряд</b> пробивает камень за раз. Рабочие отходят, но взрыв трясёт гору и бьёт по крепи.
+    <b>Вода</b> из подземных карманов затапливает выработки. <b>Насос</b> откачивает её вокруг себя.</p>
 </div>
 
 <script>
 (() => {
-  // ---------- Мир ----------
-  const T = 4, TW = 48, TH = 32, W = TW * T, H = TH * T, N = W * H, S = 4;
+  // ---------- Константы ----------
+  const T = 4, TW = 48, TH = 32, W = TW * T, H = TH * T, N = W * H, S = 4, NT = TW * TH;
   const SURF = 5, BEDROCK = 30;
-  const E = 0, SAND = 1, SOIL = 2, ROCK = 3, WOOD = 4, GOLD = 6, GOLDL = 7, DEBRIS = 8, LOOSE = 9;
-  const COST = { dig: 3, rock: 20, frame: 12 };
-  const TIME = { dig: 0.9, rock: 3.2, frame: 1.5 };
-  const START_MONEY = 500, GOAL = 120, CREW = 3;
+  const E = 0, SAND = 1, SOIL = 2, ROCK = 3, WOOD = 4, WATER = 5, GOLD = 6, GOLDL = 7, DEBRIS = 8, LOOSE = 9, STEEL = 10, SCRAP = 11;
+  const COST = { dig: 3, rock: 40, wood: 12, steel: 35, charge: 25, pump: 40, probe: 15 };
+  const TIME = { dig: 0.9, rock: 5, frame: 1.5, pump: 1.5, charge: 1.2, fuse: 6 };
+  const CAP = { wood: 420, steel: 1150 };
+  const START_MONEY = 1200, GOAL = 120, CREW = 3, WAGE = 1 / 3, BAG = 30; // зарплата: ₽ в секунду на рабочего
+  const BLAST_R = 9, KILL_R = 16, EVAC_R = 28;
+  const DEPOT = [[2, SURF - 1], [3, SURF - 1], [4, SURF - 1]];
 
-  const mat = new Uint8Array(N), col = new Uint32Array(N), stamp = new Uint32Array(N), bg = new Uint32Array(N);
-  let frame = 1;
+  const mat = new Uint8Array(N), col = new Uint32Array(N), stamp = new Uint32Array(N);
+  const bg = new Uint32Array(N), fogCol = new Uint32Array(N);
+  let frame = 1, tremor = 1;
 
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
@@ -131,19 +142,26 @@
   const rgb = (r, g, b) => ((255 << 24) | (clamp(b) << 16) | (clamp(g) << 8) | clamp(r)) >>> 0;
   const jit = (c, j, R = Math.random) => { const v = (R() * 2 - 1) * j; return rgb(c[0] + v, c[1] + v, c[2] + v); };
   const BASE = {
-    [SAND]: [214, 182, 112], [ROCK]: [104, 104, 112], [WOOD]: [168, 116, 62],
-    [GOLD]: [232, 190, 44], [GOLDL]: [240, 200, 60], [DEBRIS]: [110, 76, 44],
+    [SAND]: [214, 182, 112], [ROCK]: [104, 104, 112], [WOOD]: [168, 116, 62], [WATER]: [48, 112, 205],
+    [GOLD]: [232, 190, 44], [GOLDL]: [240, 200, 60], [DEBRIS]: [110, 76, 44], [STEEL]: [150, 165, 180], [SCRAP]: [96, 102, 110],
   };
+  const soilRGB = y => { const d = Math.max(0, y - 20) * 0.35; return [132 - d, 92 - d * 0.8, 58 - d * 0.5]; };
   function colorFor(m, y, R) {
-    if (m === SOIL) { const d = Math.max(0, y - 20) * 0.35; return jit([132 - d, 92 - d * 0.8, 58 - d * 0.5], 10, R); }
-    return jit(BASE[m], m === ROCK ? 14 : 12, R);
+    if (m === SOIL) return jit(soilRGB(y), 10, R);
+    return jit(BASE[m], m === ROCK ? 14 : m === WATER ? 8 : 12, R);
   }
 
-  // ---------- Физика сыпучего грунта ----------
+  const isPowder = m => m === SAND || m === LOOSE || m === GOLDL || m === DEBRIS || m === SCRAP;
+  const solid = m => m !== E && m !== WATER;
+  const isFrameMat = m => m === WOOD || m === STEEL;
+  const fills = m => m !== E && m !== WATER && m !== WOOD && m !== STEEL; // занимает место в выработке
+
+  // ---------- Физика ----------
   const PROPS = {
     [SOIL]: { safe: 3, k: 0.000015, loose: LOOSE },
     [GOLD]: { safe: 3, k: 0.000015, loose: GOLDL },
     [WOOD]: { safe: 10, k: 0.00002, loose: DEBRIS },
+    [STEEL]: { safe: 14, k: 0.00001, loose: SCRAP },
   };
   const MAXS = 40;
 
@@ -154,27 +172,27 @@
   }
 
   function loosen(i, m) {
-    mat[i] = PROPS[m].loose;
-    if (m === WOOD) col[i] = colorFor(DEBRIS);
+    const nm = PROPS[m].loose;
+    mat[i] = nm;
+    if (isFrameMat(m)) col[i] = colorFor(nm);
     stamp[i] = frame;
   }
 
-  // Расстояние вдоль ряда до ближайшей точки, у которой снизу есть опора
   function span(x, y) {
     const row = y * W, below = row + W;
     let dl = -1, dr = -1;
     for (let d = 1; d <= MAXS; d++) {
       const nx = x - d;
       if (nx < 0) { dl = d; break; }
-      if (mat[row + nx] === E) break;
-      if (mat[below + nx] !== E) { dl = d; break; }
+      if (!solid(mat[row + nx])) break;
+      if (solid(mat[below + nx])) { dl = d; break; }
       if (d === MAXS) dl = MAXS;
     }
     for (let d = 1; d <= MAXS; d++) {
       const nx = x + d;
       if (nx >= W) { dr = d; break; }
-      if (mat[row + nx] === E) break;
-      if (mat[below + nx] !== E) { dr = d; break; }
+      if (!solid(mat[row + nx])) break;
+      if (solid(mat[below + nx])) { dr = d; break; }
       if (d === MAXS) dr = MAXS;
     }
     if (dl < 0 && dr < 0) return -1;
@@ -186,12 +204,26 @@
   function loadF(x, y) {
     let n = 0;
     for (let yy = y - 1; yy >= 0 && n < 30; yy--) {
-      if (mat[yy * W + x] !== E) n++; else break;
+      if (solid(mat[yy * W + x])) n++; else break;
     }
     return 0.4 + n / 25;
   }
 
   function updatePowder(x, i) {
+    const b = i + W, mb = mat[b];
+    if (mb === E || mb === WATER) {
+      if (mb === WATER && Math.random() < 0.5) return;
+      swap(i, b); return;
+    }
+    const d = Math.random() < 0.5 ? -1 : 1;
+    for (let k = 0; k < 2; k++) {
+      const s = k ? -d : d, nx = x + s;
+      if (nx < 0 || nx >= W) continue;
+      if (!solid(mat[b + s]) && !solid(mat[i + s])) { swap(i, b + s); return; }
+    }
+  }
+
+  function updateWater(x, i) {
     const b = i + W;
     if (mat[b] === E) { swap(i, b); return; }
     const d = Math.random() < 0.5 ? -1 : 1;
@@ -200,14 +232,26 @@
       if (nx < 0 || nx >= W) continue;
       if (mat[b + s] === E && mat[i + s] === E) { swap(i, b + s); return; }
     }
+    for (let k = 0; k < 2; k++) {
+      const s = k ? -d : d, nx = x + s;
+      if (nx < 0 || nx >= W) continue;
+      if (mat[i + s] === E) { swap(i, i + s); return; }
+    }
   }
 
   function updateStruct(x, y, i, m) {
-    if (mat[i + W] !== E) return;
+    const P = PROPS[m];
+    if (solid(mat[i + W])) {
+      // При толчке открытые стенки осыпаются
+      if (tremor > 1.3 && !isFrameMat(m) && ((x > 0 && mat[i - 1] === E) || (x < W - 1 && mat[i + 1] === E))) {
+        if (Math.random() < 0.0012 * tremor) loosen(i, m);
+      }
+      return;
+    }
     const sp = span(x, y);
     if (sp < 0) { loosen(i, m); return; }
-    const P = PROPS[m], ex = Math.max(0, sp - P.safe);
-    if (Math.random() < P.k * ex * ex * loadF(x, y)) loosen(i, m);
+    const ex = Math.max(0, sp - P.safe);
+    if (Math.random() < P.k * (ex * ex * loadF(x, y) + (tremor - 1) * sp * 2) * tremor) loosen(i, m);
   }
 
   function step() {
@@ -218,10 +262,13 @@
         const x = ltr ? k : W - 1 - k;
         const i = y * W + x, m = mat[i];
         if (m === E || m === ROCK || stamp[i] === frame) continue;
-        if (m === SAND || m === LOOSE || m === GOLDL || m === DEBRIS) updatePowder(x, i);
+        if (isPowder(m)) updatePowder(x, i);
+        else if (m === WATER) updateWater(x, i);
         else updateStruct(x, y, i, m);
       }
     }
+    tremor = 1 + (tremor - 1) * 0.99;
+    if (tremor < 1.02) tremor = 1;
   }
 
   // ---------- Уровень ----------
@@ -232,13 +279,15 @@
   function generate() {
     const R = mulberry32(7);
     const blobs = [
-      { m: SAND, cx: 80, cy: 38, rx: 26, ry: 8 },   // песчаная линза над прямым путём
-      { m: SAND, cx: 148, cy: 90, rx: 14, ry: 6 },  // линза у жилы
-      { m: GOLD, cx: 164, cy: 108, rx: 15, ry: 6 }, // золотая жила
+      { m: SAND, cx: 80, cy: 38, rx: 26, ry: 8 },    // песчаная линза над прямым путём
+      { m: WATER, cx: 100, cy: 76, rx: 22, ry: 5 },  // водоносный карман под каменным пластом
+      { m: SAND, cx: 148, cy: 90, rx: 14, ry: 6 },   // линза у жилы
+      { m: GOLD, cx: 164, cy: 108, rx: 15, ry: 6 },  // золотая жила
     ];
     const top = SURF * T;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x;
+      fogCol[i] = jit(soilRGB(y).map(v => v * 0.82), 6, R);
       if (y < top) {
         const t = y / top;
         bg[i] = rgb(118 + 50 * t, 168 + 36 * t, 220 + 16 * t);
@@ -246,7 +295,7 @@
       }
       bg[i] = jit([34, 26, 20], 4, R);
       let m = SOIL;
-      if (y >= 15 * T && y < 17 * T && !(x >= 30 * T && x < 34 * T)) m = ROCK; // каменный пласт с разломом
+      if (y >= 15 * T && y < 17 * T && !(x >= 43 * T && x < 46 * T)) m = ROCK; // каменный пласт, разлом далеко справа
       if (y >= BEDROCK * T) m = ROCK;
       for (const b of blobs) {
         const dx = (x - b.cx) / b.rx, dy = (y - b.cy) / b.ry;
@@ -257,26 +306,35 @@
     }
   }
 
-  // ---------- Тайлы и план ----------
-  const NT = TW * TH;
-  const tileFill = new Uint8Array(NT), tileRock = new Uint8Array(NT);
+  // ---------- Тайлы, план, разведка ----------
+  const tileFill = new Uint8Array(NT), tileRock = new Uint8Array(NT), tileWater = new Uint8Array(NT);
   const planT = new Uint8Array(NT);   // 0 нет, 1 копать, 2 копать + лестница
+  const ladderL = new Uint8Array(NT);
   const claimed = new Uint8Array(NT);
-  const ladderL = new Uint8Array(NT); // левая колонка ствола — там рисуется лестница
-  let digOrder = [], frames = [];
+  const revealed = new Uint8Array(NT), wasOpen = new Uint8Array(NT);
+  let digOrder = [], frames = [], pumps = [], charges = [], probes = [];
 
   const inb = (x, y) => x >= 0 && x < TW && y >= 0 && y < TH;
   const ti = (x, y) => y * TW + x;
 
+  function reveal(cx, cy, r) {
+    for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+      if (inb(x, y) && (x - cx) ** 2 + (y - cy) ** 2 <= r * r + 1) revealed[ti(x, y)] = 1;
+    }
+  }
+
   function computeTiles() {
     for (let ty = 0; ty < TH; ty++) for (let tx = 0; tx < TW; tx++) {
-      let f = 0, r = 0;
+      let f = 0, r = 0, w = 0;
       for (let y = ty * T; y < ty * T + T; y++) for (let x = tx * T; x < tx * T + T; x++) {
         const m = mat[y * W + x];
-        if (m !== E && m !== WOOD) f++;
+        if (fills(m)) f++;
         if (m === ROCK) r++;
+        if (m === WATER) w++;
       }
-      tileFill[ti(tx, ty)] = f; tileRock[ti(tx, ty)] = r;
+      const i = ti(tx, ty);
+      tileFill[i] = f; tileRock[i] = r; tileWater[i] = w;
+      if (f <= 6 && !wasOpen[i] && ty >= SURF) { wasOpen[i] = 1; reveal(tx, ty, 2); }
     }
   }
 
@@ -287,7 +345,10 @@
   function canMove(ax, ay, bx, by) {
     if (!open(bx, by)) return false;
     if (by === ay) return standable(bx, by);
-    return isLadder(bx, by) || isLadder(ax, ay);
+    if (bx === ax) return isLadder(bx, by) || isLadder(ax, ay);
+    // Шаг на ступеньку в одну клетку по завалу или неровному полу
+    if (!standable(bx, by)) return false;
+    return by > ay ? open(bx, ay) : open(ax, by);
   }
 
   function bfs(sx, sy) {
@@ -295,7 +356,7 @@
     const q = [ti(sx, sy)]; dist[q[0]] = 0;
     for (let h = 0; h < q.length; h++) {
       const c = q[h], cx = c % TW, cy = (c / TW) | 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, -1], [0, 1]]) {
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, -1], [0, 1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
         const nx = cx + dx, ny = cy + dy;
         if (!inb(nx, ny)) continue;
         const n = ti(nx, ny);
@@ -314,6 +375,12 @@
 
   const isRockTile = (x, y) => tileRock[ti(x, y)] >= 4;
   const digCost = (x, y) => isRockTile(x, y) ? COST.rock : COST.dig;
+  const tileDist = (x, y, cx, cy) => Math.hypot(x * T + 2 - cx, y * T + 2 - cy);
+  const chargeCenter = c => [c.tx * T + 2, c.ty * T + 2];
+
+  // Клетка ждёт взрыва запланированного заряда — копать её вручную незачем
+  const waitsForBlast = (x, y) => charges.some(c => c.state !== 'done' && tileDist(x, y, ...chargeCenter(c)) < BLAST_R - 1);
+  const inDanger = (x, y) => charges.some(c => c.state === 'armed' && tileDist(x, y, ...chargeCenter(c)) < EVAC_R);
 
   function addTile(x, y, type) {
     if (!inb(x, y) || y < SURF || y >= BEDROCK) return;
@@ -326,7 +393,7 @@
     const fy = Math.max(SURF + 1, Math.min(BEDROCK - 1, sy));
     const out = [], d = cx >= sx ? 1 : -1;
     for (let x = sx; ; x += d) {
-      if (x >= 0 && x < TW) { out.push([x, fy, 1], [x, fy - 1, 1]); }
+      if (x >= 0 && x < TW) out.push([x, fy, 1], [x, fy - 1, 1]);
       if (x === cx) break;
     }
     return out;
@@ -350,20 +417,37 @@
     return { tx, fy };
   }
 
-  function addFrame(tx, ty) {
+  function addFrame(tx, ty, kind) {
     const f = frameAt(tx, ty);
-    if (!f) return false;
-    if (frames.some(o => o.fy === f.fy && Math.abs(o.tx - f.tx) < 2)) return false;
-    frames.push({ tx: f.tx, fy: f.fy, done: false, claimed: false });
-    return true;
+    if (!f) return;
+    if (frames.some(o => !o.broken && o.fy === f.fy && Math.abs(o.tx - f.tx) < 2)) return;
+    frames.push({ tx: f.tx, fy: f.fy, kind, done: false, claimed: false, broken: false, cells: [], load: 0, ratio: 0, stress: 0 });
+  }
+
+  function addPump(tx, ty) {
+    if (!inb(tx, ty) || !planT[ti(tx, ty)] || pumps.some(p => p.tx === tx && p.ty === ty)) return;
+    pumps.push({ tx, ty, done: false, claimed: false });
+  }
+
+  function addCharge(tx, ty) {
+    if (!inb(tx, ty) || ty < SURF || ty >= BEDROCK) return;
+    if (charges.some(c => c.state !== 'done' && Math.abs(c.tx - tx) + Math.abs(c.ty - ty) < 3)) return;
+    charges.push({ tx, ty, state: 'plan', fuse: 0 });
+  }
+
+  function addProbe(tx) {
+    if (tx < 0 || tx >= TW || probes.includes(tx) || money < COST.probe) return;
+    money -= COST.probe; probes.push(tx);
+    for (let y = SURF; y < TH; y++) revealed[ti(tx, y)] = 1;
   }
 
   function erase(tx, ty) {
-    const fi = frames.findIndex(f => !f.done && f.tx === tx && (f.fy === ty || f.fy - 1 === ty));
-    if (fi >= 0) {
-      for (const w of workers) if (w.job && w.job.frame === frames[fi]) dropJob(w);
-      frames.splice(fi, 1); return;
+    for (const list of [frames, pumps]) {
+      const k = list.findIndex(o => !o.done && o.tx === tx && (o.fy === undefined ? o.ty === ty : (o.fy === ty || o.fy - 1 === ty)));
+      if (k >= 0) { for (const w of workers) if (w.job && w.job.obj === list[k]) dropJob(w); list.splice(k, 1); return; }
     }
+    const ck = charges.findIndex(c => c.state === 'plan' && c.tx === tx && c.ty === ty);
+    if (ck >= 0) { for (const w of workers) if (w.job && w.job.obj === charges[ck]) dropJob(w); charges.splice(ck, 1); return; }
     if (!inb(tx, ty)) return;
     const i = ti(tx, ty);
     if (!planT[i] || open(tx, ty)) return;
@@ -374,9 +458,95 @@
 
   function planCost() {
     let c = 0;
-    for (const t of digOrder) { const x = t % TW, y = (t / TW) | 0; if (!open(x, y)) c += digCost(x, y); }
-    for (const f of frames) if (!f.done) c += COST.frame;
+    for (const t of digOrder) { const x = t % TW, y = (t / TW) | 0; if (!open(x, y) && !waitsForBlast(x, y)) c += digCost(x, y); }
+    for (const f of frames) if (!f.done) c += COST[f.kind];
+    for (const p of pumps) if (!p.done) c += COST.pump;
+    for (const ch of charges) if (ch.state === 'plan') c += COST.charge;
     return c;
+  }
+
+  // ---------- Крепь: нагрузка ----------
+  function placeFrame(f) {
+    const m = f.kind === 'steel' ? STEEL : WOOD;
+    const top = (f.fy - 1) * T, floor = f.fy * T + T - 1;
+    f.x0 = f.tx * T - 4; f.x1 = f.tx * T + T + 3; f.capY = top;
+    const put = (x, y) => {
+      if (x < 0 || x >= W) return;
+      const i = y * W + x;
+      if (mat[i] === E || mat[i] === WATER) { mat[i] = m; col[i] = colorFor(m); f.cells.push(i); }
+    };
+    for (let x = f.x0; x <= f.x1; x++) put(x, top);
+    for (let y = top + 1; y <= floor; y++) { put(f.x0, y); put(f.x1, y); }
+    f.done = true;
+  }
+
+  function breakFrame(f) {
+    f.broken = true;
+    for (const i of f.cells) if (isFrameMat(mat[i])) loosen(i, mat[i]);
+  }
+
+  // Нагрузка: вес столбов породы над балкой. Сыпучее давит вдвое, камень держит себя сам,
+  // соседние рамы делят общие столбы.
+  function updateLoads() {
+    const cover = new Map();
+    const live = frames.filter(f => f.done && !f.broken);
+    for (const f of live) for (let x = f.x0; x <= f.x1; x++) { const k = f.capY * W + x; cover.set(k, (cover.get(k) || 0) + 1); }
+    for (const f of live) {
+      let alive = 0;
+      for (const i of f.cells) if (isFrameMat(mat[i])) alive++;
+      if (alive < f.cells.length * 0.6) { breakFrame(f); continue; }
+      let L = 0;
+      for (let x = Math.max(0, f.x0); x <= Math.min(W - 1, f.x1); x++) {
+        if (!isFrameMat(mat[f.capY * W + x])) continue;
+        let h = 0;
+        for (let y = f.capY - 1; y >= Math.max(0, f.capY - 40); y--) {
+          const m = mat[y * W + x];
+          if (m === E || m === ROCK) break;
+          h += (isPowder(m) || m === WATER) ? 2 : 1;
+        }
+        L += h / cover.get(f.capY * W + x);
+      }
+      f.load = L; f.ratio = L / CAP[f.kind];
+    }
+  }
+
+  function updateStress(dt) {
+    for (const f of frames) {
+      if (!f.done || f.broken) continue;
+      if (f.ratio > 1) f.stress += (f.ratio - 1) * 0.5 * dt;
+      else f.stress = Math.max(0, f.stress - 0.03 * dt);
+      if (f.stress >= 1) breakFrame(f);
+    }
+  }
+
+  // ---------- Взрыв ----------
+  let flashes = [];
+  function explode(c) {
+    c.state = 'done';
+    const [cx, cy] = chargeCenter(c);
+    for (let y = Math.max(0, cy - 30); y < Math.min(H, cy + 30); y++) for (let x = Math.max(0, cx - 30); x < Math.min(W, cx + 30); x++) {
+      const d = Math.hypot(x - cx, y - cy), i = y * W + x, m = mat[i];
+      if (m === E || m === WATER || y >= BEDROCK * T) continue;
+      if (d < BLAST_R) { mat[i] = E; continue; }
+      if (d < BLAST_R + 6 && Math.random() < 0.5) {
+        if (m === SOIL || m === GOLD) loosen(i, m);
+        else if (m === ROCK && Math.random() < 0.4) { mat[i] = SCRAP; col[i] = colorFor(SCRAP); }
+      }
+    }
+    for (const f of frames) {
+      if (!f.done || f.broken) continue;
+      const d = Math.hypot(f.tx * T + 2 - cx, f.capY - cy);
+      if (d < 36) f.stress += (f.kind === 'steel' ? 0.35 : 0.8) * (1 - d / 36);
+    }
+    tremor = 6;
+    reveal(c.tx, c.ty, 4);
+    flashes.push({ x: cx, y: cy, t: 0 });
+    for (const w of workers) {
+      if (w.alive && Math.hypot(w.fx - cx, w.fy - 3 - cy) < KILL_R) {
+        w.alive = false; dropJob(w);
+        lose('Рабочего накрыло взрывом', 'Он не успел отойти от заряда. Оставляйте рабочим путь к отступлению.');
+      }
+    }
   }
 
   // ---------- Рабочие ----------
@@ -385,16 +555,18 @@
   function spawnWorkers() {
     workers = [];
     for (let k = 0; k < CREW; k++) {
-      const tx = 2 + k, ty = SURF - 1;
-      workers.push({ tx, ty, fx: tx * T + 2, fy: ty * T + T, moving: false, mx: 0, my: 0, mt: [0, 0],
-        path: [], job: null, think: k * 0.15, alive: true, dir: 1, anim: Math.random() * 6, working: false });
+      const [tx, ty] = DEPOT[k];
+      workers.push({ tx, ty, fx: tx * T + 2, fy: ty * T + T, moving: false, mx: 0, my: 0, path: [], job: null,
+        think: k * 0.15, alive: true, dir: 1, anim: Math.random() * 6, working: false, bag: 0 });
     }
   }
 
   function dropJob(w) {
-    if (!w.job) return;
-    if (w.job.tile !== undefined) claimed[w.job.tile] = 0;
-    if (w.job.frame) w.job.frame.claimed = false;
+    const j = w.job;
+    if (!j) return;
+    if (j.type === 'dig') claimed[j.tile] = 0;
+    if (j.obj && j.obj.claimed !== undefined) j.obj.claimed = false;
+    if (j.type === 'charge' && j.obj.state === 'claimed') j.obj.state = 'plan';
     w.job = null; w.path = []; w.working = false;
   }
 
@@ -403,37 +575,73 @@
     for (const [x, y] of cands) {
       if (!inb(x, y)) continue;
       const i = ti(x, y);
-      if (dist[i] >= 0 && dist[i] < bd && standable(x, y)) { bd = dist[i]; best = i; }
+      if (dist[i] >= 0 && dist[i] < bd && standable(x, y) && !inDanger(x, y)) { bd = dist[i]; best = i; }
     }
     return best;
+  }
+
+  const around = (x, y) => [[x, y], [x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1], [x - 1, y + 1], [x + 1, y + 1]];
+
+  function assign(w, job, prev, from, st) {
+    w.job = job; w.path = pathTo(prev, from, st);
   }
 
   function pickJob(w) {
     const { dist, prev } = bfs(w.tx, w.ty);
     const from = ti(w.tx, w.ty);
-    // Готовая к установке крепь — в первую очередь
+
+    const haul = () => {
+      const st = bestStand(dist, DEPOT);
+      if (st >= 0) assign(w, { type: 'haul' }, prev, from, st);
+    };
+    if (w.bag >= BAG) { haul(); return; }
     for (const f of frames) {
       if (f.done || f.claimed || !open(f.tx, f.fy) || !open(f.tx, f.fy - 1)) continue;
-      if (money < COST.frame) { noMoney = true; continue; }
+      if (money < COST[f.kind]) { noMoney = true; continue; }
       const st = bestStand(dist, [[f.tx, f.fy], [f.tx - 1, f.fy], [f.tx + 1, f.fy]]);
       if (st < 0) continue;
-      f.claimed = true;
-      w.job = { frame: f, t: 0, dur: TIME.frame, started: false };
-      w.path = pathTo(prev, from, st);
-      return;
+      f.claimed = true; assign(w, { type: 'frame', obj: f, t: 0 }, prev, from, st); return;
+    }
+    for (const p of pumps) {
+      if (p.done || p.claimed || !open(p.tx, p.ty)) continue;
+      if (money < COST.pump) { noMoney = true; continue; }
+      const st = bestStand(dist, [[p.tx, p.ty], [p.tx - 1, p.ty], [p.tx + 1, p.ty], [p.tx, p.ty - 1]]);
+      if (st < 0) continue;
+      p.claimed = true; assign(w, { type: 'pump', obj: p, t: 0 }, prev, from, st); return;
+    }
+    if (!charges.some(c => c.state === 'armed')) {
+      for (const c of charges) {
+        if (c.state !== 'plan') continue;
+        if (money < COST.charge) { noMoney = true; continue; }
+        const near = []; // заряд закладывают в шпур — можно с пары клеток
+        for (let y = c.ty - 3; y <= c.ty + 3; y++) for (let x = c.tx - 3; x <= c.tx + 3; x++) if (x !== c.tx || y !== c.ty) near.push([x, y]);
+        const st = bestStand(dist, near);
+        if (st < 0) continue;
+        c.state = 'claimed'; assign(w, { type: 'charge', obj: c, t: 0 }, prev, from, st); return;
+      }
     }
     for (const t of digOrder) {
       if (claimed[t]) continue;
       const x = t % TW, y = (t / TW) | 0;
-      if (open(x, y)) continue;
+      if (open(x, y) || waitsForBlast(x, y) || inDanger(x, y)) continue;
       if (money < digCost(x, y)) { noMoney = true; continue; }
-      const st = bestStand(dist, [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1], [x - 1, y + 1], [x + 1, y + 1]]);
+      const st = bestStand(dist, around(x, y).slice(1));
       if (st < 0) continue;
-      claimed[t] = 1;
-      w.job = { tile: t, x, y, t: 0, started: false };
-      w.path = pathTo(prev, from, st);
-      return;
+      claimed[t] = 1; assign(w, { type: 'dig', tile: t, x, y, t: 0, started: false }, prev, from, st); return;
     }
+    if (w.bag > 0) haul(); // работы рядом нет — несём, что набрали
+  }
+
+  function flee(w) {
+    const { dist, prev } = bfs(w.tx, w.ty);
+    let best = -1, bd = 1e9;
+    for (let i = 0; i < NT; i++) {
+      if (dist[i] < 0 || dist[i] >= bd) continue;
+      const x = i % TW, y = (i / TW) | 0;
+      if (standable(x, y) && !inDanger(x, y)) { bd = dist[i]; best = i; }
+    }
+    dropJob(w);
+    if (best >= 0) { w.job = { type: 'flee' }; w.path = pathTo(prev, ti(w.tx, w.ty), best); }
   }
 
   function startMove(w, nx, ny, fast) {
@@ -441,47 +649,44 @@
     if (nx !== w.tx) w.dir = nx > w.tx ? 1 : -1;
   }
 
-  function buried(w) {
+  function bodyCount(w, pred) {
     let n = 0;
     const cx = Math.round(w.fx), by = Math.round(w.fy);
     for (let y = by - 6; y < by; y++) for (let x = cx - 1; x <= cx + 1; x++) {
       if (x < 0 || y < 0 || x >= W || y >= H) continue;
-      const m = mat[y * W + x];
-      if (m !== E && m !== WOOD) n++;
+      if (pred(mat[y * W + x])) n++;
     }
-    return n >= 10;
+    return n;
   }
 
-  function removeCell(i) {
+  function removeCell(i, w) {
     const m = mat[i];
-    if (m === E || m === WOOD) return;
-    if (m === GOLD || m === GOLDL) gold++;
+    if (m === E || isFrameMat(m)) return;
+    if (m === GOLD || m === GOLDL) w.bag++;
     mat[i] = E;
-  }
-
-  function placeFrame(f) {
-    const top = (f.fy - 1) * T, floor = f.fy * T + T - 1;
-    const x0 = f.tx * T - 4, x1 = f.tx * T + T + 3;
-    const put = (x, y) => {
-      if (x < 0 || x >= W) return;
-      const i = y * W + x;
-      if (mat[i] === E) { mat[i] = WOOD; col[i] = colorFor(WOOD); }
-    };
-    for (let x = x0; x <= x1; x++) put(x, top);
-    for (let y = top + 1; y <= floor; y++) { put(x0, y); put(x1, y); }
   }
 
   function work(w, dt) {
     const j = w.job;
-    if (j.frame) {
+    if (j.type === 'haul') { gold += w.bag; w.bag = 0; w.job = null; return; }
+    if (j.type === 'flee') { w.job = null; return; }
+    if (j.type === 'frame' || j.type === 'pump' || j.type === 'charge') {
+      const price = j.type === 'frame' ? COST[j.obj.kind] : COST[j.type];
       if (!j.started) {
-        if (money < COST.frame) { dropJob(w); return; }
-        money -= COST.frame; j.started = true;
+        if (money < price) { dropJob(w); return; }
+        money -= price; j.started = true;
       }
       w.working = true; j.t += dt;
-      if (j.t >= j.dur) { placeFrame(j.frame); j.frame.done = true; j.frame.claimed = false; w.job = null; w.working = false; }
+      const dur = j.type === 'frame' ? TIME.frame : TIME[j.type];
+      if (j.t >= dur) {
+        if (j.type === 'frame') { placeFrame(j.obj); j.obj.claimed = false; }
+        else if (j.type === 'pump') { j.obj.done = true; j.obj.claimed = false; }
+        else { j.obj.state = 'armed'; j.obj.fuse = TIME.fuse; }
+        w.job = null; w.working = false;
+      }
       return;
     }
+    // Проходка
     if (!j.started) {
       if (open(j.x, j.y)) { dropJob(w); return; }
       const c = digCost(j.x, j.y);
@@ -495,9 +700,9 @@
     }
     w.working = true; j.t += dt;
     const n = Math.min(j.cells.length, Math.floor(j.cells.length * j.t / j.dur));
-    for (let k = 0; k < n; k++) removeCell(j.cells[k]);
+    for (let k = 0; k < n; k++) removeCell(j.cells[k], w);
     if (j.t >= j.dur) {
-      for (const i of j.cells) removeCell(i);
+      for (const i of j.cells) removeCell(i, w);
       claimed[j.tile] = 0; w.job = null; w.working = false;
     }
   }
@@ -505,21 +710,23 @@
   function updateWorker(w, dt) {
     if (!w.alive) return;
     w.anim += dt;
-    if (buried(w)) { w.alive = false; dropJob(w); lose('Рабочего засыпало', 'Потолок обвалился прямо на шахтёра. Ставьте крепь чаще и обходите песок.'); return; }
+    if (bodyCount(w, fills) >= 10) { w.alive = false; dropJob(w); lose('Рабочего засыпало', 'Потолок обвалился прямо на шахтёра. Ставьте крепь чаще и обходите песок.'); return; }
+    if (bodyCount(w, m => m === WATER) >= 14) { w.alive = false; dropJob(w); lose('Рабочий утонул', 'Выработку затопило. Поставьте насос или обойдите водоносный слой.'); return; }
     if (w.moving) {
       const tx = w.mx * T + 2, ty = w.my * T + T;
-      const v = (w.fast ? 26 : 12) * dt;
+      const wet = tileWater[ti(w.tx, w.ty)] > 4 ? 0.6 : 1;
+      const v = (w.fast ? 26 : 12 * (w.bag ? 0.65 : 1) * wet) * dt;
       const dx = tx - w.fx, dy = ty - w.fy, d = Math.hypot(dx, dy);
-      if (d <= v) { w.fx = tx; w.fy = ty; w.tx = w.mx; w.ty = w.my; w.moving = false; }
+      if (d <= v) { w.fx = tx; w.fy = ty; w.tx = w.mx; w.ty = w.my; w.moving = false; reveal(w.tx, w.ty, 2); }
       else { w.fx += dx / d * v; w.fy += dy / d * v; }
       return;
     }
-    // Гравитация: без опоры и без лестницы — падает
     if (!standable(w.tx, w.ty) && open(w.tx, w.ty + 1)) { if (!w.working) dropJob(w); startMove(w, w.tx, w.ty + 1, true); return; }
+    if (inDanger(w.tx, w.ty) && (!w.job || w.job.type !== 'flee')) { flee(w); return; }
     if (w.job) {
       if (w.path.length) {
         const [nx, ny] = w.path[0];
-        if (!canMove(w.tx, w.ty, nx, ny)) { dropJob(w); return; }
+        if (!canMove(w.tx, w.ty, nx, ny)) { const keep = w.job.type === 'haul'; dropJob(w); if (keep) w.think = 0; return; }
         w.path.shift(); w.working = false;
         startMove(w, nx, ny, false);
       } else work(w, dt);
@@ -528,6 +735,18 @@
     w.working = false;
     w.think -= dt;
     if (w.think <= 0) { pickJob(w); w.think = 0.25; }
+  }
+
+  function updatePumps() {
+    for (const p of pumps) {
+      if (!p.done) continue;
+      const cx = p.tx * T + 2, cy = p.ty * T + 3;
+      let n = 0;
+      for (let y = Math.min(H - 1, cy + 6); y >= Math.max(0, cy - 12) && n < 3; y--) for (let x = Math.max(0, cx - 12); x <= Math.min(W - 1, cx + 12) && n < 3; x++) {
+        const i = y * W + x;
+        if (mat[i] === WATER) { mat[i] = E; n++; }
+      }
+    }
   }
 
   // ---------- Состояние игры ----------
@@ -545,23 +764,31 @@
   function win() {
     state = 'won';
     banner.className = 'banner win'; banner.hidden = false;
-    $('bannerTitle').textContent = 'Жила вскрыта! 🏆';
-    $('bannerText').textContent = `Добыто ${gold} золота, осталось денег: ${money}. Попробуйте потратить меньше.`;
+    $('bannerTitle').textContent = 'Золото наверху! 🏆';
+    $('bannerText').textContent = `Поднято ${gold} золота, осталось денег: ${Math.floor(money)}. Попробуйте потратить меньше.`;
     updateRunBtn();
   }
 
   function reset() {
     generate();
-    frame = 1; stamp.fill(0);
-    planT.fill(0); claimed.fill(0); ladderL.fill(0); digOrder = []; frames = [];
+    frame = 1; stamp.fill(0); tremor = 1; flashes = [];
+    planT.fill(0); claimed.fill(0); ladderL.fill(0); revealed.fill(0); wasOpen.fill(0);
+    digOrder = []; frames = []; pumps = []; charges = []; probes = [];
     money = START_MONEY; gold = 0; state = 'plan'; noMoney = false;
-    computeTiles(); spawnWorkers();
+    for (let y = 0; y <= SURF; y++) for (let x = 0; x < TW; x++) revealed[ti(x, y)] = 1;
+    computeTiles();
+    for (let i = 0; i < NT; i++) {
+      const x = i % TW, y = (i / TW) | 0;
+      for (let yy = y * T; yy < y * T + T && !revealed[i]; yy++) for (let xx = x * T; xx < x * T + T; xx++) if (mat[yy * W + xx] === GOLD) { revealed[i] = 1; break; }
+    }
+    spawnWorkers();
     banner.hidden = true;
     updateRunBtn();
   }
 
   // ---------- Ввод ----------
   let tool = 'tunnel', drag = null, hover = null;
+  const TOOLS = ['tunnel', 'shaft', 'wood', 'steel', 'charge', 'pump', 'probe', 'erase'];
 
   const toolBtns = document.querySelectorAll('[data-tool]');
   function setTool(t) { tool = t; toolBtns.forEach(b => b.classList.toggle('on', b.dataset.tool === t)); }
@@ -581,9 +808,12 @@
   }
 
   function previewCost(tiles) {
-    let c = 0;
-    for (const [x, y] of tiles) if (inb(x, y) && !planT[ti(x, y)] && !open(x, y)) c += digCost(x, y);
-    return c;
+    let c = 0, unknown = false;
+    for (const [x, y] of tiles) {
+      if (!inb(x, y) || planT[ti(x, y)] || open(x, y)) continue;
+      if (!revealed[ti(x, y)]) { unknown = true; c += COST.dig; } else c += digCost(x, y);
+    }
+    return c + (unknown ? '+?' : '');
   }
 
   canvas.addEventListener('pointerdown', e => {
@@ -599,22 +829,23 @@
     drag.cur = hover;
     if (tool === 'erase') erase(hover[0], hover[1]);
   });
-  canvas.addEventListener('pointerup', e => {
+  canvas.addEventListener('pointerup', () => {
     if (!drag) return;
+    const [x, y] = drag.cur;
     if (tool === 'tunnel' || tool === 'shaft') {
       const tiles = previewTiles();
-      for (const [x, y, type] of tiles) addTile(x, y, type);
-      if (tool === 'shaft') for (let k = 0; k < tiles.length; k += 2) { const [x, y] = tiles[k]; if (y >= SURF && y < BEDROCK) ladderL[ti(x, y)] = 1; }
-    }
-    else if (tool === 'frame') addFrame(drag.cur[0], drag.cur[1]);
+      for (const [tx, ty, type] of tiles) addTile(tx, ty, type);
+      if (tool === 'shaft') for (let k = 0; k < tiles.length; k += 2) { const [tx, ty] = tiles[k]; if (ty >= SURF && ty < BEDROCK) ladderL[ti(tx, ty)] = 1; }
+    } else if (tool === 'wood' || tool === 'steel') addFrame(x, y, tool);
+    else if (tool === 'charge') addCharge(x, y);
+    else if (tool === 'pump') addPump(x, y);
+    else if (tool === 'probe') addProbe(x);
     drag = null;
   });
   canvas.addEventListener('pointercancel', () => { drag = null; });
   canvas.addEventListener('pointerleave', () => { if (!drag) hover = null; });
 
-  function updateRunBtn() {
-    $('run').textContent = state === 'run' ? '⏸ Пауза' : '▶ Пуск';
-  }
+  function updateRunBtn() { $('run').textContent = state === 'run' ? '⏸ Пауза' : '▶ Пуск'; }
   function toggleRun() {
     if (state === 'won' || state === 'lost') return;
     state = state === 'run' ? 'pause' : 'run';
@@ -627,7 +858,7 @@
   $('reset').onclick = reset;
   $('bannerBtn').onclick = reset;
   window.addEventListener('keydown', e => {
-    if (e.key >= '1' && e.key <= '4') setTool(['tunnel', 'shaft', 'frame', 'erase'][e.key - 1]);
+    if (e.key >= '1' && e.key <= '8') setTool(TOOLS[e.key - 1]);
     else if (e.key === ' ') { e.preventDefault(); toggleRun(); }
     else if (e.key === 'r' || e.key === 'R' || e.key === 'к' || e.key === 'К') reset();
     else if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') toggleSpeed();
@@ -646,14 +877,50 @@
     ctx.stroke();
   }
 
-  function drawFrameGhost(f) {
-    const top = (f.fy - 1) * T * S, floor = (f.fy + 1) * T * S;
+  function drawFrameGhost(f, hot) {
+    const top = (f.fy - 1) * TS, floor = (f.fy + 1) * TS;
     const x0 = (f.tx * T - 4) * S, x1 = (f.tx * T + T + 4) * S;
-    ctx.strokeStyle = f.claimed ? 'rgba(255,220,140,.95)' : 'rgba(255,200,120,.7)';
+    const steel = f.kind === 'steel';
+    ctx.strokeStyle = steel ? (hot ? 'rgba(190,215,240,.95)' : 'rgba(170,200,230,.7)') : (hot ? 'rgba(255,220,140,.95)' : 'rgba(255,200,120,.7)');
     ctx.setLineDash([4, 3]); ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x0 + 2, floor); ctx.lineTo(x0 + 2, top + 2); ctx.lineTo(x1 - 2, top + 2); ctx.lineTo(x1 - 2, floor);
     ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  function drawLoadBar(f, t) {
+    const r = f.ratio;
+    let c = r < 0.7 ? '#5fbf5a' : r < 1 ? '#e7c23a' : '#e2533a';
+    if (r >= 1 && Math.sin(t * 12) < 0) c = '#ff9c80';
+    const y = f.capY * S + S + 1;
+    ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect((f.tx * T - 2) * S, y, 8 * S, 4);
+    ctx.fillStyle = c; ctx.fillRect((f.tx * T - 2) * S, y, 8 * S * Math.min(1, r), 4);
+  }
+
+  function drawCharge(c, t) {
+    const x = c.tx * TS + TS / 2, y = c.ty * TS + TS / 2;
+    if (c.state === 'armed') {
+      ctx.strokeStyle = 'rgba(255,90,60,.55)'; ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, y, EVAC_R * S, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = Math.sin(t * 16) > 0 ? '#ff4a2a' : '#7a1a10';
+    } else ctx.fillStyle = c.state === 'claimed' ? '#d04030' : 'rgba(208,64,48,.6)';
+    ctx.fillRect(x - 3, y - 7, 6, 14);
+    ctx.fillRect(x - 8, y - 7, 4, 14);
+    ctx.fillRect(x + 4, y - 7, 4, 14);
+    if (c.state === 'armed') {
+      ctx.font = 'bold 14px system-ui, sans-serif'; ctx.fillStyle = '#fff';
+      ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.lineWidth = 3;
+      const s = Math.ceil(c.fuse) + '';
+      ctx.strokeText(s, x + 10, y - 8); ctx.fillText(s, x + 10, y - 8);
+    }
+  }
+
+  function drawPump(p) {
+    const x = p.tx * TS + 4, y = p.ty * TS + TS - 12;
+    ctx.globalAlpha = p.done ? 1 : 0.5;
+    ctx.fillStyle = '#3a6fb0'; ctx.fillRect(x, y, 14, 12);
+    ctx.fillStyle = '#9cc4ee'; ctx.beginPath(); ctx.arc(x + 7, y + 6, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   function drawHut() {
@@ -662,6 +929,7 @@
     ctx.fillStyle = '#8c3b2a';
     ctx.beginPath(); ctx.moveTo(x - 6, y - h); ctx.lineTo(x + w / 2, y - h - 18); ctx.lineTo(x + w + 6, y - h); ctx.fill();
     ctx.fillStyle = '#2b1d12'; ctx.fillRect(x + w / 2 - 6, y - 18, 12, 18);
+    ctx.fillStyle = '#e8c040'; ctx.beginPath(); ctx.arc(x + w + 14, y - 6, 6, 0, Math.PI * 2); ctx.fill(); // кучка золота
   }
 
   function drawWorker(w) {
@@ -676,6 +944,7 @@
     ctx.moveTo(2, -8); ctx.lineTo(2 - walk, 0);
     ctx.stroke();
     ctx.fillStyle = '#d9822b'; ctx.fillRect(-4, -17, 8, 10);
+    if (w.bag) { ctx.fillStyle = '#c9a23a'; ctx.beginPath(); ctx.arc(-6, -15, 4.5, 0, Math.PI * 2); ctx.fill(); }
     ctx.fillStyle = '#f0c8a0'; ctx.beginPath(); ctx.arc(0, -20, 3.2, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#f2d22e'; ctx.beginPath(); ctx.arc(0, -21, 4, Math.PI, 0); ctx.fill();
     ctx.fillRect(-5, -21.5, 10, 1.6);
@@ -689,9 +958,17 @@
     ctx.restore();
   }
 
-  function render() {
-    for (let i = 0; i < N; i++) buf[i] = mat[i] ? col[i] : bg[i];
+  function render(t, dt) {
+    for (let y = 0; y < H; y++) {
+      const trow = (y >> 2) * TW;
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        buf[i] = revealed[trow + (x >> 2)] ? (mat[i] ? col[i] : bg[i]) : fogCol[i];
+      }
+    }
     octx.putImageData(img, 0, 0);
+    ctx.save();
+    if (tremor > 1.3) ctx.translate((Math.random() - .5) * tremor, (Math.random() - .5) * tremor);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(off, 0, 0, W * S, H * S);
 
@@ -703,82 +980,107 @@
       ctx.stroke();
     }
 
+    for (const x of probes) {
+      ctx.strokeStyle = 'rgba(200,200,210,.5)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x * TS + TS / 2, SURF * TS - 14); ctx.lineTo(x * TS + TS / 2 - 6, SURF * TS); ctx.lineTo(x * TS + TS / 2 + 6, SURF * TS); ctx.closePath(); ctx.stroke();
+    }
+
     for (let y = 0; y < TH; y++) for (let x = 0; x < TW; x++) {
       const i = ti(x, y), p = planT[i];
       if (!p) continue;
       if (!open(x, y)) {
-        ctx.fillStyle = claimed[i] ? 'rgba(255,225,120,.38)' : isRockTile(x, y) ? 'rgba(255,140,90,.25)' : 'rgba(240,200,90,.2)';
+        const known = revealed[i];
+        ctx.fillStyle = claimed[i] ? 'rgba(255,225,120,.38)' : waitsForBlast(x, y) ? 'rgba(255,90,60,.18)' : known && isRockTile(x, y) ? 'rgba(255,140,90,.25)' : 'rgba(240,200,90,.2)';
         ctx.fillRect(x * TS, y * TS, TS, TS);
         ctx.strokeStyle = 'rgba(240,200,90,.45)'; ctx.lineWidth = 1;
         ctx.strokeRect(x * TS + .5, y * TS + .5, TS - 1, TS - 1);
       }
       if (ladderL[i] && open(x, y)) drawLadder(x + 0.5, y);
     }
-    for (const f of frames) if (!f.done) drawFrameGhost(f);
+    for (const f of frames) {
+      if (!f.done) drawFrameGhost(f, f.claimed);
+      else if (!f.broken) drawLoadBar(f, t);
+    }
+    for (const p of pumps) drawPump(p);
+    for (const c of charges) if (c.state !== 'done') drawCharge(c, t);
 
-    // Превью перетаскивания
     if (drag && (tool === 'tunnel' || tool === 'shaft')) {
       const tiles = previewTiles();
       ctx.fillStyle = 'rgba(255,255,255,.22)';
       for (const [x, y] of tiles) if (inb(x, y)) ctx.fillRect(x * TS, y * TS, TS, TS);
       const c = previewCost(tiles), [hx, hy] = drag.cur;
       ctx.font = 'bold 15px system-ui, sans-serif';
-      ctx.fillStyle = c > money ? '#ff8a70' : '#fff';
+      ctx.fillStyle = parseInt(c) > money ? '#ff8a70' : '#fff';
       ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 3;
-      const tx = Math.min(hx * TS + 18, W * S - 70), ty = Math.max(hy * TS - 6, 18);
+      const tx = Math.min(hx * TS + 18, W * S - 80), ty = Math.max(hy * TS - 6, 18);
       ctx.strokeText(c + ' ₽', tx, ty); ctx.fillText(c + ' ₽', tx, ty);
     } else if (hover && state !== 'won' && state !== 'lost') {
       const [x, y] = hover;
-      if (tool === 'frame') {
-        const f = frameAt(x, y);
-        if (f) drawFrameGhost({ ...f, claimed: true });
-      } else {
-        ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1.5;
-        if (tool === 'shaft') ctx.strokeRect(Math.min(x, TW - 2) * TS, y * TS, TS * 2, TS);
-        else if (tool === 'tunnel') ctx.strokeRect(x * TS, (y - 1) * TS, TS, TS * 2);
-        else ctx.strokeRect(x * TS, y * TS, TS, TS);
+      ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 1.5;
+      if (tool === 'wood' || tool === 'steel') { const f = frameAt(x, y); if (f) drawFrameGhost({ ...f, kind: tool }, true); }
+      else if (tool === 'charge') {
+        ctx.strokeStyle = 'rgba(255,90,60,.6)'; ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.arc(x * TS + TS / 2, y * TS + TS / 2, BLAST_R * S, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x * TS + TS / 2, y * TS + TS / 2, EVAC_R * S, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
       }
+      else if (tool === 'probe') { ctx.strokeRect(x * TS, SURF * TS, TS, (TH - SURF) * TS); }
+      else if (tool === 'shaft') ctx.strokeRect(Math.min(x, TW - 2) * TS, y * TS, TS * 2, TS);
+      else if (tool === 'tunnel') ctx.strokeRect(x * TS, (y - 1) * TS, TS, TS * 2);
+      else ctx.strokeRect(x * TS, y * TS, TS, TS);
     }
 
     drawHut();
     for (const w of workers) drawWorker(w);
+
+    for (const f of flashes) {
+      f.t += dt;
+      const a = Math.max(0, 1 - f.t / 0.5);
+      ctx.fillStyle = `rgba(255,220,150,${a * 0.8})`;
+      ctx.beginPath(); ctx.arc(f.x * S, f.y * S, (BLAST_R + f.t * 40) * S, 0, Math.PI * 2); ctx.fill();
+    }
+    flashes = flashes.filter(f => f.t < 0.5);
+    ctx.restore();
   }
 
   const $money = $('money'), $plan = $('planCost'), $gold = $('gold'), $goal = $('goal'), $crew = $('crew'), $status = $('status');
 
   function hud() {
-    $money.textContent = money; $plan.textContent = planCost();
+    $money.textContent = Math.floor(money); $plan.textContent = planCost();
     $gold.textContent = gold; $goal.textContent = GOAL;
     $crew.textContent = workers.filter(w => w.alive).length + ' / ' + CREW;
     let s = '';
-    if (state === 'plan') s = 'Разметьте ствол и штреки до жилы, расставьте крепь и нажмите «Пуск». Мир пока стоит.';
-    else if (state === 'pause') s = 'Пауза: можно спокойно править план.';
+    if (state === 'plan') s = 'Разведайте бурами, разметьте ствол и штреки до жилы, расставьте крепь и нажмите «Пуск».';
+    else if (state === 'pause') s = 'Пауза: мир замер, можно править план.';
     else if (state === 'run') {
       const busy = workers.some(w => w.job);
-      if (noMoney && !busy) s = 'Не хватает денег на следующую работу.';
-      else if (!busy) s = 'Работы по плану нет: продлите выработки.';
+      if (charges.some(c => c.state === 'armed')) s = 'Заряд заложен! Рабочие отходят…';
+      else if (frames.some(f => f.done && !f.broken && f.ratio > 1)) s = 'Крепь перегружена и трещит! Поставьте рядом ещё раму или сталь.';
+      else if (noMoney && !busy) s = 'Не хватает денег на следующую работу.';
+      else if (!busy) s = 'Работы по плану нет: продлите выработки. Зарплата капает.';
       else s = 'Идёт проходка…';
     }
     $status.textContent = s;
   }
 
-  let last = performance.now(), hudT = 0;
+  let last = performance.now(), hudT = 0, loadT = 0;
   function loop(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     if (state === 'run') {
-      for (let k = 0; k < speed; k++) {
+      for (let k = 0; k < speed && state === 'run'; k++) {
         step(); step();
         computeTiles();
+        updatePumps();
+        if ((loadT += dt) > 0.25) { loadT = 0; updateLoads(); }
+        updateStress(dt);
+        for (const c of charges) if (c.state === 'armed' && (c.fuse -= dt) <= 0) explode(c);
         noMoney = false;
         for (const w of workers) updateWorker(w, dt);
-        if (state !== 'run') break;
+        money -= WAGE * workers.filter(w => w.alive).length * dt;
       }
-      computeTiles();
       if (state === 'run' && gold >= GOAL) win();
-    } else if (state === 'plan' || state === 'pause') {
-      computeTiles();
-    }
-    render();
+      else if (state === 'run' && money <= 0) lose('Деньги кончились', 'Зарплата и работы съели бюджет. Ищите путь короче и дешевле.');
+    } else computeTiles();
+    render(now / 1000, dt);
     if ((hudT += dt) > 0.1) { hudT = 0; hud(); }
     requestAnimationFrame(loop);
   }

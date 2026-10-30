@@ -63,12 +63,20 @@
   .banner h2 { margin: 0; font-size: 26px; }
   .banner.win h2 { color: var(--accent); }
   .banner.lose h2 { color: var(--danger); }
+  .levels { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 8px; }
+  .levels button { padding: 5px 10px; }
+  .levels .stars { color: var(--accent); letter-spacing: 1px; }
+  .levelInfo { max-width: 960px; text-align: center; margin-bottom: 8px; }
+  .levelInfo b { color: var(--accent); }
+  .banner .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   .hint { color: var(--muted); max-width: 960px; margin-top: 10px; }
   .hint p { margin: 4px 0; }
 </style>
 </head>
 <body>
 <h1>Песчаная шахта</h1>
+<div class="levels" id="levels"></div>
+<div class="levelInfo" id="levelInfo"></div>
 
 <div class="bar">
   <button data-tool="tunnel" class="on">━ Штрек</button>
@@ -90,6 +98,7 @@
   <span>По плану: <b id="planCost">0</b></span>
   <span>Золото наверху: <b id="gold">0</b> / <b id="goal">0</b></span>
   <span>Рабочие: <b id="crew">0</b></span>
+  <span id="quakeBox" hidden>Толчок через: <b id="quake">0</b> с</span>
 </div>
 <div id="status"></div>
 
@@ -98,13 +107,13 @@
   <div class="banner" id="banner" hidden>
     <h2 id="bannerTitle"></h2>
     <div id="bannerText"></div>
-    <button id="bannerBtn">↺ Заново</button>
+    <div class="row"><button id="bannerBtn">↺ Заново</button><button id="nextBtn" hidden>Следующий уровень →</button></div>
   </div>
 </div>
 
 <div class="hint">
-  <p><b>Цель:</b> поднять 120 золота из жилы справа внизу в домик. Шахтёры носят руду мешками, а каждая секунда
-    стоит зарплаты, так что длинный путь обходится дорого.</p>
+  <p><b>Цель:</b> поднять золото из жилы в домик. Шахтёры носят руду мешками, а каждая секунда
+    стоит зарплаты, так что длинный путь обходится дорого. Звёзды даются за оставшиеся деньги.</p>
   <p><b>Порода скрыта.</b> Видно только то, что рядом с выработками. <b>Бур</b> вскрывает разрез на всю глубину.</p>
   <p><b>Крепь</b> держит потолок, но у неё есть предел. Полоска под балкой показывает нагрузку: красная — крепь скоро
     сломается. Песок и глубина давят сильнее, камень над балкой держит себя сам. Сталь в три раза прочнее дерева,
@@ -112,6 +121,8 @@
   <p><b>Гранит</b> (тёмно-красный) не берут ни кирка, ни взрыв, и жила спрятана под ним.
     <b>Заряд</b> пробивает обычный камень за раз. Рабочие отходят, но взрыв трясёт гору и бьёт по крепи.
     <b>Вода</b> из подземных карманов затапливает выработки. <b>Насос</b> откачивает её вокруг себя.</p>
+  <p><b>Толчки:</b> за 4 секунды до толчка шахтёры укрываются под ближайшей рамой, в стволе или на поверхности.
+    Если укрыться негде, они остаются у забоя.</p>
 </div>
 
 <script>
@@ -123,7 +134,7 @@
   const COST = { dig: 3, rock: 40, wood: 12, steel: 35, charge: 25, pump: 40, probe: 15 };
   const TIME = { dig: 0.9, rock: 5, frame: 1.5, pump: 1.5, charge: 1.2, fuse: 6 };
   const CAP = { wood: 420, steel: 1150 };
-  const START_MONEY = 1200, GOAL = 120, CREW = 3, WAGE = 1 / 3, BAG = 30; // зарплата: ₽ в секунду на рабочего
+  const CREW = 3, WAGE = 1 / 3, BAG = 30; // зарплата: ₽ в секунду на рабочего
   const BLAST_R = 9, KILL_R = 16, EVAC_R = 28;
   const DEPOT = [[2, SURF - 1], [3, SURF - 1], [4, SURF - 1]];
 
@@ -186,14 +197,14 @@
       const nx = x - d;
       if (nx < 0) { dl = d; break; }
       if (!solid(mat[row + nx])) break;
-      if (solid(mat[below + nx])) { dl = d; break; }
+      if (mat[below + nx] !== E) { dl = d; break; }
       if (d === MAXS) dl = MAXS;
     }
     for (let d = 1; d <= MAXS; d++) {
       const nx = x + d;
       if (nx >= W) { dr = d; break; }
       if (!solid(mat[row + nx])) break;
-      if (solid(mat[below + nx])) { dr = d; break; }
+      if (mat[below + nx] !== E) { dr = d; break; }
       if (d === MAXS) dr = MAXS;
     }
     if (dl < 0 && dr < 0) return -1;
@@ -242,17 +253,19 @@
 
   function updateStruct(x, y, i, m) {
     const P = PROPS[m];
-    if (solid(mat[i + W])) {
+    if (mat[i + W] !== E) { // вода тоже держит грунт над собой
       // При толчке открытые стенки осыпаются
       if (tremor > 1.3 && !isFrameMat(m) && ((x > 0 && mat[i - 1] === E) || (x < W - 1 && mat[i + 1] === E))) {
-        if (Math.random() < 0.0012 * tremor) loosen(i, m);
+        if (Math.random() < 0.0005 * tremor) loosen(i, m);
       }
       return;
     }
     const sp = span(x, y);
     if (sp < 0) { loosen(i, m); return; }
     const ex = Math.max(0, sp - P.safe);
-    if (Math.random() < P.k * (ex * ex * loadF(x, y) + (tremor - 1) * sp * 2) * tremor) loosen(i, m);
+    // Крепь от толчков страдает через нагрузку (updateStress), а не рассыпается поклеточно
+    const shake = isFrameMat(m) ? 0 : (tremor - 1) * sp * 2;
+    if (Math.random() < P.k * (ex * ex * loadF(x, y) + shake) * (isFrameMat(m) ? 1 : tremor)) loosen(i, m);
   }
 
   function step() {
@@ -262,7 +275,7 @@
       for (let k = 0; k < W; k++) {
         const x = ltr ? k : W - 1 - k;
         const i = y * W + x, m = mat[i];
-        if (m === E || m === ROCK || m === GRANITE || stamp[i] === frame) continue;
+        if (m === E || m === ROCK || m === GRANITE || isFrameMat(m) || stamp[i] === frame) continue; // крепь ломается только целиком (updateStress)
         if (isPowder(m)) updatePowder(x, i);
         else if (m === WATER) updateWater(x, i);
         else updateStruct(x, y, i, m);
@@ -277,14 +290,63 @@
     return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
+  // Геология уровней. band и rect — в тайлах, blob — в клетках (центр и радиусы). Поздние слои перекрывают ранние.
+  const LEVELS = [
+    {
+      name: 'Первая жила', budget: 1200, goal: 120, stars: [250, 450], seed: 7,
+      desc: 'Жила под гранитом, над подходом — подземное озеро. Разведайте и найдите проход.',
+      geo: [
+        { m: ROCK, band: [15, 17], gaps: [[14, 17]] },
+        { m: GRANITE, rect: [33, 21, 48, 23], wob: 2 },
+        { m: SAND, blob: [80, 38, 26, 8] },
+        { m: WATER, blob: [112, 82, 26, 8] },
+        { m: SAND, blob: [76, 106, 22, 7] },
+        { m: GOLD, blob: [166, 108, 14, 6] },
+      ],
+    },
+    {
+      name: 'Плывуны', budget: 900, goal: 120, stars: [200, 350], seed: 11, soilK: 1.8,
+      desc: 'Слабый грунт осыпается почти вдвое быстрее. Сверху огромное тело песка, камень без разломов.',
+      geo: [
+        { m: SAND, blob: [118, 46, 84, 10] },
+        { m: ROCK, band: [16, 18] },
+        { m: GRANITE, rect: [16, 22, 35, 24], wob: 2 },
+        { m: SAND, blob: [54, 102, 16, 7] },
+        { m: WATER, blob: [154, 100, 18, 6] },
+        { m: GOLD, blob: [102, 110, 16, 5] },
+      ],
+    },
+    {
+      name: 'Толчки', budget: 1300, goal: 120, stars: [200, 400], seed: 23, quake: { every: 40, power: 5 },
+      desc: 'Каждые 40 секунд гору трясёт: деревянная крепь трещит, стенки осыпаются. Стройте с запасом.',
+      geo: [
+        { m: ROCK, band: [12, 14], gaps: [[30, 33]] },
+        { m: ROCK, band: [21, 23], gaps: [[8, 11]] },
+        { m: GRANITE, rect: [34, 13, 48, 15], wob: 2 },
+        { m: SAND, blob: [124, 68, 22, 5] },
+        { m: WATER, blob: [62, 100, 20, 5] },
+        { m: GOLD, blob: [164, 76, 14, 6] },
+      ],
+    },
+    {
+      name: 'Родник', budget: 1500, goal: 170, stars: [250, 500], seed: 31, quake: { every: 55, power: 4 },
+      springs: [{ x: 112, y: 104, rate: 12 }],
+      desc: 'Две маленькие жилы под гранитом, одной не хватит. У нижней бьёт родник: вода прибывает всё время.',
+      geo: [
+        { m: ROCK, band: [9, 11], gaps: [[22, 25]] },
+        { m: GRANITE, rect: [3, 21, 19, 23], wob: 2 },
+        { m: GRANITE, rect: [35, 11, 48, 13], wob: 2 },
+        { m: SAND, blob: [96, 80, 30, 7] },
+        { m: WATER, blob: [112, 104, 9, 4] },
+        { m: GOLD, blob: [42, 104, 10, 4] },
+        { m: GOLD, blob: [168, 62, 10, 4] },
+      ],
+    },
+  ];
+  let level = 0, L = LEVELS[0], springs = [], quakeT = 0;
+
   function generate() {
-    const R = mulberry32(7);
-    const blobs = [
-      { m: SAND, cx: 80, cy: 38, rx: 26, ry: 8 },    // песчаная линза над разломом
-      { m: WATER, cx: 112, cy: 82, rx: 26, ry: 8 },  // подземное озеро над подходом к жиле
-      { m: SAND, cx: 76, cy: 106, rx: 22, ry: 7 },   // глубокая линза на пути к жиле
-      { m: GOLD, cx: 166, cy: 108, rx: 14, ry: 6 },  // золотая жила
-    ];
+    const R = mulberry32(L.seed);
     const top = SURF * T;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x;
@@ -296,13 +358,18 @@
       }
       bg[i] = jit([34, 26, 20], 4, R);
       let m = SOIL;
-      if (y >= 15 * T && y < 17 * T && !(x >= 14 * T && x < 17 * T)) m = ROCK; // каменный пласт с разломом под песком
-      if (y >= BEDROCK * T) m = ROCK;
-      if (x >= 33 * T && y >= 84 + Math.round(2 * Math.sin(x * 0.3)) && y < 92) m = GRANITE; // панцирь над жилой: подход только сбоку
-      for (const b of blobs) {
-        const dx = (x - b.cx) / b.rx, dy = (y - b.cy) / b.ry;
-        if (dx * dx + dy * dy < 1) { m = b.m; break; }
+      for (const g of L.geo) {
+        if (g.band) {
+          if (y >= g.band[0] * T && y < g.band[1] * T && !(g.gaps || []).some(([a, b]) => x >= a * T && x < b * T)) m = g.m;
+        } else if (g.rect) {
+          const [x0, y0, x1, y1] = g.rect;
+          if (x >= x0 * T && x < x1 * T && y >= y0 * T + Math.round((g.wob || 0) * Math.sin(x * 0.3)) && y < y1 * T) m = g.m;
+        } else {
+          const [cx, cy, rx, ry] = g.blob, dx = (x - cx) / rx, dy = (y - cy) / ry;
+          if (dx * dx + dy * dy < 1) m = g.m;
+        }
       }
+      if (y >= BEDROCK * T) m = ROCK;
       mat[i] = m;
       col[i] = (m === SOIL && y - top < 2) ? jit([72, 140, 52], 12, R) : colorFor(m, y, R);
     }
@@ -648,6 +715,25 @@
     if (best >= 0) { w.job = { type: 'flee' }; w.path = pathTo(prev, ti(w.tx, w.ty), best); }
   }
 
+  // Перед толчком рабочие прячутся под крепь, в ствол или на поверхность
+  const quakeSoon = () => L.quake && (quakeT < 4 || L.quake.every - quakeT < 2.5);
+  const isShelter = (x, y) => y < SURF || isLadder(x, y) ||
+    frames.some(f => f.done && !f.broken && Math.abs(x - f.tx) <= 1 && (y === f.fy || y === f.fy - 1));
+
+  function seekShelter(w) {
+    const { dist, prev } = bfs(w.tx, w.ty);
+    let best = -1, bd = 1e9;
+    for (let i = 0; i < NT; i++) {
+      if (dist[i] < 0 || dist[i] >= bd) continue;
+      const x = i % TW, y = (i / TW) | 0;
+      if (standable(x, y) && isShelter(x, y) && !inDanger(x, y)) { bd = dist[i]; best = i; }
+    }
+    if (best < 0) return false;
+    dropJob(w);
+    w.job = { type: 'shelter' }; w.path = pathTo(prev, ti(w.tx, w.ty), best);
+    return true;
+  }
+
   function startMove(w, nx, ny, fast) {
     w.moving = true; w.mx = nx; w.my = ny; w.fast = fast;
     if (nx !== w.tx) w.dir = nx > w.tx ? 1 : -1;
@@ -673,7 +759,7 @@
   function work(w, dt) {
     const j = w.job;
     if (j.type === 'haul') { gold += w.bag; w.bag = 0; w.job = null; return; }
-    if (j.type === 'flee') { w.job = null; return; }
+    if (j.type === 'flee' || j.type === 'shelter') { w.job = null; return; }
     if (j.type === 'frame' || j.type === 'pump' || j.type === 'charge') {
       const price = j.type === 'frame' ? COST[j.obj.kind] : COST[j.type];
       if (!j.started) {
@@ -714,7 +800,7 @@
   function updateWorker(w, dt) {
     if (!w.alive) return;
     w.anim += dt;
-    if (bodyCount(w, fills) >= 10) { w.alive = false; dropJob(w); lose('Рабочего засыпало', 'Потолок обвалился прямо на шахтёра. Ставьте крепь чаще и обходите песок.'); return; }
+    if (bodyCount(w, fills) >= 13) { w.alive = false; dropJob(w); lose('Рабочего засыпало', 'Потолок обвалился прямо на шахтёра. Ставьте крепь чаще и обходите песок.'); return; }
     if (bodyCount(w, m => m === WATER) >= 14) { w.alive = false; dropJob(w); lose('Рабочий утонул', 'Выработку затопило. Поставьте насос или обойдите водоносный слой.'); return; }
     if (w.moving) {
       const tx = w.mx * T + 2, ty = w.my * T + T;
@@ -727,6 +813,10 @@
     }
     if (!standable(w.tx, w.ty) && open(w.tx, w.ty + 1)) { if (!w.working) dropJob(w); startMove(w, w.tx, w.ty + 1, true); return; }
     if (inDanger(w.tx, w.ty) && (!w.job || w.job.type !== 'flee')) { flee(w); return; }
+    if (quakeSoon() && (!w.job || (w.job.type !== 'shelter' && w.job.type !== 'flee'))) {
+      if (isShelter(w.tx, w.ty)) { dropJob(w); return; } // пережидаем
+      if (seekShelter(w)) return;
+    }
     if (w.job) {
       if (w.path.length) {
         const [nx, ny] = w.path[0];
@@ -766,20 +856,48 @@
     updateRunBtn();
   }
 
+  // Лучшие звёзды по уровням — только удобство этого браузера
+  let best = [];
+  try { best = JSON.parse(localStorage.getItem('sandmine-stars') || '[]'); } catch (e) { best = []; }
+  const starStr = n => '★'.repeat(n) + '☆'.repeat(3 - n);
+
+  function renderLevels() {
+    const box = $('levels');
+    box.innerHTML = '';
+    LEVELS.forEach((lv, k) => {
+      const b = document.createElement('button');
+      b.className = k === level ? 'on' : '';
+      b.innerHTML = `${k + 1}. ${lv.name} <span class="stars">${starStr(best[k] || 0)}</span>`;
+      b.onclick = () => { level = k; reset(); };
+      box.appendChild(b);
+    });
+    $('levelInfo').innerHTML = `<b>Уровень ${level + 1}: ${L.name}.</b> ${L.desc} Бюджет ${L.budget} ₽, нужно ${L.goal} золота. ` +
+      `★★ — осталось ${L.stars[0]} ₽, ★★★ — ${L.stars[1]} ₽.`;
+  }
+
   function win() {
     state = 'won';
+    const left = Math.floor(money), n = left >= L.stars[1] ? 3 : left >= L.stars[0] ? 2 : 1;
+    if ((best[level] || 0) < n) { best[level] = n; try { localStorage.setItem('sandmine-stars', JSON.stringify(best)); } catch (e) { /* без сохранения */ } }
     banner.className = 'banner win'; banner.hidden = false;
-    $('bannerTitle').textContent = 'Золото наверху! 🏆';
-    $('bannerText').textContent = `Поднято ${gold} золота, осталось денег: ${Math.floor(money)}. Попробуйте потратить меньше.`;
+    $('bannerTitle').textContent = `Уровень пройден ${starStr(n)}`;
+    $('bannerText').textContent = `Поднято ${gold} золота, осталось денег: ${left}.` + (n < 3 ? ` Для ★★★ нужно сохранить ${L.stars[1]}.` : '');
+    $('nextBtn').hidden = level >= LEVELS.length - 1;
+    renderLevels();
     updateRunBtn();
   }
 
   function reset() {
+    L = LEVELS[level];
+    PROPS[SOIL].k = PROPS[GOLD].k = 0.000015 * (L.soilK || 1);
+    springs = (L.springs || []).map(sp => ({ ...sp, acc: 0 }));
+    quakeT = L.quake ? L.quake.every : 0;
+    $('nextBtn').hidden = true;
     generate();
     frame = 1; stamp.fill(0); tremor = 1; flashes = [];
     planT.fill(0); claimed.fill(0); ladderL.fill(0); revealed.fill(0); wasOpen.fill(0);
     digOrder = []; frames = []; pumps = []; charges = []; probes = [];
-    money = START_MONEY; gold = 0; state = 'plan'; noMoney = false;
+    money = L.budget; gold = 0; state = 'plan'; noMoney = false;
     for (let y = 0; y <= SURF; y++) for (let x = 0; x < TW; x++) revealed[ti(x, y)] = 1;
     computeTiles();
     for (let i = 0; i < NT; i++) {
@@ -788,7 +906,26 @@
     }
     spawnWorkers();
     banner.hidden = true;
+    renderLevels();
     updateRunBtn();
+  }
+
+  function quake() {
+    tremor = Math.max(tremor, L.quake.power);
+    for (const f of frames) if (f.done && !f.broken) f.stress += (f.kind === 'steel' ? 0.08 : 0.3) * L.quake.power / 5;
+  }
+
+  function updateSprings(dt) {
+    for (const sp of springs) {
+      sp.acc += sp.rate * dt;
+      while (sp.acc >= 1) {
+        sp.acc--;
+        for (let k = 0; k < 6; k++) {
+          const x = sp.x + ((Math.random() * 5) | 0) - 2, y = sp.y + ((Math.random() * 5) | 0) - 2, i = y * W + x;
+          if (mat[i] === E) { mat[i] = WATER; col[i] = colorFor(WATER); break; }
+        }
+      }
+    }
   }
 
   // ---------- Ввод ----------
@@ -862,6 +999,7 @@
   $('speed').onclick = toggleSpeed;
   $('reset').onclick = reset;
   $('bannerBtn').onclick = reset;
+  $('nextBtn').onclick = () => { level = Math.min(LEVELS.length - 1, level + 1); reset(); };
   window.addEventListener('keydown', e => {
     if (e.key >= '1' && e.key <= '8') setTool(TOOLS[e.key - 1]);
     else if (e.key === ' ') { e.preventDefault(); toggleRun(); }
@@ -1051,14 +1189,17 @@
 
   function hud() {
     $money.textContent = Math.floor(money); $plan.textContent = planCost();
-    $gold.textContent = gold; $goal.textContent = GOAL;
+    $gold.textContent = gold; $goal.textContent = L.goal;
+    $('quakeBox').hidden = !L.quake; if (L.quake) $('quake').textContent = Math.ceil(quakeT);
     $crew.textContent = workers.filter(w => w.alive).length + ' / ' + CREW;
     let s = '';
     if (state === 'plan') s = 'Разведайте бурами, разметьте ствол и штреки до жилы, расставьте крепь и нажмите «Пуск».';
     else if (state === 'pause') s = 'Пауза: мир замер, можно править план.';
     else if (state === 'run') {
       const busy = workers.some(w => w.job);
-      if (charges.some(c => c.state === 'armed')) s = 'Заряд заложен! Рабочие отходят…';
+      if (L.quake && L.quake.every - quakeT < 3) s = 'Толчок! Гору трясёт.';
+      else if (quakeSoon()) s = `Толчок через ${Math.ceil(quakeT)} с — рабочие укрываются под крепью и в стволе.`;
+      else if (charges.some(c => c.state === 'armed')) s = 'Заряд заложен! Рабочие отходят…';
       else if (frames.some(f => f.done && !f.broken && f.ratio > 1)) s = 'Крепь перегружена и трещит! Поставьте рядом ещё раму или сталь.';
       else if (noMoney && !busy) s = 'Не хватает денег на следующую работу.';
       else if (!busy && digOrder.some(t => { const x = t % TW, y = (t / TW) | 0; return !open(x, y) && isGraniteTile(x, y); })) s = 'Гранит не взять ни киркой, ни взрывом: ищите подход к жиле сбоку.';
@@ -1076,6 +1217,8 @@
         step(); step();
         computeTiles();
         updatePumps();
+        updateSprings(dt);
+        if (L.quake && (quakeT -= dt) <= 0) { quake(); quakeT = L.quake.every; }
         if ((loadT += dt) > 0.25) { loadT = 0; updateLoads(); }
         updateStress(dt);
         for (const c of charges) if (c.state === 'armed' && (c.fuse -= dt) <= 0) explode(c);
@@ -1083,7 +1226,7 @@
         for (const w of workers) updateWorker(w, dt);
         money -= WAGE * workers.filter(w => w.alive).length * dt;
       }
-      if (state === 'run' && gold >= GOAL) win();
+      if (state === 'run' && gold >= L.goal) win();
       else if (state === 'run' && money <= 0) lose('Деньги кончились', 'Зарплата и работы съели бюджет. Ищите путь короче и дешевле.');
     } else computeTiles();
     render(now / 1000, dt);

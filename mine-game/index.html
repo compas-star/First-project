@@ -109,7 +109,8 @@
   <p><b>Крепь</b> держит потолок, но у неё есть предел. Полоска под балкой показывает нагрузку: красная — крепь скоро
     сломается. Песок и глубина давят сильнее, камень над балкой держит себя сам. Сталь в три раза прочнее дерева,
     а рамы, поставленные часто, делят нагрузку.</p>
-  <p><b>Заряд</b> пробивает камень за раз. Рабочие отходят, но взрыв трясёт гору и бьёт по крепи.
+  <p><b>Гранит</b> (тёмно-красный) не берут ни кирка, ни взрыв, и жила спрятана под ним.
+    <b>Заряд</b> пробивает обычный камень за раз. Рабочие отходят, но взрыв трясёт гору и бьёт по крепи.
     <b>Вода</b> из подземных карманов затапливает выработки. <b>Насос</b> откачивает её вокруг себя.</p>
 </div>
 
@@ -118,7 +119,7 @@
   // ---------- Константы ----------
   const T = 4, TW = 48, TH = 32, W = TW * T, H = TH * T, N = W * H, S = 4, NT = TW * TH;
   const SURF = 5, BEDROCK = 30;
-  const E = 0, SAND = 1, SOIL = 2, ROCK = 3, WOOD = 4, WATER = 5, GOLD = 6, GOLDL = 7, DEBRIS = 8, LOOSE = 9, STEEL = 10, SCRAP = 11;
+  const E = 0, SAND = 1, SOIL = 2, ROCK = 3, WOOD = 4, WATER = 5, GOLD = 6, GOLDL = 7, DEBRIS = 8, LOOSE = 9, STEEL = 10, SCRAP = 11, GRANITE = 12;
   const COST = { dig: 3, rock: 40, wood: 12, steel: 35, charge: 25, pump: 40, probe: 15 };
   const TIME = { dig: 0.9, rock: 5, frame: 1.5, pump: 1.5, charge: 1.2, fuse: 6 };
   const CAP = { wood: 420, steel: 1150 };
@@ -143,12 +144,12 @@
   const jit = (c, j, R = Math.random) => { const v = (R() * 2 - 1) * j; return rgb(c[0] + v, c[1] + v, c[2] + v); };
   const BASE = {
     [SAND]: [214, 182, 112], [ROCK]: [104, 104, 112], [WOOD]: [168, 116, 62], [WATER]: [48, 112, 205],
-    [GOLD]: [232, 190, 44], [GOLDL]: [240, 200, 60], [DEBRIS]: [110, 76, 44], [STEEL]: [150, 165, 180], [SCRAP]: [96, 102, 110],
+    [GOLD]: [232, 190, 44], [GOLDL]: [240, 200, 60], [DEBRIS]: [110, 76, 44], [STEEL]: [150, 165, 180], [SCRAP]: [96, 102, 110], [GRANITE]: [74, 58, 66],
   };
   const soilRGB = y => { const d = Math.max(0, y - 20) * 0.35; return [132 - d, 92 - d * 0.8, 58 - d * 0.5]; };
   function colorFor(m, y, R) {
     if (m === SOIL) return jit(soilRGB(y), 10, R);
-    return jit(BASE[m], m === ROCK ? 14 : m === WATER ? 8 : 12, R);
+    return jit(BASE[m], m === ROCK || m === GRANITE ? 14 : m === WATER ? 8 : 12, R);
   }
 
   const isPowder = m => m === SAND || m === LOOSE || m === GOLDL || m === DEBRIS || m === SCRAP;
@@ -261,7 +262,7 @@
       for (let k = 0; k < W; k++) {
         const x = ltr ? k : W - 1 - k;
         const i = y * W + x, m = mat[i];
-        if (m === E || m === ROCK || stamp[i] === frame) continue;
+        if (m === E || m === ROCK || m === GRANITE || stamp[i] === frame) continue;
         if (isPowder(m)) updatePowder(x, i);
         else if (m === WATER) updateWater(x, i);
         else updateStruct(x, y, i, m);
@@ -279,10 +280,10 @@
   function generate() {
     const R = mulberry32(7);
     const blobs = [
-      { m: SAND, cx: 80, cy: 38, rx: 26, ry: 8 },    // песчаная линза над прямым путём
-      { m: WATER, cx: 100, cy: 76, rx: 22, ry: 5 },  // водоносный карман под каменным пластом
-      { m: SAND, cx: 148, cy: 90, rx: 14, ry: 6 },   // линза у жилы
-      { m: GOLD, cx: 164, cy: 108, rx: 15, ry: 6 },  // золотая жила
+      { m: SAND, cx: 80, cy: 38, rx: 26, ry: 8 },    // песчаная линза над разломом
+      { m: WATER, cx: 112, cy: 82, rx: 26, ry: 8 },  // подземное озеро над подходом к жиле
+      { m: SAND, cx: 76, cy: 106, rx: 22, ry: 7 },   // глубокая линза на пути к жиле
+      { m: GOLD, cx: 166, cy: 108, rx: 14, ry: 6 },  // золотая жила
     ];
     const top = SURF * T;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -295,8 +296,9 @@
       }
       bg[i] = jit([34, 26, 20], 4, R);
       let m = SOIL;
-      if (y >= 15 * T && y < 17 * T && !(x >= 43 * T && x < 46 * T)) m = ROCK; // каменный пласт, разлом далеко справа
+      if (y >= 15 * T && y < 17 * T && !(x >= 14 * T && x < 17 * T)) m = ROCK; // каменный пласт с разломом под песком
       if (y >= BEDROCK * T) m = ROCK;
+      if (x >= 33 * T && y >= 84 + Math.round(2 * Math.sin(x * 0.3)) && y < 92) m = GRANITE; // панцирь над жилой: подход только сбоку
       for (const b of blobs) {
         const dx = (x - b.cx) / b.rx, dy = (y - b.cy) / b.ry;
         if (dx * dx + dy * dy < 1) { m = b.m; break; }
@@ -307,7 +309,7 @@
   }
 
   // ---------- Тайлы, план, разведка ----------
-  const tileFill = new Uint8Array(NT), tileRock = new Uint8Array(NT), tileWater = new Uint8Array(NT);
+  const tileFill = new Uint8Array(NT), tileRock = new Uint8Array(NT), tileWater = new Uint8Array(NT), tileGranite = new Uint8Array(NT);
   const planT = new Uint8Array(NT);   // 0 нет, 1 копать, 2 копать + лестница
   const ladderL = new Uint8Array(NT);
   const claimed = new Uint8Array(NT);
@@ -325,15 +327,16 @@
 
   function computeTiles() {
     for (let ty = 0; ty < TH; ty++) for (let tx = 0; tx < TW; tx++) {
-      let f = 0, r = 0, w = 0;
+      let f = 0, r = 0, w = 0, gr = 0;
       for (let y = ty * T; y < ty * T + T; y++) for (let x = tx * T; x < tx * T + T; x++) {
         const m = mat[y * W + x];
         if (fills(m)) f++;
         if (m === ROCK) r++;
+        if (m === GRANITE) gr++;
         if (m === WATER) w++;
       }
       const i = ti(tx, ty);
-      tileFill[i] = f; tileRock[i] = r; tileWater[i] = w;
+      tileFill[i] = f; tileRock[i] = r; tileWater[i] = w; tileGranite[i] = gr;
       if (f <= 6 && !wasOpen[i] && ty >= SURF) { wasOpen[i] = 1; reveal(tx, ty, 2); }
     }
   }
@@ -374,6 +377,7 @@
   }
 
   const isRockTile = (x, y) => tileRock[ti(x, y)] >= 4;
+  const isGraniteTile = (x, y) => tileGranite[ti(x, y)] >= 4;
   const digCost = (x, y) => isRockTile(x, y) ? COST.rock : COST.dig;
   const tileDist = (x, y, cx, cy) => Math.hypot(x * T + 2 - cx, y * T + 2 - cy);
   const chargeCenter = c => [c.tx * T + 2, c.ty * T + 2];
@@ -458,7 +462,7 @@
 
   function planCost() {
     let c = 0;
-    for (const t of digOrder) { const x = t % TW, y = (t / TW) | 0; if (!open(x, y) && !waitsForBlast(x, y)) c += digCost(x, y); }
+    for (const t of digOrder) { const x = t % TW, y = (t / TW) | 0; if (!open(x, y) && !isGraniteTile(x, y) && !waitsForBlast(x, y)) c += digCost(x, y); }
     for (const f of frames) if (!f.done) c += COST[f.kind];
     for (const p of pumps) if (!p.done) c += COST.pump;
     for (const ch of charges) if (ch.state === 'plan') c += COST.charge;
@@ -501,7 +505,7 @@
         let h = 0;
         for (let y = f.capY - 1; y >= Math.max(0, f.capY - 40); y--) {
           const m = mat[y * W + x];
-          if (m === E || m === ROCK) break;
+          if (m === E || m === ROCK || m === GRANITE) break;
           h += (isPowder(m) || m === WATER) ? 2 : 1;
         }
         L += h / cover.get(f.capY * W + x);
@@ -526,7 +530,7 @@
     const [cx, cy] = chargeCenter(c);
     for (let y = Math.max(0, cy - 30); y < Math.min(H, cy + 30); y++) for (let x = Math.max(0, cx - 30); x < Math.min(W, cx + 30); x++) {
       const d = Math.hypot(x - cx, y - cy), i = y * W + x, m = mat[i];
-      if (m === E || m === WATER || y >= BEDROCK * T) continue;
+      if (m === E || m === WATER || m === GRANITE || y >= BEDROCK * T) continue;
       if (d < BLAST_R) { mat[i] = E; continue; }
       if (d < BLAST_R + 6 && Math.random() < 0.5) {
         if (m === SOIL || m === GOLD) loosen(i, m);
@@ -623,7 +627,7 @@
     for (const t of digOrder) {
       if (claimed[t]) continue;
       const x = t % TW, y = (t / TW) | 0;
-      if (open(x, y) || waitsForBlast(x, y) || inDanger(x, y)) continue;
+      if (open(x, y) || isGraniteTile(x, y) || waitsForBlast(x, y) || inDanger(x, y)) continue;
       if (money < digCost(x, y)) { noMoney = true; continue; }
       const st = bestStand(dist, around(x, y).slice(1));
       if (st < 0) continue;
@@ -741,8 +745,9 @@
     for (const p of pumps) {
       if (!p.done) continue;
       const cx = p.tx * T + 2, cy = p.ty * T + 3;
+      if (Math.random() < 0.5) continue; // ~30 клеток воды в секунду
       let n = 0;
-      for (let y = Math.min(H - 1, cy + 6); y >= Math.max(0, cy - 12) && n < 3; y--) for (let x = Math.max(0, cx - 12); x <= Math.min(W - 1, cx + 12) && n < 3; x++) {
+      for (let y = Math.min(H - 1, cy + 6); y >= Math.max(0, cy - 12) && n < 1; y--) for (let x = Math.max(0, cx - 12); x <= Math.min(W - 1, cx + 12) && n < 1; x++) {
         const i = y * W + x;
         if (mat[i] === WATER) { mat[i] = E; n++; }
       }
@@ -990,7 +995,7 @@
       if (!p) continue;
       if (!open(x, y)) {
         const known = revealed[i];
-        ctx.fillStyle = claimed[i] ? 'rgba(255,225,120,.38)' : waitsForBlast(x, y) ? 'rgba(255,90,60,.18)' : known && isRockTile(x, y) ? 'rgba(255,140,90,.25)' : 'rgba(240,200,90,.2)';
+        ctx.fillStyle = known && isGraniteTile(x, y) ? 'rgba(255,40,40,.35)' : claimed[i] ? 'rgba(255,225,120,.38)' : waitsForBlast(x, y) ? 'rgba(255,90,60,.18)' : known && isRockTile(x, y) ? 'rgba(255,140,90,.25)' : 'rgba(240,200,90,.2)';
         ctx.fillRect(x * TS, y * TS, TS, TS);
         ctx.strokeStyle = 'rgba(240,200,90,.45)'; ctx.lineWidth = 1;
         ctx.strokeRect(x * TS + .5, y * TS + .5, TS - 1, TS - 1);
@@ -1056,6 +1061,7 @@
       if (charges.some(c => c.state === 'armed')) s = 'Заряд заложен! Рабочие отходят…';
       else if (frames.some(f => f.done && !f.broken && f.ratio > 1)) s = 'Крепь перегружена и трещит! Поставьте рядом ещё раму или сталь.';
       else if (noMoney && !busy) s = 'Не хватает денег на следующую работу.';
+      else if (!busy && digOrder.some(t => { const x = t % TW, y = (t / TW) | 0; return !open(x, y) && isGraniteTile(x, y); })) s = 'Гранит не взять ни киркой, ни взрывом: ищите подход к жиле сбоку.';
       else if (!busy) s = 'Работы по плану нет: продлите выработки. Зарплата капает.';
       else s = 'Идёт проходка…';
     }

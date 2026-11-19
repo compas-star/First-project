@@ -2,7 +2,7 @@
 // split windshield, folding entry door, bus mirrors, gauge cluster, switch panel,
 // CB radio, desk fan, flat bus steering wheel and big hairy forearms.
 import { W, H } from './config.js';
-import { makeCanvas, mulberry, rect, px, line, ellipse, circle, poly, shade, clamp, timeStr, css, ditherV, bayer, hex, lerpC } from './gfx.js';
+import { makeCanvas, mulberry, rect, px, line, ellipse, circle, poly, shade, clamp, timeStr, css, ditherV, bayer, hex, lerpC, freeze } from './gfx.js';
 import { drawText } from './font.js';
 import { NODES } from './world.js';
 
@@ -273,9 +273,9 @@ function drawArm(ctx, wx, wy, ex, ey, watch) {
 }
 
 export function initCockpit() {
-  base = buildBase();
-  carBase = buildCarBase();
-  handL = buildHand(false); handR = buildHand(true);
+  base = freeze(buildBase());
+  carBase = freeze(buildCarBase());
+  handL = freeze(buildHand(false)); handR = freeze(buildHand(true));
 }
 
 function drawRotated(ctx, img, x, y, ang, ox, oy) {

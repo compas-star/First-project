@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Mother Road - Route 66 Bus Driver</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  body { display: flex; align-items: center; justify-content: center; font-family: monospace; }
+  #screen { image-rendering: pixelated; image-rendering: crisp-edges; display: block; touch-action: none; }
+  #touch { display: none; }
+  body.touch #touch { display: block; }
+  .tbtn { position: fixed; display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+    color: #f2e2b8; font: bold 13px monospace; letter-spacing: 1px; background: rgba(30, 24, 20, 0.4);
+    border: 2px solid rgba(242, 226, 184, 0.45); border-radius: 6px; touch-action: none; z-index: 5; }
+  .tbtn.on { background: rgba(255, 211, 106, 0.45); }
+  #tLeft, #tRight { bottom: calc(10px + env(safe-area-inset-bottom)); width: 64px; height: 64px; font-size: 24px; }
+  #tLeft { left: calc(8px + env(safe-area-inset-left)); }
+  #tRight { left: calc(80px + env(safe-area-inset-left)); }
+  #tGas, #tBrake { right: calc(8px + env(safe-area-inset-right)); width: 64px; }
+  #tGas { bottom: calc(10px + env(safe-area-inset-bottom)); height: 92px; background: rgba(40, 80, 40, 0.45); }
+  #tBrake { bottom: calc(110px + env(safe-area-inset-bottom)); height: 64px; background: rgba(90, 30, 30, 0.45); }
+  .small { width: 64px; height: 34px; font-size: 10px; letter-spacing: 0; }
+  #tPause { left: calc(8px + env(safe-area-inset-left)); top: calc(8px + env(safe-area-inset-top)); }
+  #tMute { left: calc(8px + env(safe-area-inset-left)); top: calc(48px + env(safe-area-inset-top)); }
+  #tCruise { right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); }
+  #tRadio { right: calc(8px + env(safe-area-inset-right)); top: calc(48px + env(safe-area-inset-top)); }
+  #tHorn { bottom: calc(82px + env(safe-area-inset-bottom)); left: calc(8px + env(safe-area-inset-left)); width: 64px; height: 40px; font-size: 11px; }
+  #tAction { display: none; left: 50%; transform: translateX(-50%); bottom: calc(40% + 0px); padding: 0 18px; height: 48px;
+    font-size: 15px; background: rgba(160, 120, 20, 0.8); border-color: #ffd36a; color: #fff; }
+  #tAction.show { display: flex; animation: pulse 0.8s infinite alternate; }
+  body:not(.playing) .tbtn { display: none !important; }
+  @keyframes pulse { from { opacity: 1; } to { opacity: 0.65; } }
+  #rotate { display: none; }
+  @media (orientation: portrait) and (pointer: coarse) {
+    #rotate { display: block; position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center;
+      color: #c8b48a; font: 12px monospace; z-index: 4; }
+    body.playing #rotate { top: 56px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<div id="rotate">TIP: TURN YOUR PHONE SIDEWAYS FOR A BIGGER WINDSHIELD</div>
+<div id="touch">
+  <div class="tbtn" id="tLeft">&#9664;</div>
+  <div class="tbtn" id="tRight">&#9654;</div>
+  <div class="tbtn" id="tHorn">HORN</div>
+  <div class="tbtn" id="tBrake">BRAKE</div>
+  <div class="tbtn" id="tGas">GAS</div>
+  <div class="tbtn small" id="tPause">II</div>
+  <div class="tbtn small" id="tMute">SOUND</div>
+  <div class="tbtn small" id="tRadio">RADIO</div>
+  <div class="tbtn small" id="tCruise">CRUISE</div>
+  <div class="tbtn" id="tAction">OPEN DOORS</div>
+</div>
+<script>
+  if ('ontouchstart' in window || matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch');
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

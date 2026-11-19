@@ -3,7 +3,7 @@ import { NODES, JOBS } from './world.js';
 import { timeStr } from './gfx.js';
 
 const KEY = 'motherRoad.career.v2';
-export const RENT_PRICE = 29.95, MOTEL_PRICE = 24.95, GAS_PRICE = 1.09, TOW_PRICE = 45;
+export const RENT_PRICE = 29.95, MOTEL_PRICE = 24.95, MEAL_PRICE = 6.45, GAS_PRICE = 1.09, TOW_PRICE = 45;
 
 export class Career {
   constructor() { this.newGame(); }
@@ -13,6 +13,7 @@ export class Career {
     this.money = 150;
     this.ledger = [];
     this.stats = { shifts: 0, miles: 0, passengers: 0, stars: 0 };
+    this.hunger = 20; this.fatigue = 10;   // 0 = full / rested, 100 = starving / exhausted
     this.add('STARTING SAVINGS', 150, true);
   }
   get day() { return Math.floor(this.clock / 86400) + 1; }
@@ -40,17 +41,23 @@ export class Career {
     let wake = dayStart + 7 * 3600;
     if (wake <= this.clock) wake += 86400;
     this.clock = wake;
+    this.fatigue = 0; this.hunger = Math.min(100, this.hunger + 25);
     this.add(`MOTEL IN ${this.here.name}`, -MOTEL_PRICE);
+  }
+  eat() {
+    this.clock += 35 * 60;
+    this.hunger = 0; this.fatigue = Math.max(0, this.fatigue - 8);
+    this.add(`DINER IN ${this.here.name}`, -MEAL_PRICE);
   }
 
   save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ node: this.node, clock: this.clock, money: this.money, ledger: this.ledger, stats: this.stats })); } catch (e) { /* storage may be unavailable */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ node: this.node, clock: this.clock, money: this.money, ledger: this.ledger, stats: this.stats, hunger: this.hunger, fatigue: this.fatigue })); } catch (e) { /* storage may be unavailable */ }
   }
   load() {
     try {
       const d = JSON.parse(localStorage.getItem(KEY));
       if (!d || !NODES[d.node]) return false;
-      Object.assign(this, d);
+      Object.assign(this, { hunger: 20, fatigue: 10 }, d);
       return true;
     } catch (e) { return false; }
   }

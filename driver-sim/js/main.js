@@ -70,7 +70,29 @@ function drawScene(g) {
   return sky;
 }
 
+// heavy eyelids when you're exhausted, and black while you sleep
+function drawEyes(g) {
+  const b = g.blink || 0;
+  if (b <= 0) return;
+  const h = Math.round(b * (H / 2 + 4));
+  ctx.fillStyle = '#050404';
+  ctx.fillRect(0, 0, W, h); ctx.fillRect(0, H - h, W, h);
+  if (b < 1) { ctx.fillStyle = 'rgba(5,4,4,0.5)'; ctx.fillRect(0, h, W, 6); ctx.fillRect(0, H - h - 6, W, 6); }
+}
+function needBar(x, y, label, v) {
+  drawText(ctx, label, x, y, '#e8e0d0');
+  rect(ctx, x + 22, y, 32, 5, '#2a2420');
+  const col = v > 50 ? '#7ad06a' : v > 25 ? '#e8c040' : '#e85a3a';
+  rect(ctx, x + 22, y, Math.round(32 * v / 100), 5, col);
+}
+function drawNeeds(c, x, y) {
+  box(x - 3, y - 3, 62, 18, 0.55);
+  needBar(x, y, 'FOOD', 100 - c.hunger);
+  needBar(x, y + 8, 'REST', 100 - c.fatigue);
+}
+
 function drawHud(g) {
+  drawNeeds(career, 30, 22);
   const m = g.msgs[0];
   if (m) {
     const s = textWidth(m.text, 2) > W - 20 ? 1 : 2;
@@ -215,7 +237,7 @@ function frame(now) {
     input.taps.length = 0;
     if (!paused) game.update(dt, input);
     audio.update(Math.abs(game.player.speed), game.player.throttle, game.offroad && Math.abs(game.player.speed) > 3, paused || game.mapOpen);
-    drawScene(game); drawHud(game);
+    drawScene(game); drawEyes(game); drawHud(game);
     if (game.mapOpen) drawPaperMap(game);
     if (paused) {
       box(CX - 110, 90, 220, 70, 0.85); drawText(ctx, 'PAUSED', CX, 98, '#ffd36a', 3, 'center');

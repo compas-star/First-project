@@ -69,7 +69,7 @@ function drawSegment(ctx, s, fog, f) {
   if (s.zone) {
     const col = fogC(s.zone === 'stop' ? STOPPAINT : APRON, fog, f);
     quad(ctx, x1 + w1 * 0.55, y1, w1 * 0.45, x2 + w2 * 0.55, y2, w2 * 0.45, col);
-    if (s.zone === 'gas') quad(ctx, x1 + w1 * 1.15, y1, w1 * 0.2, x2 + w2 * 1.15, y2, w2 * 0.2, col);
+    if (s.zone !== 'stop') quad(ctx, x1 + w1 * 1.15, y1, w1 * 0.2, x2 + w2 * 1.15, y2, w2 * 0.2, col);
   }
   if (s.street) return; // quiet residential streets: no paint
   // edge lines

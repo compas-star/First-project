@@ -4,11 +4,11 @@ import { rect, timeStr } from './gfx.js';
 import { drawText, textWidth } from './font.js';
 import { NODES, JOBS, shortestPath, pathMiles, pathVia } from './world.js';
 import { drawMap, nodeAt, FULL_VIEW } from './mapview.js';
-import { RENT_PRICE, MOTEL_PRICE } from './career.js';
+import { RENT_PRICE, MOTEL_PRICE, MEAL_PRICE } from './career.js';
 
 const MAP = { x: 4, y: 4, w: 296, h: 262, ...FULL_VIEW };
 const PX = 306, PW = 170;
-const TABS = ['JOBS', 'CAR', 'MOTEL', 'MONEY'];
+const TABS = ['JOBS', 'CAR', 'REST', 'MONEY'];
 const money = v => `${v < 0 ? '-' : ''}$${Math.abs(v).toFixed(2)}`;
 const dur = miles => { const m = Math.round(miles / 50 * 60); return `${Math.floor(m / 60)}H ${String(m % 60).padStart(2, '0')}M`; };
 
@@ -157,13 +157,23 @@ export class Hub {
 
   drawMotel(ctx, x0, y0) {
     const c = this.career;
-    drawText(ctx, `MOTEL IN ${c.here.name}`.slice(0, 40), x0, y0, '#1a1a4a');
-    drawText(ctx, 'CLEAN ROOMS - COLOR TV - POOL', x0, y0 + 10, '#3a3a3a');
-    drawText(ctx, `ONE NIGHT ${money(MOTEL_PRICE)}`, x0, y0 + 20, '#3a3a3a');
-    drawText(ctx, 'SLEEP UNTIL 07:00 TOMORROW', x0, y0 + 30, '#3a3a3a');
-    this.button(ctx, x0, y0 + 44, PW - 14, 'CHECK IN', () => { c.sleep(); this.note = 'GOOD MORNING! RISE AND SHINE.'; }, true);
-    drawText(ctx, 'TIP: BUS SHIFTS ALSO PASS THE', x0, y0 + 72, '#6a5a4a');
-    drawText(ctx, 'TIME - THE BUS LEAVES ON TIME.', x0, y0 + 80, '#6a5a4a');
+    const bar = (y, label, v) => {
+      drawText(ctx, label, x0, y, '#3a3a3a');
+      rect(ctx, x0 + 40, y, 80, 5, '#c8b898');
+      rect(ctx, x0 + 40, y, Math.round(80 * v / 100), 5, v > 50 ? '#3a8a2a' : v > 25 ? '#c09020' : '#c0302a');
+    };
+    bar(y0, 'FOOD', 100 - c.hunger);
+    bar(y0 + 9, 'REST', 100 - c.fatigue);
+    const mood = c.fatigue > 75 ? 'YOU CAN BARELY KEEP YOUR EYES OPEN.' : c.hunger > 70 ? 'YOUR STOMACH IS GROWLING.' : 'FEELING FINE.';
+    drawText(ctx, mood, x0, y0 + 20, '#6a5a4a');
+    drawText(ctx, `DINER IN ${c.here.name}`.slice(0, 40), x0, y0 + 34, '#1a1a4a');
+    drawText(ctx, `HOT MEAL & PIE ${money(MEAL_PRICE)} - 35 MIN`, x0, y0 + 43, '#3a3a3a');
+    this.button(ctx, x0, y0 + 52, PW - 14, 'EAT', () => { if (c.hunger < 8) this.note = "YOU'RE NOT HUNGRY."; else { c.eat(); this.note = 'BEST PIE IN ARIZONA.'; } }, false);
+    drawText(ctx, `MOTEL IN ${c.here.name}`.slice(0, 40), x0, y0 + 76, '#1a1a4a');
+    drawText(ctx, `ONE NIGHT ${money(MOTEL_PRICE)} - UNTIL 07:00`, x0, y0 + 85, '#3a3a3a');
+    this.button(ctx, x0, y0 + 94, PW - 14, 'CHECK IN', () => { c.sleep(); this.note = 'GOOD MORNING! RISE AND SHINE.'; }, true);
+    drawText(ctx, 'ON THE ROAD: STOP AT DINERS AND', x0, y0 + 118, '#6a5a4a');
+    drawText(ctx, 'MOTELS, OR GRAB COFFEE AT THE PUMPS.', x0, y0 + 126, '#6a5a4a');
   }
 
   drawMoney(ctx, x0, y0) {

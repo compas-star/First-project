@@ -2,6 +2,7 @@
 // so the game ships with no image files.
 import { makeCanvas, mulberry, rect, px, line, ellipse, shade, poly, refine, hex } from './gfx.js';
 import { drawText, textWidth } from './font.js';
+import { carHi, houseHi, motelHi, dinerHi, storeHi, ponderosa, juniperTree } from './art.js';
 
 export const SPR = {};
 // h = height in metres, solid = bus bumps into it, glow = emissive layer for night,
@@ -541,8 +542,9 @@ export const CAR_TYPES = ['sedan', 'sedan', 'sedan', 'wagon', 'pickup', 'pickup'
 export function carSprite(type, view, colorIdx) {
   const key = `car_${type}_${view}_${colorIdx}`;
   if (!SPR[key]) {
-    const c = car(type, view, CAR_COLORS[colorIdx]);
-    SPR[key] = { ...c, img: refine(c.img, { flat: true }), glow: upscale(c.glow, 2), front: view === 'front', type };
+    const c = carHi(type, view, CAR_COLORS[colorIdx], colorIdx * 13 + type.length);
+    const h = { sedan: 1.45, wagon: 1.5, pickup: 1.75, van: 2.1, semi: 4.1, rv: 3.5 }[type];
+    SPR[key] = { ...c, h, solid: true, img: refine(c.img, { flat: true, smooth: true, scale: 1 }), front: view === 'front', type };
   }
   return SPR[key];
 }
@@ -557,11 +559,11 @@ export const BUILDINGS = [];
 export const ADS_COUNT = ADS.length;
 
 export function buildSprites() {
-  reg('pine', pineHi(1, '#25502e', 130), 17, { solid: true, scale: 1 });
-  reg('pine2', pineHi(2, '#2b5a32', 150), 21, { solid: true, scale: 1 });
-  reg('pine3', pineHi(3, '#335f35', 96), 12, { solid: true, scale: 1 });
-  reg('juniper', shrub(4, '#4f6b3a', 44, 34), 3.5, { solid: true, scale: 1 });
-  reg('juniper2', shrub(5, '#5a7040', 38, 28), 2.8, { solid: true, scale: 1 });
+  reg('pine', ponderosa(1, 160), 18, { solid: true, scale: 1, smooth: true });
+  reg('pine2', ponderosa(2, 190), 22, { solid: true, scale: 1, smooth: true });
+  reg('pine3', ponderosa(3, 120), 13, { solid: true, scale: 1, smooth: true });
+  reg('juniper', juniperTree(4), 4, { solid: true, scale: 1, smooth: true });
+  reg('juniper2', juniperTree(5, '#647a48'), 3.2, { solid: true, scale: 1, smooth: true });
   reg('rock', rock(6, '#8a7f72'), 1.1);
   reg('redrock', rock(7, '#a0583a'), 1.3);
   reg('boulder', rock(8, '#9a5a3c', 30, 18), 3.5, { solid: true });
@@ -585,9 +587,10 @@ export function buildSprites() {
   reg('shelter_full', shelter(true), 3.2, { solid: true });
   reg('shelter_empty', shelter(false), 3.2, { solid: true });
   depot(); gasStation(); priceSign(); streetLight(); church(); waterTower();
-  for (let i = 0; i < 4; i++) BUILDINGS.push(motel(20 + i).img && 'motel' + (20 + i));
-  for (let i = 0; i < 3; i++) BUILDINGS.push(diner(30 + i).img && 'diner' + (30 + i));
-  for (let i = 0; i < 8; i++) BUILDINGS.push(house(40 + i).img && 'house' + (40 + i));
-  for (let i = 0; i < 8; i++) BUILDINGS.push(store(60 + i).img && 'store' + (60 + i));
+  const bld = (key, art, h) => { reg(key, art.img, h, { glow: art.glow, solid: true, scale: 1, smooth: true }); BUILDINGS.push(key); };
+  for (let i = 0; i < 4; i++) bld('motel' + i, motelHi(20 + i), 10.5);
+  for (let i = 0; i < 3; i++) bld('diner' + i, dinerHi(30 + i), 8.5);
+  for (let i = 0; i < 10; i++) bld('house' + i, houseHi(40 + i), 8);
+  for (let i = 0; i < 10; i++) bld('store' + i, storeHi(60 + i), 9.5);
   BUILDINGS.push('church', 'tower');
 }

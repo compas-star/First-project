@@ -22,21 +22,24 @@ function ridge(seed, h, base, terms, col, opts = {}) {
   }
   const lit = hex(shade(col, 0.22)), mid = hex(col), dark = hex(shade(col, -0.25)), haze = hex(opts.haze || shade(col, 0.12));
   const img = x.getImageData(0, 0, BG_W, h), d = img.data;
+  const gully = noise1(r, [[37, 1], [61, 0.7], [97, 0.5], [151, 0.3]]);
   for (let xx = 0; xx < BG_W; xx++) {
     const top = Math.round(tops[xx]);
-    const slope = tops[(xx + 3) % BG_W] - tops[(xx + BG_W - 3) % BG_W];
+    const slope = tops[(xx + 2) % BG_W] - tops[(xx + BG_W - 2) % BG_W];
+    const g = gully(xx) / 2.5;
     for (let yy = top; yy < h; yy++) {
       const depth = (yy - top) / Math.max(1, h - top);
-      let c = mid;
-      const lightAmt = clamp(-slope * 0.25 + 0.5, 0, 1) * (1 - depth * 1.5);
-      if (lightAmt > bayer(xx, yy) + 0.25) c = lit;
-      else if (slope > 1.5 && depth < 0.5 && bayer(xx, yy) < 0.6) c = dark;
+      // facet lighting: slopes facing the light are bright, gullies cut dark streaks down the face
+      let v = 0.5 - slope * 0.16 + g * 0.45 * (1 - depth * 0.7);
+      v += (bayer(xx, yy) - 0.5) * 0.18;
+      let c = v > 0.68 ? lit : v > 0.36 ? mid : dark;
       if (opts.strata && (yy + Math.round(tops[xx] * 0.3)) % 6 === 0) c = dark;
-      if (depth > 0.55 && (depth - 0.55) * 2.2 > bayer(xx, yy)) c = haze;
-      if (opts.snow && yy < opts.snow + (r() * 3 | 0) && yy - top < 8) c = [232, 238, 244];
-      if (yy === top) c = lit;
+      if (opts.snow && yy - top < 6 + g * 4 && yy < opts.snow + 6) c = v > 0.4 ? [240, 244, 250] : [196, 206, 222];
+      if (yy === top) c = v > 0.3 ? lit : mid;
+      // atmospheric haze toward the base, in three dithered steps
+      const hz = Math.floor(Math.min(1, Math.pow(depth, 1.4) * 0.85 + (bayer(xx + 1, yy) - 0.5) * 0.22) * 3) / 3;
       const i = (yy * BG_W + xx) * 4;
-      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+      d[i] = c[0] + (haze[0] - c[0]) * Math.max(0, hz); d[i + 1] = c[1] + (haze[1] - c[1]) * Math.max(0, hz); d[i + 2] = c[2] + (haze[2] - c[2]) * Math.max(0, hz); d[i + 3] = 255;
     }
   }
   x.putImageData(img, 0, 0);

@@ -153,87 +153,127 @@ function buildBase() {
 
 // ---------- hands and forearms (native detail) ----------
 const SK = ['#f0c4a0', '#dda47e', '#c88a64', '#a86c4a', '#7a4a32'];
-const HAIR = '#2a180e', HAIR2 = '#4a2e1c';
+const HAIR = '#4a2c1a', HAIR2 = '#6a4228';
+// Hand seen from the driver's seat: back of the hand, knuckles on top of the rim,
+// fingers curling over it, thumb lying along the rim toward the hub.
 function buildHand(flip) {
-  const [c, x] = makeCanvas(40, 34);
-  const r = mulberry(flip ? 31 : 32);
-  const sh = (xx, yy, k) => px(x, flip ? 39 - xx : xx, yy, SK[k]);
-  // back of the hand
-  for (let yy = 10; yy < 34; yy++) for (let xx = 3; xx < 37; xx++) {
-    const dx = (xx - 20) / 17, dy = (yy - 21) / 13;
-    if (dx * dx + dy * dy > 1) continue;
-    sh(xx, yy, dx < -0.55 ? 0 : dx < 0 ? 1 : dx < 0.6 ? 2 : 3);
-  }
-  // four fingers curled over the rim
-  for (let f = 0; f < 4; f++) {
-    const fx = 5 + f * 8;
-    for (let yy = 1; yy < 15; yy++) for (let xx = 0; xx < 8; xx++) {
-      if ((yy < 3 && (xx < 2 || xx > 5)) || (yy < 2 && (xx < 3 || xx > 4))) continue;
-      sh(fx + xx, yy, xx < 2 ? 0 : xx < 5 ? 1 : xx < 7 ? 2 : 4);
+  const HW = 48, HH = 38;
+  const [c0, x] = makeCanvas(HW, HH);
+  const r = mulberry(flip ? 51 : 52);
+  const P = (xx, yy, col) => px(x, flip ? HW - 1 - xx : xx, yy, col);
+  // thumb resting along the rim toward 12 o'clock
+  for (let t = 0; t <= 1; t += 0.02) {
+    const cx = 35 + t * 10, cy = 20 - t * 4, rad = 4 - t * 1.2;
+    for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) {
+      if (Math.hypot(dx, dy) > rad) continue;
+      P(Math.round(cx + dx), Math.round(cy + dy), SK[dy < -rad * 0.3 ? 1 : dy < rad * 0.4 ? 2 : 3]);
     }
-    sh(fx + 2, 9, 0); sh(fx + 3, 9, 0); sh(fx + 4, 9, 1); // knuckle highlight
-    for (let yy = 11; yy < 15; yy++) sh(fx + 7, yy, 4);   // gap between fingers
   }
-  // thumb wrapping around the inner side
-  for (let yy = 12; yy < 28; yy++) for (let xx = 32; xx < 39; xx++) {
-    if ((xx - 35) ** 2 / 12 + (yy - 20) ** 2 / 70 > 1) continue;
-    sh(xx, yy, xx < 34 ? 1 : xx < 37 ? 2 : 3);
+  for (const [nx, ny] of [[44, 14], [45, 14], [44, 15], [45, 15]]) P(nx, ny, '#f2d4c4');
+  // back of the hand, tapering to the wrist
+  for (let yy = 9; yy < HH; yy++) {
+    const f = (yy - 9) / (HH - 10);
+    const l = Math.round(3 + f * 9), rr = Math.round(39 - f * 6);
+    for (let xx = l; xx <= rr; xx++) {
+      const u = (xx - l) / Math.max(1, rr - l);
+      let k = u < 0.1 ? 0 : u < 0.45 ? 1 : u < 0.8 ? 2 : 3;
+      if (yy > HH - 4) k = Math.min(4, k + 1);
+      P(xx, yy, SK[k]);
+    }
   }
-  // hair on the back of the hand and the first finger joints
-  for (let i = 0; i < 70; i++) {
-    const xx = 6 + r() * 26, yy = 12 + r() * 20;
-    const xa = flip ? 39 - xx : xx;
-    line(x, xa, yy, xa + (r() - 0.5) * 3, yy + 1 + r() * 2, r() < 0.75 ? HAIR : HAIR2);
+  // tendons
+  for (const kx of [8, 17, 26, 34]) for (let t = 0.12; t < 0.8; t += 0.04) {
+    const xx = Math.round(kx + (22 - kx) * t), yy = Math.round(11 + (HH - 14) * t);
+    if (Math.round(t * 25) % 3) P(xx, yy, SK[0]);
   }
-  for (let i = 0; i < 14; i++) { const xx = 6 + r() * 28, xa = flip ? 39 - xx : xx; px(x, xa, 6 + r() * 4, HAIR); }
+  // curled fingers: short, rounded, darker where they turn over the rim
+  for (let f = 0; f < 4; f++) {
+    const fx = 3 + f * 9;
+    for (let yy = 1; yy < 11; yy++) for (let xx = 0; xx < 9; xx++) {
+      if (yy < 3 && (xx < 1 || xx > 7)) continue;
+      if (yy < 2 && (xx < 2 || xx > 6)) continue;
+      let k = yy < 3 ? 3 : yy < 5 ? 2 : xx < 2 ? 0 : xx < 6 ? 1 : 2;
+      if (xx === 8) k = 3;
+      P(fx + xx, yy, SK[k]);
+    }
+    for (let xx = 2; xx < 6; xx++) P(fx + xx, 5, SK[0]);   // middle knuckle catches the light
+    for (let xx = 1; xx < 6; xx++) P(fx + xx, 10, SK[0]);  // main knuckle
+    P(fx + 2, 11, SK[0]); P(fx + 3, 11, SK[0]);
+  }
+  // hair growing from the wrist toward the knuckles
+  for (let i = 0; i < 32; i++) {
+    const yy = 13 + r() * 21, f = (yy - 9) / (HH - 10);
+    const l = 5 + f * 9, rr = 37 - f * 6, xx = l + r() * (rr - l);
+    const a = Math.atan2(yy - (HH + 6), xx - 22) + (r() - 0.5) * 0.5;
+    for (let k = 0; k < 2 + r() * 2; k++) P(Math.round(xx + Math.cos(a) * k), Math.round(yy + Math.sin(a) * k), r() < 0.7 ? HAIR : HAIR2);
+  }
+  for (let f = 0; f < 4; f++) for (let i = 0; i < 3; i++) P(4 + f * 9 + Math.floor(r() * 6), 6 + Math.floor(r() * 3), HAIR2);
+  // tilt the knuckle line to follow the rim (a vertical shear keeps the pixels crisp)
+  const SH = 0.22, HY = HH + 12;
+  const [c, y] = makeCanvas(HW, HY);
+  for (let xx = 0; xx < HW; xx++) {
+    const off = Math.round((flip ? xx : HW - 1 - xx) * SH);
+    y.drawImage(c0, xx, 0, 1, HH, xx, off, 1, HH);
+  }
   // outline
-  const img = x.getImageData(0, 0, 40, 34), d = img.data, out = new Uint8ClampedArray(d);
+  const img = y.getImageData(0, 0, HW, HY), d = img.data, out = new Uint8ClampedArray(d);
   const o = hex(SK[4]);
-  for (let yy = 0; yy < 34; yy++) for (let xx = 0; xx < 40; xx++) {
-    const i = (yy * 40 + xx) * 4;
+  for (let yy = 0; yy < HY; yy++) for (let xx = 0; xx < HW; xx++) {
+    const i = (yy * HW + xx) * 4;
     if (d[i + 3]) continue;
-    const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => { const X = xx + a, Y = yy + b; return X >= 0 && X < 40 && Y >= 0 && Y < 34 && d[(Y * 40 + X) * 4 + 3]; });
-    if (nb) { out[i] = o[0] * 0.6; out[i + 1] = o[1] * 0.6; out[i + 2] = o[2] * 0.6; out[i + 3] = 255; }
+    const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => { const X = xx + a, Y = yy + b; return X >= 0 && X < HW && Y >= 0 && Y < HY && d[(Y * HW + X) * 4 + 3]; });
+    if (nb) { out[i] = o[0] * 0.55; out[i + 1] = o[1] * 0.55; out[i + 2] = o[2] * 0.55; out[i + 3] = 255; }
   }
-  img.data.set(out); x.putImageData(img, 0, 0);
+  img.data.set(out); y.putImageData(img, 0, 0);
   return c;
 }
-function buildArm(watch) {
-  const AW = 34, AL = 160;
-  const [c, x] = makeCanvas(AW, AL);
-  const r = mulberry(watch ? 41 : 42);
-  for (let yy = 0; yy < 112; yy++) for (let xx = 0; xx < AW; xx++) {
-    const f = xx / (AW - 1);
-    const k = f < 0.08 ? 4 : f < 0.25 ? 3 : f < 0.5 ? 2 : f < 0.75 ? 1 : f < 0.9 ? 0 : 3;
-    px(x, xx, yy, SK[k]);
+
+// Forearms are drawn live as shaded polygons so they stay crisp at any angle.
+const HAIRS = (() => { const r = mulberry(77); return Array.from({ length: 150 }, () => [0.02 + r() * 0.7, (r() - 0.5) * 0.86, (r() - 0.5) * 0.7, r() < 0.7]); })();
+function drawArm(ctx, wx, wy, ex, ey, watch) {
+  const dx = ex - wx, dy = ey - wy, L = Math.hypot(dx, dy);
+  const d = [dx / L, dy / L], n = [-d[1], d[0]];
+  const wid = u => 24 + 18 * u;
+  const P = (u, v) => [wx + d[0] * u * L + n[0] * v * wid(u), wy + d[1] * u * L + n[1] * v * wid(u)];
+  const quad = (u0, u1, v0, v1, col) => {
+    const a = P(u0, v0), b = P(u1, v0), c = P(u1, v1), e = P(u0, v1);
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(e[0], e[1]); ctx.closePath(); ctx.fill();
+  };
+  // light comes from the upper left: the side whose normal points that way is brighter
+  const lit = (n[0] * -0.8 + n[1] * -0.6) > 0 ? 1 : -1;
+  quad(0, 0.76, -0.56, 0.56, '#5a3420');
+  const bands = 7;
+  for (let b = 0; b < bands; b++) {
+    const v0 = -0.5 + b / bands, v1 = v0 + 1 / bands + 0.01;
+    const s = ((v0 + v1) / 2) * lit;
+    const k = s > 0.3 ? 0 : s > 0.08 ? 1 : s > -0.15 ? 2 : s > -0.35 ? 3 : 4;
+    quad(0, 0.76, v0, v1, SK[k]);
   }
-  for (let i = 0; i < 520; i++) {
-    const xx = 2 + r() * (AW - 4), yy = r() * 108;
-    line(x, xx, yy, xx + (r() - 0.5) * 3, yy + 2 + r() * 2, r() < 0.7 ? HAIR : HAIR2);
+  ctx.fillStyle = HAIR;
+  for (const [u, v, a, dark] of HAIRS) {
+    const [hx, hy] = P(u, v);
+    const ang = Math.atan2(-d[1], -d[0]) + a;
+    line(ctx, hx, hy, hx + Math.cos(ang) * 3, hy + Math.sin(ang) * 3, dark ? HAIR : HAIR2);
   }
-  if (watch) { // cheap digital wristwatch
-    rect(x, 0, 10, AW, 9, '#1a1a1a'); rect(x, 0, 10, AW, 1, '#3a3a3a');
-    rect(x, 9, 8, 16, 13, '#6a6a70'); rect(x, 10, 9, 14, 11, '#9aa08a');
-    rect(x, 11, 12, 12, 5, '#4a5a3a'); rect(x, 10, 9, 14, 1, '#c8c8d0');
+  if (watch) {
+    quad(0.03, 0.1, -0.52, 0.52, '#161616');
+    quad(0.035, 0.095, -0.2, 0.2, '#8a8a90');
+    quad(0.045, 0.085, -0.14, 0.14, '#9aa58a');
   }
   // rolled-up red flannel sleeve
-  for (let yy = 108; yy < AL; yy++) for (let xx = 0; xx < AW; xx++) {
-    let col = ((Math.floor(xx / 5) + Math.floor(yy / 5)) % 2) ? '#a8302c' : '#7a1c1a';
-    if (xx % 10 === 0 || yy % 10 === 0) col = '#2a0c0c';
-    if ((xx + 3) % 10 === 0 || (yy + 3) % 10 === 0) col = '#d8b84a';
-    const f = xx / (AW - 1);
-    if (f < 0.15) col = shade(col, -0.35); else if (f > 0.7 && f < 0.85) col = shade(col, 0.15);
-    if (yy < 118) col = shade(col, yy < 110 ? 0.25 : 0.1);
-    px(x, xx, yy, col);
-  }
-  rect(x, 0, 117, AW, 1, '#3a1010');
-  return c;
+  quad(0.72, 1.3, -0.6, 0.6, '#8a2420');
+  for (const v of [-0.36, -0.06, 0.24, 0.5]) quad(0.8, 1.3, v, v + 0.07, '#3a0e0c');
+  for (const u of [0.86, 0.96, 1.06, 1.16]) quad(u, u + 0.025, -0.6, 0.6, '#3a0e0c');
+  for (const v of [-0.22, 0.1, 0.38]) quad(0.8, 1.3, v, v + 0.02, '#d8b84a');
+  quad(0.72, 0.8, -0.62, 0.62, '#b8443a');
+  quad(0.72, 0.735, -0.62, 0.62, '#d86a5a');
+  quad(0.79, 0.8, -0.62, 0.62, '#4a1210');
+  quad(0.8, 1.3, -0.6 * lit, -0.45 * lit, 'rgba(0,0,0,0.3)');
 }
 
 export function initCockpit() {
   base = buildBase();
   handL = buildHand(false); handR = buildHand(true);
-  armL = buildArm(true); armR = buildArm(false);
 }
 
 function drawRotated(ctx, img, x, y, ang, ox, oy) {
@@ -340,15 +380,13 @@ export function renderCockpit(main, game, sky, t) {
   circle(ctx, fx, fy, 3, '#4a6a8a');
 
   // steering wheel, arms and hands
-  const wa = p.wheel * 1.6;
+  const wa = p.wheel * 0.85;
   drawWheel(ctx, wa);
   for (const side of [-1, 1]) {
-    const a = -Math.PI / 2 + side * 1.05 + wa;
+    const a = -Math.PI / 2 + side * 1.0 + wa * 0.6;
     const hx = WH.cx + Math.cos(a) * (WH.rx - 4), hy = WH.cy + Math.sin(a) * (WH.ry - 4);
-    const ex = side < 0 ? 70 : 350, ey = 360;
-    const armA = Math.atan2(ey - hy, ex - hx);
-    drawRotated(ctx, side < 0 ? armL : armR, hx + Math.cos(armA) * 10, hy + Math.sin(armA) * 10, armA - Math.PI / 2, 17, 0);
-    drawRotated(ctx, side < 0 ? handL : handR, hx, hy, (armA - Math.PI / 2) * 0.5, 20, 12);
+    drawArm(ctx, hx, hy + 26, side < 0 ? 40 : 380, 360, side < 0);
+    ctx.drawImage(side < 0 ? handL : handR, Math.round(hx - 24), Math.round(hy - 12));
   }
 
   // night: darken the cab before drawing anything that glows

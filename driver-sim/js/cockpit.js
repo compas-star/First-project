@@ -561,6 +561,6 @@ function renderCarCockpit(main, game, sky, t) {
   ctx.fillStyle = '#f4e46a'; ctx.fillRect(84, 194, 50, 28); ctx.fillStyle = '#e0cc4a'; ctx.fillRect(84, 194, 50, 3);
   drawText(ctx, 'RETURN TO', 109, 199, '#5a4a1a', 1, 'center');
   drawText(ctx, NODES[game.dest].name.slice(0, 12), 109, 206, '#1a1a6a', 1, 'center');
-  drawText(ctx, `${game.milesToDest().toFixed(0)} MI`, 109, 214, '#c0202a', 1, 'center');
+  drawText(ctx, `${(game.milesLeft ?? game.milesToDest()).toFixed(0)} MI`, 109, 214, '#c0202a', 1, 'center');
   main.drawImage(layer, 0, 0);
 }

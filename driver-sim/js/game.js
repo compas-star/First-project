@@ -335,7 +335,9 @@ export class Game {
     if (input.take('lights')) this.lightsManual = !this.lightsOn;
     this.audio.horn(input.horn);
     this.updateRoads(input);
-    if (this.mode === 'car') this.wrongWayCheck();
+    // route checks are a little costly: a few times a second is plenty
+    this.routeT = (this.routeT || 0) - dt;
+    if (this.mode === 'car' && this.routeT <= 0) { this.routeT = 0.5; this.milesLeft = this.milesToDest(); this.wrongWayCheck(); }
 
     // ---- stops, parking and pumps ----
     const front = this.frontSeg();

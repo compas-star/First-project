@@ -94,6 +94,7 @@ export class Audio {
     o.connect(g); g.connect(dest || this.master); o.start(t); o.stop(t + dur + 0.05);
   }
   door() { this.noise(0.7, 2500, 0.12, null, 'bandpass', 600); this.tone(70, 0.2, 0.15, 'sine', null, 0.55); }
+  beep() { this.tone(1050, 0.22, 0.05, 'square'); }
   bell() { this.tone(1320, 0.5, 0.08, 'sine'); this.tone(1320, 0.5, 0.08, 'sine', null, 0.35); }
   bump(big) { this.noise(big ? 0.6 : 0.25, 160, big ? 0.5 : 0.25, null, 'lowpass'); this.tone(90, 0.3, big ? 0.3 : 0.15, 'sine', null, 0, 40); }
   step1() { this.tone(180 + Math.random() * 40, 0.06, 0.05, 'triangle'); }

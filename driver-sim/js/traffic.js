@@ -11,6 +11,8 @@ export class Traffic {
     const z = p.z + (DRAW_DIST - 4) * SEG;
     const lane = dir > 0 ? 0.5 : -0.5;
     if (z >= game.track.length - SEG * 4) return;
+    // no traffic on roundabouts, side streets and turns
+    if (game.track.segs[Math.floor(z / SEG)]?.quiet || game.seg().quiet) return;
     if (this.cars.some(c => Math.abs(c.z - z) < 6000 && Math.sign(c.lane) === Math.sign(lane))) return;
     const type = CAR_TYPES[Math.floor(Math.random() * CAR_TYPES.length)];
     const col = Math.floor(Math.random() * CAR_COLORS.length);

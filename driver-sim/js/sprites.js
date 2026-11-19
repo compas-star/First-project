@@ -269,6 +269,49 @@ function speedSign(n) {
   drawText(x, String(n), 6, 8, '#111', 1, 'center');
   return c;
 }
+function yieldSign() {
+  const [c, x] = makeCanvas(15, 26);
+  rect(x, 7, 12, 1, 14, '#8a8a8a');
+  poly(x, [0, 0, 15, 0, 7.5, 13], '#c0202a');
+  poly(x, [3.5, 2, 11.5, 2, 7.5, 9], '#f4f4ee');
+  return c;
+}
+function stopSign() {
+  const [c, x] = makeCanvas(15, 28);
+  rect(x, 7, 14, 1, 14, '#8a8a8a');
+  poly(x, [4, 0, 11, 0, 15, 4, 15, 11, 11, 15, 4, 15, 0, 11, 0, 4], '#c0202a');
+  drawText(x, 'STOP', 8, 5, '#f4f4ee', 1, 'center');
+  return c;
+}
+function diamond(text, col = '#e8c020') {
+  const [c, x] = makeCanvas(17, 28);
+  rect(x, 8, 15, 1, 13, '#8a8a8a');
+  poly(x, [8.5, 0, 17, 8.5, 8.5, 17, 0, 8.5], '#222');
+  poly(x, [8.5, 1.5, 15.5, 8.5, 8.5, 15.5, 1.5, 8.5], col);
+  text.forEach((t, i) => drawText(x, t, 9, 4 + i * 6 - (text.length - 1) * 2, '#111', 1, 'center'));
+  return c;
+}
+function roundSign() {
+  const [c, x] = makeCanvas(17, 28);
+  rect(x, 8, 15, 1, 13, '#8a8a8a');
+  poly(x, [8.5, 0, 17, 8.5, 8.5, 17, 0, 8.5], '#222');
+  poly(x, [8.5, 1.5, 15.5, 8.5, 8.5, 15.5, 1.5, 8.5], '#e8c020');
+  for (let a = 0; a < 3; a++) {
+    const t = a * 2.1;
+    for (let k = 0; k < 6; k++) { const u = t + k * 0.22; px(x, 8 + Math.round(Math.cos(u) * 4), 8 + Math.round(Math.sin(u) * 4), '#111'); }
+    px(x, 8 + Math.round(Math.cos(t + 1.3) * 4), 8 + Math.round(Math.sin(t + 1.3) * 4) - 1, '#111');
+  }
+  return c;
+}
+function mailbox(seed) {
+  const r = mulberry(seed);
+  const [c, x] = makeCanvas(8, 14);
+  rect(x, 3, 5, 2, 9, '#5a4030');
+  const col = ['#2a2a2a', '#c0c0c0', '#2f5a9a', '#a83232'][Math.floor(r() * 4)];
+  rect(x, 0, 1, 8, 5, col); rect(x, 1, 0, 6, 1, col); rect(x, 7, 1, 1, 3, shade(col, -0.3));
+  rect(x, 6, 0, 1, 3, '#d02a2a');
+  return c;
+}
 function welcome(name) {
   const tw = Math.max(textWidth('WELCOME TO'), textWidth(name));
   const w = tw + 8, h = 26;
@@ -626,6 +669,12 @@ export function buildSprites() {
   reg('shield', shield66(), 2.8, { solid: true });
   reg('speed35', speedSign(35), 2.8, { solid: true });
   reg('speed65', speedSign(65), 2.8, { solid: true });
+  reg('speed25', speedSign(25), 2.8, { solid: true });
+  reg('yield', yieldSign(), 2.6, { solid: true });
+  reg('stop', stopSign(), 2.8, { solid: true });
+  reg('roundabout', roundSign(), 2.8, { solid: true });
+  reg('deadend', diamond(['DEAD', 'END']), 2.8, { solid: true });
+  reg('mailbox0', mailbox(1), 1.25); reg('mailbox1', mailbox(2), 1.25); reg('mailbox2', mailbox(3), 1.25);
   ADS.forEach((ad, i) => reg('bb' + i, billboard(ad), 7.5, { solid: true }));
   reg('cow', cow(13), 1.6); reg('cow2', cow(14), 1.6);
   reg('windmill', windmill(), 11, { solid: true });

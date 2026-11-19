@@ -88,21 +88,23 @@ function drawHud(g) {
   // junction chooser
   const ch = g.choice;
   const showChoice = ch && ch.opts.length > 1;
-  document.body.classList.toggle('junction', !!showChoice);
+  document.body.classList.toggle('junction', !!showChoice && !ch.ring);
   if (showChoice) {
-    const w = Math.max(...ch.opts.map(o => textWidth(o.label))) + 26;
+    const head = ch.ring ? `ROUNDABOUT: STEER RIGHT AT YOUR EXIT` : `AT ${NODES[ch.node].name}: ${input.touch ? 'ROAD BUTTONS' : 'Q / E'}`;
+    const w = Math.max(textWidth(head) + 10, ...ch.opts.map(o => textWidth(o.label) + 26));
     const x = W - w - 30, y = 82;
     box(x, y, w, 14 + ch.opts.length * 9, 0.8);
-    drawText(ctx, `AT ${NODES[ch.node].name}: ${input.touch ? 'ROAD BUTTONS' : 'Q / E'}`, x + 5, y + 4, '#9aff8a');
+    drawText(ctx, head, x + 5, y + 4, '#9aff8a');
     ch.opts.forEach((o, i) => {
       const yy = y + 14 + i * 9;
-      if (i === ch.idx) { rect(ctx, x + 2, yy - 2, w - 4, 9, '#2a5a9a'); drawText(ctx, '>', x + 5, yy, '#ffd36a'); }
+      if (i === ch.idx && !ch.ring) { rect(ctx, x + 2, yy - 2, w - 4, 9, '#2a5a9a'); drawText(ctx, '>', x + 5, yy, '#ffd36a'); }
       drawText(ctx, o.label, x + 12, yy, i === ch.idx ? '#ffffff' : '#c8c8c8');
       if (i === ch.recommended) drawText(ctx, '*', x + w - 8, yy, '#ffd36a');
     });
   }
+  if (g.player.reverse) { box(CX - 34, 40, 68, 14, 0.7); drawText(ctx, 'R - REVERSE', CX, 44, '#ffd36a', 1, 'center'); }
   const act = document.getElementById('tAction');
-  if (g.action) { act.textContent = g.action === 'doors' ? 'OPEN DOORS' : g.action === 'park' ? 'END TRIP' : 'REFUEL'; act.classList.add('show'); }
+  if (g.action) { act.textContent = g.action === 'doors' ? 'OPEN DOORS' : g.action === 'park' ? 'RETURN CAR' : 'REFUEL'; act.classList.add('show'); }
   else act.classList.remove('show');
 }
 
@@ -112,9 +114,9 @@ function drawPaperMap(g) {
   let route = [];
   if (g.mode === 'bus') route = g.job.path;
   else {
-    const legs = g.track.legs.map(l => l.e);
-    const rest = g.lastNode() !== g.dest ? (shortestPath(g.lastNode(), g.dest) || []) : [];
-    route = [...legs, ...rest];
+    const L = g.locate();
+    const ahead = L.node !== g.dest ? (shortestPath(L.node, g.dest) || []) : [];
+    route = L.e ? [L.e, ...ahead] : ahead;
   }
   const view = { x: 18, y: 14, w: W - 36, h: H - 40, cx: s.mx, cy: s.my, s: 1.9 };
   box(0, 0, W, H, 0.45);
@@ -212,7 +214,7 @@ function frame(now) {
     if (game.mapOpen && input.taps.length) { input.taps.length = 0; game.mapOpen = false; }
     input.taps.length = 0;
     if (!paused) game.update(dt, input);
-    audio.update(game.player.speed, game.player.throttle, game.offroad && game.player.speed > 3, paused || game.mapOpen);
+    audio.update(Math.abs(game.player.speed), game.player.throttle, game.offroad && Math.abs(game.player.speed) > 3, paused || game.mapOpen);
     drawScene(game); drawHud(game);
     if (game.mapOpen) drawPaperMap(game);
     if (paused) {

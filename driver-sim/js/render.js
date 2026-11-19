@@ -32,14 +32,35 @@ function quad(ctx, x1, y1, w1, x2, y2, w2, col) {
 
 const fogC = (c, fog, f) => css(lerpC(c, fog, f));
 
+const GRASS = hex('#5f7a3a'), CURB = hex('#b8b4a8');
 function drawSegment(ctx, s, fog, f) {
   const p1 = s.p1, p2 = s.p2, a = s.alt;
   const x1 = p1.sx, y1 = p1.sy, w1 = p1.sw, x2 = p2.sx, y2 = p2.sy, w2 = p2.sw;
+  const asphalt = fogC(ASPHALT[a], fog, f);
   ctx.fillStyle = fogC(s.ground, fog, f);
   ctx.fillRect(0, y2, W, y1 - y2 + 1);
-  if (!s.town) quad(ctx, x1, y1, w1 * 1.55, x2, y2, w2 * 1.55, fogC(s.dirt, fog, f));
-  quad(ctx, x1, y1, w1 * 1.3, x2, y2, w2 * 1.3, fogC((s.town ? SIDEWALK : SHOULDER)[a], fog, f));
-  quad(ctx, x1, y1, w1, x2, y2, w2, fogC(ASPHALT[a], fog, f));
+  if (s.cross) {
+    // a crossing street: asphalt from one side of the view to the other
+    ctx.fillStyle = asphalt;
+    ctx.fillRect(0, y2, W, y1 - y2 + 1);
+  } else {
+    if (!s.town && !s.street) quad(ctx, x1, y1, w1 * 1.55, x2, y2, w2 * 1.55, fogC(s.dirt, fog, f));
+    quad(ctx, x1, y1, w1 * 1.3, x2, y2, w2 * 1.3, fogC((s.town || s.street ? SIDEWALK : SHOULDER)[a], fog, f));
+  }
+  // an opening to the side: a roundabout exit or entry
+  if (s.stub) quad(ctx, x1 + s.stub * w1 * 2.4, y1, w1 * 1.45, x2 + s.stub * w2 * 2.4, y2, w2 * 1.45, asphalt);
+  // the roundabout's central island, always on the left
+  if (s.island) {
+    quad(ctx, x1 - w1 * 2.6, y1, w1 * 1.45, x2 - w2 * 2.6, y2, w2 * 1.45, fogC(GRASS.map(v => v * (a ? 0.94 : 1)), fog, f));
+    quad(ctx, x1 - w1 * 1.13, y1, w1 * 0.06, x2 - w2 * 1.13, y2, w2 * 0.06, fogC(CURB, fog, f));
+  }
+  quad(ctx, x1, y1, w1, x2, y2, w2, asphalt);
+  if (s.cross) {
+    if (s.cross === 2) for (let o = -0.85; o <= 0.86; o += 0.24) quad(ctx, x1 + w1 * o, y1, w1 * 0.08, x2 + w2 * o, y2, w2 * 0.08, fogC(WHITE, fog, f));
+    return;
+  }
+  if (s.stopline) quad(ctx, x1 + w1 * 0.5, y1, w1 * 0.48, x2 + w2 * 0.5, y2, w2 * 0.48, fogC(WHITE, fog, f));
+  if (s.yieldline) for (let o = 0.1; o < 1; o += 0.18) quad(ctx, x1 + w1 * o, y1, w1 * 0.05, x2 + w2 * o, y2, w2 * 0.05, fogC(WHITE, fog, f));
   // wheel tracks: slightly darker bands in each lane
   const track = fogC(ASPHALT[a].map(v => v * 0.9), fog, f);
   for (const o of [-0.72, -0.28, 0.28, 0.72]) quad(ctx, x1 + w1 * o, y1, w1 * 0.07, x2 + w2 * o, y2, w2 * 0.07, track);
@@ -50,18 +71,24 @@ function drawSegment(ctx, s, fog, f) {
     quad(ctx, x1 + w1 * 0.55, y1, w1 * 0.45, x2 + w2 * 0.55, y2, w2 * 0.45, col);
     if (s.zone === 'gas') quad(ctx, x1 + w1 * 1.15, y1, w1 * 0.2, x2 + w2 * 1.15, y2, w2 * 0.2, col);
   }
+  if (s.street) return; // quiet residential streets: no paint
   // edge lines
   const white = fogC(WHITE, fog, f);
   if (!s.town) {
-    quad(ctx, x1 - w1 * 0.95, y1, w1 * 0.025, x2 - w2 * 0.95, y2, w2 * 0.025, white);
-    quad(ctx, x1 + w1 * 0.95, y1, w1 * 0.025, x2 + w2 * 0.95, y2, w2 * 0.025, white);
+    if (s.stub !== -1) quad(ctx, x1 - w1 * 0.95, y1, w1 * 0.025, x2 - w2 * 0.95, y2, w2 * 0.025, white);
+    if (s.stub !== 1) quad(ctx, x1 + w1 * 0.95, y1, w1 * 0.025, x2 + w2 * 0.95, y2, w2 * 0.025, white);
   }
-  const yel = fogC(YELLOW, fog, f);
-  if (s.noPass) {
-    quad(ctx, x1 - w1 * 0.04, y1, w1 * 0.016, x2 - w2 * 0.04, y2, w2 * 0.016, yel);
-    quad(ctx, x1 + w1 * 0.04, y1, w1 * 0.016, x2 + w2 * 0.04, y2, w2 * 0.016, yel);
-  } else if (a) {
-    quad(ctx, x1, y1, w1 * 0.02, x2, y2, w2 * 0.02, yel);
+  if (s.oneway) {
+    // roundabout: a dashed white lane line instead of the yellow centre line
+    if (s.i % 4 < 2) quad(ctx, x1, y1, w1 * 0.018, x2, y2, w2 * 0.018, white);
+  } else {
+    const yel = fogC(YELLOW, fog, f);
+    if (s.noPass) {
+      quad(ctx, x1 - w1 * 0.04, y1, w1 * 0.016, x2 - w2 * 0.04, y2, w2 * 0.016, yel);
+      quad(ctx, x1 + w1 * 0.04, y1, w1 * 0.016, x2 + w2 * 0.04, y2, w2 * 0.016, yel);
+    } else if (a) {
+      quad(ctx, x1, y1, w1 * 0.02, x2, y2, w2 * 0.02, yel);
+    }
   }
   // raised reflectors on the centre line
   if (s.i % 6 === 0 && w1 > 30) { ctx.fillStyle = fogC([250, 220, 120], fog, f); const r = Math.max(1, Math.round(w1 * 0.012)); ctx.fillRect(x1 - r, y1 - r, r * 2, r); }

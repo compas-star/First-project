@@ -7,14 +7,24 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 3: real driving
+- **Reverse gear**: stop, then hold the brake to back up (the bus beeps). Press gas at a standstill to go forward.
+- **U-turns** (car): slow below 15 mph and press U (or U-TURN) for a hairpin turn back the way you came.
+- **Roundabouts** at highway junctions, small-town forks and dead ends: circle as long as you like and
+  steer right at your exit. The junction panel lists the exits and stars the one toward your destination.
+- **Side streets** in towns and cities: slow down at a cross street and steer hard left or right. Residential
+  streets end in a turning circle and bring you back to a stop sign, where you steer left or right.
+- **Every road looks the same in both directions**, so turning around brings you back past the same scenery.
+- **Returning the rental**: stop anywhere in a town to drop the car off there; no more missed yellow boxes.
+  A bus that overshoots its stop can back up into it.
+
 ## Update 2: the region map
 - **Paper road map of northern & central Arizona (1994)**: 23 real towns (Kingman, Flagstaff, Phoenix,
   Grand Canyon, Sedona, Page, Needles...) on the real highways (I-40, Route 66, US-93, I-17, US-89, AZ-64...).
 - **The road you drive is generated from the map**: curves follow the real road's turns, the landscape
   follows the real terrain, towns are where they are on the map, and the sun sits where it should for your heading.
 - **Hub**: bus jobs from each depot (17 daily routes), U-Drive car rental to any town, motel, ledger of your money.
-- **Rental car**: its own cab, faster, you pay for gas. At junctions pick a road (Q / E, or the ROAD buttons).
-  Park in any town's yellow box to end the trip there.
+- **Rental car**: its own cab, faster, you pay for gas. At city crossroads pick a road (Q / E, or the ROAD buttons).
 - **Paper map in the vehicle**: press M (or MAP) to unfold it and see where you are.
 - 24-hour day/night cycle; progress is saved in the browser.
 
@@ -31,10 +41,14 @@ python3 -m http.server 8000   # then open http://localhost:8000
 |---|---|---|
 | Gas / brake | ↑ / ↓ (W / S) | GAS / BRAKE pedals |
 | Steer | ← / → (A / D) | ◀ ▶ buttons, or drag on the steering wheel |
+| Reverse | hold ↓ at a standstill | hold BRAKE at a standstill |
+| U-turn (car) | U | U-TURN |
+| Pick a road at a city crossroads | Q / E | ROAD buttons |
+| Paper map | M or Tab | MAP |
 | Open doors / refuel | Space | big pulsing button |
 | Cruise control | C | CRUISE |
 | Radio (2 stations) | R | RADIO |
-| Horn, lights, mute, pause | H, L, M, P | HORN, SOUND, II |
+| Horn, lights, mute, pause | H, L, N, P | HORN, SOUND, II |
 
 ## What's in the prototype
 - First-person cab view only: pixel-art dashboard, big steering wheel, hairy forearms in a flannel shirt,

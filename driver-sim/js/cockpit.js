@@ -409,10 +409,10 @@ export function renderCockpit(main, game, sky, t) {
   }
 
   // needles
-  needle(ctx, G.speed, p.speed / 80, 135, 270, '#ff6a2a');
+  needle(ctx, G.speed, Math.abs(p.speed) / 80, 135, 270, '#ff6a2a');
   needle(ctx, G.tach, game.audio.rpm || 0.15, 135, 270, '#ff6a2a');
   needle(ctx, G.air, 0.8 - (game.airDrop || 0), 180, 180, '#ffb040');
-  needle(ctx, G.oil, 0.35 + p.throttle * 0.25 + Math.min(0.2, p.speed / 300), 180, 180, '#ffb040');
+  needle(ctx, G.oil, 0.35 + p.throttle * 0.25 + Math.min(0.2, Math.abs(p.speed) / 300), 180, 180, '#ffb040');
   needle(ctx, G.fuel, p.fuel, 180, 180, '#ffb040');
   needle(ctx, G.temp, 0.5, 180, 180, '#ffb040');
   drawText(ctx, String(Math.floor(game.odometer || 0)).padStart(5, '0'), 190.5, 198, '#e8e8e0', 1, 'center');
@@ -542,7 +542,7 @@ function renderCarCockpit(main, game, sky, t) {
     for (const g of Object.values(CG)) { ctx.beginPath(); ctx.arc(g[0], g[1], g[2], 0, 6.29); ctx.fill(); }
     ctx.globalCompositeOperation = 'source-over';
   }
-  needle(ctx, CG.speed, p.speed / 100, 135, 270, '#ff6a2a');
+  needle(ctx, CG.speed, Math.abs(p.speed) / 100, 135, 270, '#ff6a2a');
   needle(ctx, CG.tach, (game.audio.rpm || 0.15) * 0.9, 135, 270, '#ff6a2a');
   needle(ctx, CG.fuel, p.fuel, 180, 180, '#ffb040');
   needle(ctx, CG.temp, 0.45, 180, 180, '#ffb040');

@@ -1,4 +1,4 @@
-# Mother Road — Route 66 Bus Driver (prototype)
+# Mother Road — Arizona Driver (prototype, update 2)
 
 First playable slice of a bigger idea: a relaxed **USA driving-jobs simulator** set in the 1990s
 (bus, taxi, truck... across different states). This prototype is the **intercity bus** job.
@@ -6,6 +6,17 @@ First playable slice of a bigger idea: a relaxed **USA driving-jobs simulator** 
 You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbound across Arizona:
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
+
+## Update 2: the region map
+- **Paper road map of northern & central Arizona (1994)**: 23 real towns (Kingman, Flagstaff, Phoenix,
+  Grand Canyon, Sedona, Page, Needles...) on the real highways (I-40, Route 66, US-93, I-17, US-89, AZ-64...).
+- **The road you drive is generated from the map**: curves follow the real road's turns, the landscape
+  follows the real terrain, towns are where they are on the map, and the sun sits where it should for your heading.
+- **Hub**: bus jobs from each depot (17 daily routes), U-Drive car rental to any town, motel, ledger of your money.
+- **Rental car**: its own cab, faster, you pay for gas. At junctions pick a road (Q / E, or the ROAD buttons).
+  Park in any town's yellow box to end the trip there.
+- **Paper map in the vehicle**: press M (or MAP) to unfold it and see where you are.
+- 24-hour day/night cycle; progress is saved in the browser.
 
 ## Play
 It's a static web page with no build step and no dependencies:

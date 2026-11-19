@@ -1,7 +1,7 @@
 // Light two-lane traffic: oncoming cars and slower vehicles to overtake.
 import { SEG, DRAW_DIST, MPH2U } from './config.js';
 import { carSprite, CAR_TYPES, CAR_COLORS } from './sprites.js';
-import { biomeAt, mileOfSeg, BIOMES } from './track.js';
+import { BIOMES } from './track.js';
 
 export class Traffic {
   constructor() { this.cars = []; this.tOn = 3; this.tSame = 14; }
@@ -24,8 +24,9 @@ export class Traffic {
   update(dt, game) {
     const p = game.player;
     const seg = Math.floor(p.z / SEG);
-    const bio = BIOMES[biomeAt(mileOfSeg(seg)).a];
-    const busy = bio.traffic * (game.clock > 18.3 * 3600 ? 0.6 : 1);
+    const bio = BIOMES[(game.track.segs[seg] || game.track.segs[0]).bio.a];
+    const hr = (game.clock % 86400) / 3600;
+    const busy = bio.traffic * (hr > 18.3 || hr < 6.5 ? 0.6 : 1);
     if (!game.finished) {
       this.tOn -= dt; this.tSame -= dt;
       if (this.tOn <= 0) { this.spawn(game, -1); this.tOn = (4 + Math.random() * 9) / busy; }

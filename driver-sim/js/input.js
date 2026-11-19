@@ -2,7 +2,7 @@
 export const input = {
   gas: false, brake: false, left: false, right: false, horn: false,
   analogSteer: null, // set by dragging on the wheel (touch)
-  pressed: new Set(), touch: false,
+  pressed: new Set(), touch: false, taps: [],
   take(k) { const h = this.pressed.has(k); this.pressed.delete(k); return h; },
 };
 
@@ -11,15 +11,16 @@ const KEYMAP = {
   ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', KeyH: 'horn',
 };
 const ONESHOT = {
-  Space: 'action', KeyE: 'action', KeyC: 'cruise', KeyR: 'radio', KeyM: 'mute',
-  KeyP: 'pause', Escape: 'pause', Enter: 'start', KeyL: 'lights',
+  Space: 'action', KeyC: 'cruise', KeyR: 'radio', KeyN: 'mute', KeyM: 'map', Tab: 'map',
+  KeyP: 'pause', Escape: 'pause', Enter: 'enter', KeyL: 'lights', KeyQ: 'prevRoute', KeyE: 'nextRoute',
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
 };
 
 export function initInput(canvas) {
   addEventListener('keydown', e => {
     if (KEYMAP[e.code]) { input[KEYMAP[e.code]] = true; e.preventDefault(); }
     if (ONESHOT[e.code] && !e.repeat) { input.pressed.add(ONESHOT[e.code]); e.preventDefault(); }
-    if (e.code === 'Space') input.pressed.add('start');
+    if (e.code === 'Space' || e.code === 'Enter') input.pressed.add('start');
   });
   addEventListener('keyup', e => { if (KEYMAP[e.code]) input[KEYMAP[e.code]] = false; });
   addEventListener('blur', () => { for (const k of Object.values(KEYMAP)) input[k] = false; });
@@ -40,6 +41,7 @@ export function initInput(canvas) {
   };
   hold('tLeft', 'left'); hold('tRight', 'right'); hold('tGas', 'gas'); hold('tBrake', 'brake'); hold('tHorn', 'horn');
   tap('tCruise', 'cruise'); tap('tRadio', 'radio'); tap('tPause', 'pause'); tap('tAction', 'action'); tap('tMute', 'mute');
+  tap('tMap', 'map'); tap('tPrev', 'prevRoute'); tap('tNext', 'nextRoute');
 
   // drag on the steering wheel to steer (analog)
   let drag = null;
@@ -48,6 +50,8 @@ export function initInput(canvas) {
     if (e.pointerType !== 'mouse') input.touch = true;
     const r = canvas.getBoundingClientRect();
     const fy = (e.clientY - r.top) / r.height;
+    input.taps.push({ x: (e.clientX - r.left) / r.width * canvas.width, y: fy * canvas.height });
+    if (input.taps.length > 4) input.taps.shift();
     if (fy > 0.6) { drag = { id: e.pointerId, x0: e.clientX, w: r.width }; canvas.setPointerCapture(e.pointerId); }
   });
   canvas.addEventListener('pointermove', e => {

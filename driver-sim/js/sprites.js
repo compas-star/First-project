@@ -549,6 +549,51 @@ export function carSprite(type, view, colorIdx) {
   return SPR[key];
 }
 
+// green highway guide sign, e.g. ["FLAGSTAFF", "32 MI"]
+export function greenSign(lines) {
+  const key = 'green_' + lines.join('|');
+  if (SPR[key]) return key;
+  const tw = Math.max(...lines.map(l => textWidth(l))) + 8;
+  const h = lines.length * 7 + 5;
+  const [c, x] = makeCanvas(tw, h + 10);
+  rect(x, 3, h, 2, 10, '#8a8a8a'); rect(x, tw - 5, h, 2, 10, '#8a8a8a');
+  rect(x, 0, 0, tw, h, '#e8e8e0'); rect(x, 1, 1, tw - 2, h - 2, '#1f6a3a');
+  lines.forEach((l, i) => drawText(x, l, tw / 2, 3 + i * 7, '#f4f4ee', 1, 'center'));
+  reg(key, c, 3.2 + lines.length * 0.6, { solid: true });
+  return key;
+}
+// route marker: interstate (red/blue shield), US (white shield), state (white circle)
+export function routeShield(hw) {
+  const key = 'shield_' + hw;
+  if (SPR[key]) return key;
+  const [kind, num] = hw.split('-');
+  const [c, x] = makeCanvas(19, 30);
+  rect(x, 9, 16, 1, 14, '#8a8a8a');
+  if (kind === 'I') {
+    rect(x, 1, 1, 17, 16, '#f4f4ee'); rect(x, 2, 6, 15, 10, '#1a3a8a'); rect(x, 2, 2, 15, 4, '#c0202a');
+    x.clearRect(1, 1, 1, 1); x.clearRect(17, 1, 1, 1); x.clearRect(1, 16, 3, 1); x.clearRect(15, 16, 3, 1);
+    drawText(x, num, 9.5, 8, '#ffffff', 1, 'center');
+  } else if (kind === 'US') {
+    rect(x, 1, 1, 17, 16, '#111'); rect(x, 2, 2, 15, 14, '#f4f4ee');
+    drawText(x, num, 9.5, 7, '#111', 1, 'center'); drawText(x, 'US', 9.5, 2, '#111', 1, 'center');
+  } else {
+    rect(x, 1, 1, 17, 16, '#111'); ellipse(x, 9, 9, 7, 7, '#f4f4ee');
+    drawText(x, num, 9.5, 7, '#111', 1, 'center');
+  }
+  reg(key, c, 2.8, { solid: true });
+  return key;
+}
+function rentalOffice() {
+  const p = pair(70, 40);
+  const { x, gx } = p;
+  rect(x, 0, 14, 70, 26, '#e8e4d8'); rect(x, 0, 12, 70, 3, '#2a6ab0');
+  rect(x, 6, 0, 58, 12, '#2a6ab0'); rect(x, 7, 1, 56, 10, '#f4f4ee');
+  p.both(c => drawText(c, 'U-DRIVE', 35, 3, '#c0202a', 1, 'center'));
+  rect(x, 6, 20, 24, 12, '#6a8a9a'); rect(gx, 6, 20, 24, 12, '#ffe2a0'); rect(x, 40, 20, 10, 20, '#3a4a5a');
+  drawText(x, 'RENTALS', 35, 34, '#2a6ab0', 1, 'center');
+  return reg('rental', p.c, 6, { glow: p.g, solid: true });
+}
+
 export function welcomeSprite(name) {
   const key = 'welcome_' + name;
   if (!SPR[key]) reg(key, welcome(name), 4, { solid: true });
@@ -586,7 +631,7 @@ export function buildSprites() {
   reg('windmill', windmill(), 11, { solid: true });
   reg('shelter_full', shelter(true), 3.2, { solid: true });
   reg('shelter_empty', shelter(false), 3.2, { solid: true });
-  depot(); gasStation(); priceSign(); streetLight(); church(); waterTower();
+  depot(); rentalOffice(); gasStation(); priceSign(); streetLight(); church(); waterTower();
   const bld = (key, art, h) => { reg(key, art.img, h, { glow: art.glow, solid: true, scale: 1, smooth: true }); BUILDINGS.push(key); };
   for (let i = 0; i < 4; i++) bld('motel' + i, motelHi(20 + i), 10.5);
   for (let i = 0; i < 3; i++) bld('diner' + i, dinerHi(30 + i), 8.5);

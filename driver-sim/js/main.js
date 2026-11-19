@@ -1,13 +1,17 @@
-import { W, H, SEG } from './config.js';
-import { makeCanvas, rect, timeStr } from './gfx.js';
+import { W, H } from './config.js';
+import { rect, timeStr } from './gfx.js';
 import { drawText, textWidth } from './font.js';
 import { buildSprites } from './sprites.js';
-import { buildBackgrounds, skyAt, drawSky, BG_W } from './backgrounds.js';
+import { buildBackgrounds, skyAt, drawSky } from './backgrounds.js';
 import { renderWorld, worldCanvas, drawEmissive, drawHeadlights } from './render.js';
 import { initCockpit, renderCockpit } from './cockpit.js';
 import { input, initInput } from './input.js';
 import { Audio } from './audio.js';
 import { Game } from './game.js';
+import { Career, RENT_PRICE } from './career.js';
+import { Hub } from './hub.js';
+import { NODES, shortestPath } from './world.js';
+import { drawMap } from './mapview.js';
 
 const canvas = document.getElementById('screen');
 canvas.width = W; canvas.height = H;
@@ -22,8 +26,16 @@ if (document.body.classList.contains('touch')) input.touch = true;
 const audio = new Audio();
 // browsers (and sandboxed frames) only allow audio to start from a user gesture
 for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, () => { try { audio.init(); } catch (e) {} }, true);
-const game = new Game(audio);
-let state = 'title', paused = false, report = null, t = 0;
+
+const career = new Career();
+const hasSave = career.load();
+const hub = new Hub(career);
+let game = new Game(audio, career);
+// title backdrop: a rental car parked in Kingman at golden hour
+const demoCareer = new Career(); demoCareer.clock = 16.6 * 3600;
+const demo = new Game(audio, demoCareer); demo.startCar('flagstaff'); demo.msgs = [];
+
+let state = 'title', paused = false, report = null, t = 0, titleSel = 0;
 
 function fit() {
   const vw = innerWidth, vh = innerHeight;
@@ -40,84 +52,143 @@ function say(str, y, color, s = 2, shadow = '#000') {
   if (textWidth(str, s) > W - 12) s = 1;
   drawText(ctx, str, CX, y, color, s, 'center', shadow);
 }
+function setPlaying(on) { document.body.classList.toggle('playing', on); input.pressed.clear(); input.taps.length = 0; }
 
-function drawScene() {
-  const sky = skyAt(game.clock);
-  const sh = game.shake;
+function drawScene(g) {
+  const sky = skyAt(g.clock);
+  const sh = g.shake;
   const ox = sh ? Math.round((Math.random() - 0.5) * 4 * sh) : 0;
-  const oy = sh ? Math.round((Math.random() - 0.5) * 4 * sh) : (game.player.speed > 5 && Math.random() < 0.05 ? 1 : 0);
-  const sunX = Math.round((((300 - game.bgOffset * 1.0) % BG_W) + BG_W) % BG_W - 60);
-  drawSky(ctx, sky, sunX, t, game.bgOffset);
-  const { emissive } = renderWorld(game, sky);
+  const oy = sh ? Math.round((Math.random() - 0.5) * 4 * sh) : (g.player.speed > 5 && Math.random() < 0.05 ? 1 : 0);
+  drawSky(ctx, sky, g.heading(), t);
+  const { emissive } = renderWorld(g, sky);
   ctx.drawImage(worldCanvas, ox, oy);
-  if (game.lightsOn) drawHeadlights(ctx, Math.max(sky.night, 0.4));
+  if (g.lightsOn) drawHeadlights(ctx, Math.max(sky.night, 0.4));
   drawEmissive(ctx, emissive, sky.night, ox, oy);
-  // faint reflections on the glass
   ctx.fillStyle = 'rgba(255,255,255,0.03)';
   for (const [x0, w] of [[250, 14], [272, 6], [330, 18]]) { ctx.beginPath(); ctx.moveTo(x0, 17); ctx.lineTo(x0 + w, 17); ctx.lineTo(x0 + w - 90, 176); ctx.lineTo(x0 - 90, 176); ctx.fill(); }
-  renderCockpit(ctx, game, sky, t);
+  renderCockpit(ctx, g, sky, t);
   return sky;
 }
 
-function drawHud() {
-  const m = game.msgs[0];
+function drawHud(g) {
+  const m = g.msgs[0];
   if (m) {
     const s = textWidth(m.text, 2) > W - 20 ? 1 : 2;
     const w = textWidth(m.text, s) + 12;
     box(CX - w / 2, 62, w, 5 * s + 8);
     drawText(ctx, m.text, CX, 66, m.color, s, 'center');
   }
-  if (game.prompt) {
-    const blink = game.action ? Math.floor(t * 3) % 2 === 0 : true;
-    const w = textWidth(game.prompt, 2) + 12;
+  if (g.prompt) {
+    const blink = g.action ? Math.floor(t * 3) % 2 === 0 : true;
+    const s = textWidth(g.prompt, 2) > W - 20 ? 1 : 2;
+    const w = textWidth(g.prompt, s) + 12;
     box(CX - w / 2, 136, w, 18, 0.6);
-    if (blink) drawText(ctx, game.prompt, CX, 140, game.action ? '#ffd36a' : '#ffffff', 2, 'center');
+    if (blink) drawText(ctx, g.prompt, CX, s === 2 ? 140 : 142, g.action ? '#ffd36a' : '#ffffff', s, 'center');
+  }
+  // junction chooser
+  const ch = g.choice;
+  const showChoice = ch && ch.opts.length > 1;
+  document.body.classList.toggle('junction', !!showChoice);
+  if (showChoice) {
+    const w = Math.max(...ch.opts.map(o => textWidth(o.label))) + 26;
+    const x = W - w - 30, y = 82;
+    box(x, y, w, 14 + ch.opts.length * 9, 0.8);
+    drawText(ctx, `AT ${NODES[ch.node].name}: ${input.touch ? 'ROAD BUTTONS' : 'Q / E'}`, x + 5, y + 4, '#9aff8a');
+    ch.opts.forEach((o, i) => {
+      const yy = y + 14 + i * 9;
+      if (i === ch.idx) { rect(ctx, x + 2, yy - 2, w - 4, 9, '#2a5a9a'); drawText(ctx, '>', x + 5, yy, '#ffd36a'); }
+      drawText(ctx, o.label, x + 12, yy, i === ch.idx ? '#ffffff' : '#c8c8c8');
+      if (i === ch.recommended) drawText(ctx, '*', x + w - 8, yy, '#ffd36a');
+    });
   }
   const act = document.getElementById('tAction');
-  if (game.action) { act.textContent = game.action === 'doors' ? 'OPEN DOORS' : 'REFUEL'; act.classList.add('show'); }
+  if (g.action) { act.textContent = g.action === 'doors' ? 'OPEN DOORS' : g.action === 'park' ? 'END TRIP' : 'REFUEL'; act.classList.add('show'); }
   else act.classList.remove('show');
+}
+
+// the paper map, unfolded on your lap
+function drawPaperMap(g) {
+  const s = g.seg();
+  let route = [];
+  if (g.mode === 'bus') route = g.job.path;
+  else {
+    const legs = g.track.legs.map(l => l.e);
+    const rest = g.lastNode() !== g.dest ? (shortestPath(g.lastNode(), g.dest) || []) : [];
+    route = [...legs, ...rest];
+  }
+  const view = { x: 18, y: 14, w: W - 36, h: H - 40, cx: s.mx, cy: s.my, s: 1.9 };
+  box(0, 0, W, H, 0.45);
+  drawMap(ctx, view, { route, player: { mx: s.mx, my: s.my, heading: g.heading() }, selected: g.mode === 'car' ? g.dest : g.job.stops[g.job.stops.length - 1] }, t);
+  const info = g.mode === 'car' ? `TO ${NODES[g.dest].name}: ${g.milesToDest().toFixed(0)} MI` : `${g.job.name}: NEXT ${g.nextStop()?.name || '-'}`;
+  box(18, H - 26, W - 36, 14, 0.85);
+  drawText(ctx, info, 24, H - 22, '#ffd36a');
+  drawText(ctx, input.touch ? 'TAP MAP TO FOLD' : 'M - FOLD THE MAP', W - 24, H - 22, '#c8c8c8', 1, 'right');
 }
 
 function drawTitle() {
   box(0, 0, W, H, 0.55);
-  drawText(ctx, 'MOTHER ROAD', CX, 26, '#ffd36a', 6, 'center', '#6a2a1a');
-  say('A BUS DRIVER ON ROUTE 66 - ARIZONA, 1994', 66, '#f2e2b8', 2);
-  rect(ctx, 90, 82, 300, 1, '#8a6a3a');
-  say('FLAGSTAFF > WILLIAMS > ASH FORK > SELIGMAN', 90, '#c8d8ff', 1);
-  say('> PEACH SPRINGS > KINGMAN', 98, '#c8d8ff', 1);
-  say('DRIVE WEST. STOP IN THE YELLOW BOXES.', 112, '#ffffff', 1);
-  say('KEEP THE TANK FULL AND THE PASSENGERS COMFY.', 120, '#ffffff', 1);
-  if (Math.floor(t * 2) % 2 === 0) say(input.touch ? 'TAP TO START YOUR SHIFT' : 'PRESS ENTER TO START YOUR SHIFT', 136, '#ffd36a', 2);
+  drawText(ctx, 'MOTHER ROAD', CX, 22, '#ffd36a', 6, 'center', '#6a2a1a');
+  say('DRIVING FOR A LIVING - ARIZONA, 1994', 62, '#f2e2b8', 2);
+  rect(ctx, 90, 78, 300, 1, '#8a6a3a');
+  say('TAKE BUS SHIFTS ACROSS THE STATE. RENT A CAR TO GET', 86, '#c8d8ff', 1);
+  say('TO THE NEXT DEPOT. WATCH YOUR MONEY, SLEEP IN MOTELS.', 94, '#c8d8ff', 1);
+  const items = hasSave ? [`CONTINUE - DAY ${career.day}, ${career.here.name}, $${career.money.toFixed(0)}`, 'NEW CAREER'] : ['START A NEW CAREER'];
+  titleSel = Math.min(titleSel, items.length - 1);
+  if (input.take('up')) titleSel = Math.max(0, titleSel - 1);
+  if (input.take('down')) titleSel = Math.min(items.length - 1, titleSel + 1);
+  let chosen = null;
+  items.forEach((it, i) => {
+    const y = 112 + i * 20, w = textWidth(it, 1) + 30;
+    box(CX - w / 2, y - 4, w, 15, i === titleSel ? 0.9 : 0.6);
+    if (i === titleSel) rect(ctx, CX - w / 2, y - 4, 3, 15, '#ffd36a');
+    drawText(ctx, it, CX, y + 1, i === titleSel ? '#ffd36a' : '#e8e0d0', 1, 'center');
+    for (const tp of input.taps) if (tp.y >= y - 4 && tp.y < y + 11 && Math.abs(tp.x - CX) < w / 2) chosen = i;
+  });
+  input.taps.length = 0;
+  if (input.take('enter') || input.take('action')) chosen = titleSel;
+  if (chosen !== null) {
+    if (!hasSave || chosen === 1) { career.newGame(); career.save(); }
+    input.take('start');
+    state = 'hub'; setPlaying(false);
+  }
   if (!input.touch) {
-    box(70, 160, 340, 74, 0.8);
-    ['ARROWS / WASD - DRIVE AND STEER', 'SPACE - OPEN DOORS / REFUEL', 'C - CRUISE CONTROL     R - RADIO',
-      'H - HORN   L - LIGHTS   M - MUTE   P - PAUSE'].forEach((k, i) => say(k, 167 + i * 16, '#e8e0d0', 1));
+    box(70, 168, 340, 84, 0.8);
+    ['ARROWS / WASD - DRIVE AND STEER     SPACE - DOORS / FUEL / PARK', 'M - PAPER MAP     Q / E - PICK A ROAD AT JUNCTIONS',
+      'C - CRUISE   R - RADIO   H - HORN   L - LIGHTS   N - MUTE', 'P - PAUSE (BACK TO MAP IN THE MENU)'].forEach((k, i) => say(k, 176 + i * 18, '#e8e0d0', 1));
   }
 }
 
 function drawReport() {
-  box(0, 0, W, H, 0.84);
-  drawText(ctx, 'SHIFT REPORT', CX, 10, '#ffd36a', 3, 'center', '#6a2a1a');
-  say('PAINTED DESERT COACH LINES - RUN 66 WEST', 32, '#c8b48a', 1);
-  const cols = [30, 236, 300, 370];
-  ['STOP', 'DUE', 'ARRIVED', 'STATUS'].forEach((h, i) => drawText(ctx, h, cols[i], 46, '#8a8a8a', 1));
-  report.rows.forEach((r, i) => {
-    const y = 56 + i * 15;
-    const c = r[3] === 'ON TIME' ? '#9aff8a' : r[3] === 'MISSED' ? '#ff8a6a' : '#ffd36a';
-    drawText(ctx, r[0], cols[0], y, '#ffffff', 2); drawText(ctx, r[1], cols[1], y + 2, '#e8e0d0', 1);
-    drawText(ctx, r[2], cols[2], y + 2, '#e8e0d0', 1); drawText(ctx, r[3], cols[3], y, c, 2);
-  });
-  const y = 56 + report.rows.length * 15 + 8;
-  drawText(ctx, `PASSENGERS DELIVERED: ${report.delivered}`, 30, y, '#ffffff', 1);
-  drawText(ctx, `AVERAGE COMFORT: ${Math.round(report.avg)}%`, 30, y + 10, '#ffffff', 1);
-  drawText(ctx, `BUMPS AND CRASHES: ${report.crashes}`, 30, y + 20, '#ffffff', 1);
-  if (report.rescues) drawText(ctx, `RAN OUT OF FUEL: ${report.rescues}X`, 30, y + 30, '#ff8a6a', 1);
-  for (let i = 0; i < 5; i++) {
-    const full = report.stars >= i + 1, half = !full && report.stars > i;
-    drawText(ctx, '*', 290 + i * 30, y - 2, full ? '#ffd36a' : half ? '#a88a3a' : '#3a3a3a', 5);
+  box(0, 0, W, H, 0.86);
+  if (report.mode === 'car') {
+    drawText(ctx, 'TRIP COMPLETE', CX, 30, '#ffd36a', 3, 'center', '#6a2a1a');
+    say(`YOU ARRIVED IN ${NODES[report.node].name}`, 70, '#ffffff', 2);
+    say(`${report.miles.toFixed(0)} MILES DRIVEN`, 96, '#e8e0d0', 1);
+    say(`GAS BOUGHT ON THE WAY: $${report.fuel.toFixed(2)}`, 108, '#e8e0d0', 1);
+    if (report.rescues) say(`TOW TRUCK CALLS: ${report.rescues}`, 120, '#ff8a6a', 1);
+    say('THE U-DRIVE CLERK TAKES THE KEYS. "COME BACK SOON!"', 140, '#c8d8ff', 1);
+  } else {
+    drawText(ctx, 'SHIFT REPORT', CX, 10, '#ffd36a', 3, 'center', '#6a2a1a');
+    say(`PAINTED DESERT COACH LINES - ${report.job.name}`, 32, '#c8b48a', 1);
+    const cols = [30, 236, 300, 370];
+    ['STOP', 'DUE', 'ARRIVED', 'STATUS'].forEach((h, i) => drawText(ctx, h, cols[i], 46, '#8a8a8a', 1));
+    report.rows.slice(0, 7).forEach((r, i) => {
+      const y = 56 + i * 15;
+      const c = r[3] === 'ON TIME' ? '#9aff8a' : r[3] === 'MISSED' ? '#ff8a6a' : '#ffd36a';
+      drawText(ctx, r[0], cols[0], y, '#ffffff', 2); drawText(ctx, r[1], cols[1], y + 2, '#e8e0d0', 1);
+      drawText(ctx, r[2], cols[2], y + 2, '#e8e0d0', 1); drawText(ctx, r[3], cols[3], y, c, 2);
+    });
+    const y = 56 + Math.min(7, report.rows.length) * 15 + 8;
+    drawText(ctx, `PASSENGERS DELIVERED: ${report.delivered}`, 30, y, '#ffffff', 1);
+    drawText(ctx, `AVERAGE COMFORT: ${Math.round(report.avg)}%`, 30, y + 10, '#ffffff', 1);
+    drawText(ctx, `BUMPS AND CRASHES: ${report.crashes}`, 30, y + 20, '#ffffff', 1);
+    for (let i = 0; i < 5; i++) {
+      const full = report.stars >= i + 1, half = !full && report.stars > i;
+      drawText(ctx, '*', 290 + i * 30, y - 2, full ? '#ffd36a' : half ? '#a88a3a' : '#3a3a3a', 5);
+    }
+    drawText(ctx, `PAYCHECK: $${report.pay.toFixed(2)}`, 360, y + 32, '#9aff8a', 2, 'center');
   }
-  drawText(ctx, `PAYCHECK: $${report.pay.toFixed(2)}`, 360, y + 32, '#9aff8a', 2, 'center');
-  if (Math.floor(t * 2) % 2 === 0) say(input.touch ? 'TAP TO DRIVE AGAIN' : 'PRESS ENTER TO DRIVE AGAIN', 250, '#ffd36a', 2);
+  if (Math.floor(t * 2) % 2 === 0) say(input.touch ? 'TAP TO OPEN YOUR MAP' : 'PRESS ENTER FOR YOUR MAP', 250, '#ffd36a', 2);
 }
 
 let last = performance.now();
@@ -126,25 +197,39 @@ function frame(now) {
   last = now; t += dt;
   if (input.take('mute')) { audio.setMuted(!audio.muted); document.getElementById('tMute').textContent = audio.muted ? 'SOUND OFF' : 'SOUND'; }
   if (state === 'title') {
-    if (input.take('start')) { audio.init(); state = 'drive'; input.pressed.clear(); document.body.classList.add('playing'); }
-    drawScene(); drawTitle();
+    audio.update(0, 0, false, true);
+    drawScene(demo); drawTitle();
+  } else if (state === 'hub') {
+    audio.update(0, 0, false, true);
+    const r = hub.update(input);
+    hub.draw(ctx, t);
+    if (r && r.type === 'bus') { game = new Game(audio, career); game.startBus(r.job); state = 'drive'; paused = false; setPlaying(true); }
+    if (r && r.type === 'car') { career.add('CAR RENTAL (U-DRIVE)', -RENT_PRICE); game = new Game(audio, career); game.startCar(r.dest); state = 'drive'; paused = false; setPlaying(true); }
+    if (r && r.type === 'title') { state = 'title'; setPlaying(false); }
   } else if (state === 'drive') {
     input.take('start');
     if (input.take('pause')) paused = !paused;
+    if (game.mapOpen && input.taps.length) { input.taps.length = 0; game.mapOpen = false; }
+    input.taps.length = 0;
     if (!paused) game.update(dt, input);
-    audio.update(game.player.speed, game.player.throttle, game.offroad && game.player.speed > 3, paused);
-    drawScene(); drawHud();
-    if (paused) { box(CX - 70, 100, 140, 34, 0.8); drawText(ctx, 'PAUSED', CX, 108, '#ffd36a', 3, 'center'); }
-    if (game.finished && game.finishTimer <= 0) { report = game.report(); state = 'report'; input.pressed.clear(); document.body.classList.remove('playing'); }
+    audio.update(game.player.speed, game.player.throttle, game.offroad && game.player.speed > 3, paused || game.mapOpen);
+    drawScene(game); drawHud(game);
+    if (game.mapOpen) drawPaperMap(game);
+    if (paused) {
+      box(CX - 110, 90, 220, 70, 0.85); drawText(ctx, 'PAUSED', CX, 98, '#ffd36a', 3, 'center');
+      drawText(ctx, 'P - RESUME', CX, 126, '#e8e0d0', 1, 'center');
+    }
+    if (game.finished && game.finishTimer <= 0) { report = game.report(); career.save(); state = 'report'; setPlaying(false); document.body.classList.remove('junction'); }
   } else if (state === 'report') {
-    audio.update(0, 0, false, false);
-    drawScene(); drawReport();
-    if (input.take('start') || input.take('action')) { game.reset(); state = 'drive'; input.pressed.clear(); document.body.classList.add('playing'); }
+    audio.update(0, 0, false, true);
+    drawScene(game); drawReport();
+    if (input.take('start') || input.take('action') || input.take('enter')) { state = 'hub'; hub.tab = 0; hub.sel = 0; hub.dest = null; setPlaying(false); }
   }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
 // handy for debugging from the console
-window.__game = game;
-window.__setState = s => { state = s; };
+window.__game = () => game;
+window.__career = career;
+window.__state = () => state;

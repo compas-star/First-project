@@ -1,6 +1,6 @@
 // Parallax background layers per biome, dithered sky, clouds and the time-of-day palette.
 import { W, HORIZON } from './config.js';
-import { makeCanvas, mulberry, rect, px, shade, hex, lerpC, clamp, bayer, css } from './gfx.js';
+import { makeCanvas, mulberry, rect, px, shade, hex, lerpC, clamp, bayer, css, freeze } from './gfx.js';
 
 export const BG_W = 960;
 const noise1 = (r, terms) => {
@@ -90,6 +90,7 @@ export function buildBackgrounds() {
     ridge(119, 60, 52, [[4, 5], [9, 4], [23, 2]], '#9a7a80', { haze: '#b49a98' }),
     ridge(110, 40, 34, [[2, 3], [6, 2], [14, 1]], '#c4a078', { dots: '#7a7a4a' }),
   ];
+  for (const k in LAYERS) LAYERS[k] = LAYERS[k].map(freeze);
   // puffy pixel clouds
   const r = mulberry(77);
   CLOUDS = [];

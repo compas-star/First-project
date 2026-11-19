@@ -1,5 +1,12 @@
 // Small pixel-art helpers shared by all generated graphics.
 
+// Copy into a fresh canvas that was never read back, so the browser keeps it on the GPU.
+export function freeze(src) {
+  const [c, x] = makeCanvas(src.width, src.height);
+  x.drawImage(src, 0, 0);
+  return c;
+}
+
 export function makeCanvas(w, h) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;

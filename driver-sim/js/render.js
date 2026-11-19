@@ -67,32 +67,70 @@ function drawSegment(ctx, s, fog, f) {
   if (s.i % 6 === 0 && w1 > 30) { ctx.fillStyle = fogC([250, 220, 120], fog, f); const r = Math.max(1, Math.round(w1 * 0.012)); ctx.fillRect(x1 - r, y1 - r, r * 2, r); }
 }
 
-const [scratch, sctx] = makeCanvas(W, H);
 let hazeRGB = [128, 128, 128];
-const hazeCss = a => `rgba(${hazeRGB[0] | 0},${hazeRGB[1] | 0},${hazeRGB[2] | 0},${Math.min(1, a).toFixed(2)})`;
+
+// Mipmaps: each sprite keeps halved copies, so tiny distant sprites are drawn
+// from a small source instead of being squeezed down from the full-size image.
+const MIPS = new WeakMap();
+function mips(img) {
+  let m = MIPS.get(img);
+  if (!m) {
+    m = [img];
+    let c = img;
+    while (c.height >= 8 && c.width >= 4) {
+      const [n, nx] = makeCanvas(c.width >> 1, c.height >> 1);
+      nx.drawImage(c, 0, 0, n.width, n.height);
+      m.push(n); c = n;
+    }
+    MIPS.set(img, m);
+  }
+  return m;
+}
+function level(img, dh) {
+  const m = mips(img);
+  const L = Math.max(0, Math.min(m.length - 1, Math.floor(Math.log2(img.height / Math.max(1, dh)))));
+  return m[L];
+}
+// Haze silhouettes: one flat copy per mip in the current haze colour, rebuilt only when the colour changes.
+const SIL = new WeakMap();
+let hazeKey = '';
+function silhouette(src) {
+  let s = SIL.get(src);
+  if (!s) { s = { key: '', c: makeCanvas(src.width, src.height) }; SIL.set(src, s); }
+  if (s.key !== hazeKey) {
+    const [c, x] = s.c;
+    x.globalCompositeOperation = 'copy';
+    x.drawImage(src, 0, 0);
+    x.globalCompositeOperation = 'source-in';
+    x.fillStyle = hazeKey;
+    x.fillRect(0, 0, c.width, c.height);
+    x.globalCompositeOperation = 'source-over';
+    s.key = hazeKey;
+  }
+  return s.c[0];
+}
 
 function drawSprite(ctx, spr, scale, sx, sy, clipY, alpha, emissive, night, side = 0) {
-  const img = spr.img;
+  const full = spr.img;
   const dh = spr.h * METER * scale * W / 2;
-  const dw = dh * img.width / img.height;
+  const dw = dh * full.width / full.height;
   if (dw < 0.6 || dh < 0.6) return;
   const dx = side < 0 ? sx - dw : side > 0 ? sx : sx - dw / 2, dy = sy - dh;
   if (dx > W || dx + dw < 0) return;
   const clipH = clipY ? Math.max(0, dy + dh - clipY) : 0;
   if (clipH >= dh) return;
-  const srcH = img.height * (1 - clipH / dh);
+  const img = level(full, dh);
+  const srcH = Math.max(1, Math.round(img.height * (1 - clipH / dh)));
   const rx = Math.round(dx), ry = Math.round(dy), rw = Math.max(1, Math.round(dw)), rh = Math.max(1, Math.round(dh - clipH));
+  ctx.drawImage(img, 0, 0, img.width, srcH, rx, ry, rw, rh);
+  // distant objects fade into the haze colour instead of turning see-through
   const haze = 1 - alpha;
-  if (haze > 0.04 && rw <= W && rh <= H) {
-    // distant objects fade into the haze colour instead of turning see-through
-    sctx.globalCompositeOperation = 'copy';
-    sctx.drawImage(img, 0, 0, img.width, srcH, 0, 0, rw, rh);
-    sctx.globalCompositeOperation = 'source-atop';
-    sctx.fillStyle = hazeCss(haze);
-    sctx.fillRect(0, 0, rw, rh);
-    ctx.drawImage(scratch, 0, 0, rw, rh, rx, ry, rw, rh);
-  } else ctx.drawImage(img, 0, 0, img.width, srcH, rx, ry, rw, rh);
-  if (night > 0.05 && (spr.glow || spr.lights)) emissive.push({ spr, dx, dy, dw, dh, clipH, srcH, alpha });
+  if (haze > 0.04) {
+    ctx.globalAlpha = Math.min(1, haze);
+    ctx.drawImage(silhouette(img), 0, 0, img.width, srcH, rx, ry, rw, rh);
+    ctx.globalAlpha = 1;
+  }
+  if (night > 0.05 && (spr.glow || spr.lights)) emissive.push({ spr, dx, dy, dw, dh, clipH, alpha });
 }
 
 // Returns data needed by later passes.
@@ -107,6 +145,8 @@ export function renderWorld(game, sky) {
   const bio = (segs[Math.floor(player.z / SEG)] || segs[0]).bio;
   const hdg = game.heading();
   hazeRGB = fog;
+  // quantised so silhouettes are rebuilt only now and then as the sky changes
+  hazeKey = `rgb(${(fog[0] >> 2) << 2},${(fog[1] >> 2) << 2},${(fog[2] >> 2) << 2})`;
   // when the landscape changes, the old ranges sink below the horizon and the new ones rise
   let name = bio.a, sink = 0;
   if (bio.a !== bio.b && bio.t > 0) {
@@ -202,10 +242,12 @@ export function renderWorld(game, sky) {
 export function drawEmissive(ctx, emissive, night, ox, oy) {
   if (night <= 0.05) return;
   for (const e of emissive) {
-    const { spr, dx, dy, dw, dh, clipH, srcH } = e;
+    const { spr, dx, dy, dw, dh, clipH } = e;
     if (spr.glow) {
       ctx.globalAlpha = night * e.alpha * 0.7;
-      ctx.drawImage(spr.glow, 0, 0, spr.img.width, srcH, Math.round(dx + ox), Math.round(dy + oy), Math.round(dw), Math.round(dh - clipH));
+      const gl = level(spr.glow, dh);
+      const srcH = Math.max(1, Math.round(gl.height * (1 - clipH / dh)));
+      ctx.drawImage(gl, 0, 0, gl.width, srcH, Math.round(dx + ox), Math.round(dy + oy), Math.round(dw), Math.round(dh - clipH));
     }
     if (spr.lights) for (const l of spr.lights) {
       const lx = dx + l.x * dw + ox, ly = dy + l.y * dh + oy;

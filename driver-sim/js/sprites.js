@@ -1,6 +1,6 @@
 // Procedurally generated pixel-art sprites. Everything is drawn in code,
 // so the game ships with no image files.
-import { makeCanvas, mulberry, rect, px, line, ellipse, shade, poly, refine, hex } from './gfx.js';
+import { makeCanvas, mulberry, rect, px, line, ellipse, shade, poly, refine, hex, freeze } from './gfx.js';
 import { drawText, textWidth } from './font.js';
 import { carHi, houseHi, motelHi, dinerHi, storeHi, ponderosa, juniperTree } from './art.js';
 
@@ -10,8 +10,8 @@ export const SPR = {};
 function upscale(src, sc) { const [c, x] = makeCanvas(src.width * sc, src.height * sc); x.drawImage(src, 0, 0, c.width, c.height); return c; }
 function reg(key, img, h, opts = {}) {
   const sc = opts.scale || 2;
-  const out = refine(img, opts);
-  const glow = opts.glow ? (sc === 1 ? opts.glow : upscale(opts.glow, sc)) : undefined;
+  const out = freeze(refine(img, opts));
+  const glow = opts.glow ? freeze(sc === 1 ? opts.glow : upscale(opts.glow, sc)) : undefined;
   SPR[key] = { ...opts, img: out, glow, h, solid: !!opts.solid };
   return SPR[key];
 }
@@ -544,7 +544,7 @@ export function carSprite(type, view, colorIdx) {
   if (!SPR[key]) {
     const c = carHi(type, view, CAR_COLORS[colorIdx], colorIdx * 13 + type.length);
     const h = { sedan: 1.45, wagon: 1.5, pickup: 1.75, van: 2.1, semi: 4.1, rv: 3.5 }[type];
-    SPR[key] = { ...c, h, solid: true, img: refine(c.img, { flat: true, smooth: true, scale: 1 }), front: view === 'front', type };
+    SPR[key] = { ...c, h, solid: true, img: freeze(refine(c.img, { flat: true, smooth: true, scale: 1 })), front: view === 'front', type };
   }
   return SPR[key];
 }

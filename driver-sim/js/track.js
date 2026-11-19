@@ -99,6 +99,14 @@ export function buildTrack(seed = 66) {
     s.alt = alt;
     s.ground = lerpC(BIOMES[b.a].groundRGB[alt], BIOMES[b.b].groundRGB[alt], b.t);
     s.noPass = Math.abs(s.curve) > 0.6 || Math.abs(s.p2.wy - s.p1.wy) > 14;
+    const j = 1 + (r() - 0.5) * 0.07;
+    s.ground = s.ground.map(v => v * j);
+    s.dirt = lerpC(s.ground, [150, 130, 100], 0.35);
+  }
+  // asphalt wear: tar-snake cracks and patches spanning several segments
+  for (let i = 0; i < segs.length; i++) {
+    if (r() < 0.012) { const o = r() * 1.6 - 0.8, len = 4 + Math.floor(r() * 18); for (let k = 0; k < len && segs[i + k]; k++) segs[i + k].crack = o + Math.sin(k * 0.7) * 0.05; }
+    if (r() < 0.004) { const o = r() * 1.2 - 0.6, w = 0.12 + r() * 0.2, len = 3 + Math.floor(r() * 8); for (let k = 0; k < len && segs[i + k]; k++) segs[i + k].patch = [o, w]; }
   }
   for (const [a, b] of ranges) for (let k = a; k < b; k++) segs[k].town = true;
 
@@ -160,6 +168,7 @@ export function buildTrack(seed = 66) {
     const b = biomeAt(m);
     const bn = r() < b.t ? b.b : b.a;
     const bio = BIOMES[bn];
+    if (r() < 0.5) place(i, bn === 'desert' || bn === 'mesa' ? 'pebbles2' : 'pebbles', (r() < 0.5 ? -1 : 1) * (1.36 + r() * 1.4));
     for (const side of [-1, 1]) {
       if (r() < bio.density * 0.55) {
         let roll = r(), key = bio.veg[0][0];

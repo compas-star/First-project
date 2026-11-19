@@ -1,7 +1,7 @@
 // Core constants for the renderer and simulation.
-export const W = 320;            // internal render width (pixels)
-export const H = 180;            // internal render height (pixels)
-export const HORIZON = 62;       // screen y of the horizon line
+export const W = 480;            // internal render width (pixels)
+export const H = 270;            // internal render height (pixels)
+export const HORIZON = 96;       // screen y of the horizon line
 
 export const SEG = 200;          // length of one road segment (world units)
 export const ROAD_W = 1600;      // half width of the road (one lane)

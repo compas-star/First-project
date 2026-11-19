@@ -28,7 +28,8 @@ python3 -m http.server 8000   # then open http://localhost:8000
 ## What's in the prototype
 - First-person cab view only: pixel-art dashboard, big steering wheel, hairy forearms in a flannel shirt,
   fuzzy dice, a coffee cup, a rear-view mirror that shows your passengers.
-- 320×180 pixel rendering with a classic pseudo-3D road, scaled up chunky.
+- 480×270 pixel rendering (16-bit era look: dithered gradients, shaded sprites) with a classic pseudo-3D road.
+- A 90s coach cab: split windshield, folding entry door, bus mirrors on arms, six-gauge cluster (speed, RPM, air, oil, fuel, temp), toggle switches, CB radio, desk fan, wristwatch, bugs on the glass.
 - Five landscapes along the way: ponderosa forest → juniper woodland → golden high plains
   (fences, cows, windmills) → red-rock mesas → Mojave desert (Joshua trees, cacti).
 - Small towns with motels, diners, stores, and bus shelters with people waiting. Gas stations at $1.09/gal.

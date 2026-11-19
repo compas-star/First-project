@@ -38,8 +38,14 @@ function drawSegment(ctx, s, fog, f) {
   const x1 = p1.sx, y1 = p1.sy, w1 = p1.sw, x2 = p2.sx, y2 = p2.sy, w2 = p2.sw;
   ctx.fillStyle = fogC(s.ground, fog, f);
   ctx.fillRect(0, y2, W, y1 - y2 + 1);
+  if (!s.town) quad(ctx, x1, y1, w1 * 1.55, x2, y2, w2 * 1.55, fogC(s.dirt, fog, f));
   quad(ctx, x1, y1, w1 * 1.3, x2, y2, w2 * 1.3, fogC((s.town ? SIDEWALK : SHOULDER)[a], fog, f));
   quad(ctx, x1, y1, w1, x2, y2, w2, fogC(ASPHALT[a], fog, f));
+  // wheel tracks: slightly darker bands in each lane
+  const track = fogC(ASPHALT[a].map(v => v * 0.9), fog, f);
+  for (const o of [-0.72, -0.28, 0.28, 0.72]) quad(ctx, x1 + w1 * o, y1, w1 * 0.07, x2 + w2 * o, y2, w2 * 0.07, track);
+  if (s.patch) quad(ctx, x1 + w1 * s.patch[0], y1, w1 * s.patch[1], x2 + w2 * s.patch[0], y2, w2 * s.patch[1], fogC(ASPHALT[a].map(v => v * 0.78), fog, f));
+  if (s.crack !== undefined) quad(ctx, x1 + w1 * s.crack, y1, Math.max(0.5, w1 * 0.008), x2 + w2 * s.crack, y2, Math.max(0.5, w2 * 0.008), fogC([30, 30, 34], fog, f));
   if (s.zone) {
     const col = fogC(s.zone === 'stop' ? STOPPAINT : APRON, fog, f);
     quad(ctx, x1 + w1 * 0.55, y1, w1 * 0.45, x2 + w2 * 0.55, y2, w2 * 0.45, col);
@@ -58,6 +64,8 @@ function drawSegment(ctx, s, fog, f) {
   } else if (a) {
     quad(ctx, x1, y1, w1 * 0.02, x2, y2, w2 * 0.02, yel);
   }
+  // raised reflectors on the centre line
+  if (s.i % 6 === 0 && w1 > 30) { ctx.fillStyle = fogC([250, 220, 120], fog, f); const r = Math.max(1, Math.round(w1 * 0.012)); ctx.fillRect(x1 - r, y1 - r, r * 2, r); }
 }
 
 function drawSprite(ctx, spr, scale, sx, sy, clipY, alpha, emissive, night, side = 0) {
@@ -87,11 +95,11 @@ export function renderWorld(game, sky) {
   // backgrounds with biome cross-fade
   const bio = biomeAt(mileOfSeg(player.z / SEG));
   const layerSets = bio.t > 0 && bio.a !== bio.b ? [[bio.a, 1], [bio.b, bio.t]] : [[bio.a, 1]];
-  for (let L = 0; L < 2; L++) {
+  for (let L = 0; L < 3; L++) {
     for (const [name, alpha] of layerSets) {
       const img = LAYERS[name][L];
-      const off = (((game.bgOffset * (L ? 1.6 : 0.7)) % BG_W) + BG_W) % BG_W;
-      const y = L ? HORIZON - img.height + 8 : HORIZON - img.height + 3;
+      const off = (((game.bgOffset * [1.0, 1.7, 2.6][L]) % BG_W) + BG_W) % BG_W;
+      const y = HORIZON - img.height + [4, 8, 12][L];
       ctx.globalAlpha = alpha;
       ctx.drawImage(img, -off, y); ctx.drawImage(img, BG_W - off, y);
     }
@@ -99,7 +107,7 @@ export function renderWorld(game, sky) {
   }
   // haze over the background so the road blends in
   ctx.fillStyle = css(fog, 0.25);
-  ctx.fillRect(0, 0, W, HORIZON + 8);
+  ctx.fillRect(0, 0, W, HORIZON + 12);
 
   const baseIdx = Math.floor(player.z / SEG);
   const base = segs[baseIdx];
@@ -131,6 +139,7 @@ export function renderWorld(game, sky) {
   // sprites and cars, back to front
   const emissive = [];
   const night = sky.night;
+  let lastPole = null;
   for (let n = drawn.length - 1; n > 0; n--) {
     const s = drawn[n];
     if (s.p1.cz <= 50) continue;
@@ -139,6 +148,19 @@ export function renderWorld(game, sky) {
       const spr = SPR[sp.k];
       if (!spr) continue;
       const sx = s.p1.sx + s.p1.scale * sp.o * ROAD_W * W / 2;
+      if (sp.k === 'pole') {
+        const ph = spr.h * METER * s.p1.scale * W / 2, pw = ph * spr.img.width / spr.img.height;
+        const top = s.p1.sy - ph * 0.92, l = sx - pw * 0.45, rr = sx + pw * 0.45;
+        if (lastPole && lastPole.n - n < 40) {
+          ctx.strokeStyle = `rgba(25,22,20,${alpha * 0.9})`; ctx.lineWidth = 1;
+          for (const [a0, a1] of [[lastPole.l, l], [lastPole.r, rr]]) {
+            ctx.beginPath(); ctx.moveTo(a0, lastPole.top);
+            ctx.quadraticCurveTo((a0 + a1) / 2, (lastPole.top + top) / 2 + Math.max(1, (top - lastPole.top) * 0.18 + ph * 0.05), a1, top);
+            ctx.stroke();
+          }
+        }
+        lastPole = { l, r: rr, top, n };
+      }
       drawSprite(ctx, spr, s.p1.scale, sx, s.p1.sy + 1, s.clip, alpha, emissive, night, Math.abs(sp.o) > 1.2 ? Math.sign(sp.o) : 0);
     }
     for (const car of s.cars) {
@@ -188,11 +210,11 @@ export function drawEmissive(ctx, emissive, night, ox, oy) {
 export function drawHeadlights(ctx, night) {
   if (night <= 0.05) return;
   ctx.globalCompositeOperation = 'lighter';
-  const g = ctx.createRadialGradient(160, 118, 4, 160, 112, 110);
+  const g = ctx.createRadialGradient(240, 177, 6, 240, 168, 165);
   g.addColorStop(0, `rgba(255,240,200,${0.32 * night})`);
   g.addColorStop(0.5, `rgba(255,230,180,${0.12 * night})`);
   g.addColorStop(1, 'rgba(255,230,180,0)');
   ctx.fillStyle = g;
-  ctx.beginPath(); ctx.moveTo(10, 120); ctx.lineTo(130, 70); ctx.lineTo(190, 70); ctx.lineTo(310, 120); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(15, 180); ctx.lineTo(195, 105); ctx.lineTo(285, 105); ctx.lineTo(465, 180); ctx.closePath(); ctx.fill();
   ctx.globalCompositeOperation = 'source-over';
 }

@@ -40,7 +40,7 @@ export class Game {
     this.finished = false; this.finishTimer = 0;
     this.stopIdx = 0; this.announced = {};
     this.chatterT = 45; this.outOfFuelT = 0; this.lowFuelWarned = false;
-    this.offroad = false; this.lastSteer = 0;
+    this.offroad = false; this.lastSteer = 0; this.odometer = 48213; this.airDrop = 0;
     // boarding at the depot to start the shift
     this.openDoors(first);
     this.msg('PAINTED DESERT COACH LINES - ROUTE 66 WESTBOUND', 5);
@@ -126,7 +126,7 @@ export class Game {
         const inZone = front >= stop.idx - ZONE_LEN && front <= stop.idx + 2;
         const dist = (stop.idx - front) / SEG_PER_MILE;
         if (dist < 2 && dist > 1.9 && !this.announced[stop.name + 2]) { this.announced[stop.name + 2] = 1; this.msg(`${stop.name} IN 2 MILES`, 3); }
-        if (dist < 0.6 && !this.announced[stop.name]) { this.announced[stop.name] = 1; this.audio.bell(); this.msg(`*DING* STOP REQUESTED - ${stop.name}`, 3.5, '#ffd36a'); }
+        if (dist < 0.6 && !this.announced[stop.name]) { this.announced[stop.name] = 1; this.audio.bell(); this.msg(`DING DING! STOP REQUESTED - ${stop.name}`, 3.5, '#ffd36a'); }
         if (inZone && p.x > 0.15) {
           if (p.speed < 2.5) { action = 'doors'; this.prompt = input.touch ? 'TAP OPEN DOORS' : 'SPACE: OPEN DOORS'; }
           else this.prompt = 'STOP IN THE YELLOW BOX';
@@ -199,6 +199,8 @@ export class Game {
     p.z += p.speed * MPH2U * dt;
     p.z = Math.min(p.z, this.track.length - SEG * 300);
     const miles = p.speed * dt * 20 / 3600;
+    this.odometer += miles;
+    this.airDrop = clamp(this.airDrop + (input.brake && p.speed > 1 ? dt * 0.25 : -dt * 0.05), 0, 0.3);
     p.fuel = Math.max(0, p.fuel - miles / TANK_MILES * (0.75 + throttle * 0.5) - (held ? 0 : dt * 0.00002));
     if (p.fuel < 0.18 && !this.lowFuelWarned) {
       this.lowFuelWarned = true;

@@ -97,3 +97,54 @@ export function timeStr(sec) {
   return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 export function parseTime(s) { const [h, m] = s.split(':').map(Number); return h * 3600 + m * 60; }
+
+// ---------- 16-bit style helpers ----------
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+export const bayer = (x, y) => BAYER[(y & 3) * 4 + (x & 3)];
+
+// Vertical dithered gradient between colours (array of hex stops).
+export function ditherV(ctx, x, y, w, h, stops) {
+  const cols = stops.map(hex);
+  const img = ctx.getImageData(x, y, w, h), d = img.data;
+  for (let yy = 0; yy < h; yy++) {
+    const t = (yy / Math.max(1, h - 1)) * (cols.length - 1);
+    const k = Math.min(cols.length - 2, Math.floor(t)), f = t - k;
+    for (let xx = 0; xx < w; xx++) {
+      const c = f > bayer(x + xx, y + yy) ? cols[k + 1] : cols[k];
+      const i = (yy * w + xx) * 4;
+      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, x, y);
+}
+
+// Post-process a sprite: 2x upscale, outline, ambient-occlusion shading and texture noise.
+export function refine(src, opts = {}) {
+  const sc = opts.scale || 2;
+  const w = src.width * sc, h = src.height * sc;
+  const [c, x] = makeCanvas(w, h);
+  x.drawImage(src, 0, 0, w, h);
+  const img = x.getImageData(0, 0, w, h), d = img.data;
+  const a = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) a[i] = d[i * 4 + 3] > 0 ? 1 : 0;
+  const r = mulberry(w * 31 + h);
+  const out = new Uint8ClampedArray(d);
+  for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) {
+    const i = yy * w + xx, p = i * 4;
+    if (a[i]) {
+      // edge pixels get darker (outline), lit from the upper left
+      const edgeR = xx + 1 >= w || !a[i + 1], edgeB = yy + 1 >= h || !a[i + w];
+      const edgeL = xx === 0 || !a[i - 1], edgeT = yy === 0 || !a[i - w];
+      let f = 1;
+      if (edgeR || edgeB) f *= opts.noOutline ? 0.85 : 0.55;
+      else if (edgeL || edgeT) f *= 1.12;
+      if (!opts.flat) f *= 1 - (yy / h) * 0.18;          // darker toward the ground
+      if (!opts.smooth) f *= 1 + (r() - 0.5) * 0.12;      // grain
+      if (!opts.smooth && ((xx + yy) & 1) && r() < 0.15) f *= 0.92;
+      out[p] = d[p] * f; out[p + 1] = d[p + 1] * f; out[p + 2] = d[p + 2] * f;
+    }
+  }
+  img.data.set(out);
+  x.putImageData(img, 0, 0);
+  return c;
+}

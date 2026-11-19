@@ -1,12 +1,19 @@
 // Procedurally generated pixel-art sprites. Everything is drawn in code,
 // so the game ships with no image files.
-import { makeCanvas, mulberry, rect, px, line, ellipse, shade, poly } from './gfx.js';
+import { makeCanvas, mulberry, rect, px, line, ellipse, shade, poly, refine, hex } from './gfx.js';
 import { drawText, textWidth } from './font.js';
 
 export const SPR = {};
 // h = height in metres, solid = bus bumps into it, glow = emissive layer for night,
 // lights = relative points that get a bloom at night.
-function reg(key, img, h, opts = {}) { SPR[key] = { img, h, solid: false, ...opts }; return SPR[key]; }
+function upscale(src, sc) { const [c, x] = makeCanvas(src.width * sc, src.height * sc); x.drawImage(src, 0, 0, c.width, c.height); return c; }
+function reg(key, img, h, opts = {}) {
+  const sc = opts.scale || 2;
+  const out = refine(img, opts);
+  const glow = opts.glow ? (sc === 1 ? opts.glow : upscale(opts.glow, sc)) : undefined;
+  SPR[key] = { ...opts, img: out, glow, h, solid: !!opts.solid };
+  return SPR[key];
+}
 
 // A canvas pair: main image + "glow" layer for things that light up at night.
 function pair(w, h) {
@@ -113,6 +120,119 @@ function barrel() {
   const r = mulberry(7);
   blob(x, 5, 6, 4, 4, '#4f8a3a', r, 0.05);
   px(x, 4, 2, '#e85a3a'); px(x, 5, 2, '#f8c84a'); px(x, 6, 2, '#e85a3a');
+  return c;
+}
+
+
+// ---------- hi-res vegetation (drawn at native detail) ----------
+function cyl(x, x0, y0, w, h, base, rnd) {
+  // vertical cylinder lit from the upper left, with a rounded top
+  const c = [shade(base, 0.35), shade(base, 0.15), base, shade(base, -0.2), shade(base, -0.42)];
+  for (let yy = 0; yy < h; yy++) {
+    const top = yy < w / 2 ? Math.round(w / 2 - Math.sqrt(Math.max(0, (w / 2) ** 2 - (w / 2 - yy) ** 2))) : 0;
+    for (let xx = top; xx < w - top; xx++) {
+      const f = xx / (w - 1);
+      let k = f < 0.18 ? 1 : f < 0.32 ? 0 : f < 0.6 ? 2 : f < 0.82 ? 3 : 4;
+      if (xx % 3 === 2 && k < 4) k++; // ribs
+      px(x, x0 + xx, y0 + yy, c[k]);
+      if (xx % 3 === 1 && rnd() < 0.08) px(x, x0 + xx, y0 + yy, '#e8e0b0'); // spines
+    }
+  }
+}
+function saguaroHi(seed) {
+  const r = mulberry(seed);
+  const [c, x] = makeCanvas(44, 100);
+  const g = ['#3f7a3a', '#467f3c', '#3a6e38'][seed % 3];
+  const lh = 30 + Math.floor(r() * 18), rh = 22 + Math.floor(r() * 18);
+  // left arm
+  cyl(x, 4, lh - 22, 9, 30, g, r); cyl(x, 4, lh + 2, 14, 8, g, r);
+  // right arm
+  cyl(x, 31, rh - 24, 9, 32, g, r); cyl(x, 24, rh + 2, 14, 8, g, r);
+  cyl(x, 15, 4, 14, 96, g, r);
+  px(x, 21, 4, '#f4e070'); px(x, 22, 4, '#f4e070');
+  return c;
+}
+function pineHi(seed, col, hgt) {
+  const r = mulberry(seed);
+  const w = 64, h = hgt, cx = 32;
+  const [c, x] = makeCanvas(w, h);
+  const bark = '#5a3a26';
+  rect(x, cx - 3, h - 26, 6, 26, bark); rect(x, cx - 3, h - 26, 2, 26, '#7a5236'); rect(x, cx + 2, h - 26, 1, 26, '#3a2418');
+  for (let yy = h - 26; yy < h; yy += 3) px(x, cx - 1 + (yy % 2), yy, '#3a2418');
+  const dark = shade(col, -0.45), mid = col, light = shade(col, 0.22), hi = shade(col, 0.4);
+  const top = 3, bottom = h - 18;
+  // dark silhouette
+  for (let yy = top; yy < bottom; yy++) {
+    const f = (yy - top) / (bottom - top);
+    const hw = Math.round(2 + f * 27 + Math.sin(yy * 0.9) * 2);
+    rect(x, cx - hw, yy, hw * 2, 1, dark);
+  }
+  // branch clumps
+  for (let i = 0; i < 140; i++) {
+    const yy = top + 2 + r() * (bottom - top - 4);
+    const f = (yy - top) / (bottom - top);
+    const hw = 2 + f * 26;
+    const xx = cx + (r() * 2 - 1) * hw * 0.95;
+    const rx = 3 + Math.floor(r() * 4), ry = 2 + Math.floor(r() * 2);
+    for (let dy = -ry; dy <= ry; dy++) for (let dx = -rx; dx <= rx; dx++) {
+      if ((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) > 1 - r() * 0.3) continue;
+      const sidel = (xx - cx) / hw;
+      let cc = dy < 0 ? (sidel < 0 ? light : mid) : (dy > ry / 2 ? dark : mid);
+      if (dy === -ry && sidel < 0.2) cc = hi;
+      if (sidel > 0.55 && dy >= 0) cc = dark;
+      px(x, xx + dx, yy + dy, cc);
+    }
+  }
+  return c;
+}
+function joshuaHi(seed) {
+  const r = mulberry(seed);
+  const [c, x] = makeCanvas(70, 96);
+  const bark = '#6e5c48', shag = '#4e4234', shag2 = '#8a7660';
+  const ends = [];
+  const limb = (x0, y0, x1, y1, t) => {
+    line(x, x0, y0, x1, y1, bark, t);
+    for (let i = 0; i < 12; i++) { const k = r(); px(x, x0 + (x1 - x0) * k + (r() - 0.5) * t, y0 + (y1 - y0) * k, r() < 0.5 ? shag : shag2); }
+  };
+  limb(35, 95, 35, 52, 6); ends.push();
+  const fork = (x0, y0, depth, dir) => {
+    const len = 10 + r() * 10, ang = -Math.PI / 2 + dir * (0.4 + r() * 0.5);
+    const x1 = x0 + Math.cos(ang) * len, y1 = y0 + Math.sin(ang) * len;
+    limb(x0, y0, x1, y1, Math.max(2, 5 - depth));
+    if (depth < 2 && r() < 0.85) { fork(x1, y1, depth + 1, -0.7); fork(x1, y1, depth + 1, 0.8); }
+    else ends.push([x1, y1]);
+  };
+  fork(35, 54, 0, -1); fork(35, 54, 0, 1); fork(35, 58, 1, 0.1);
+  // shaggy dead-leaf skirt on the trunk
+  for (let yy = 56; yy < 80; yy++) for (let i = 0; i < 3; i++) px(x, 31 + r() * 9, yy, r() < 0.6 ? shag : shag2);
+  for (const [ex, ey] of ends) for (let k = 0; k < 40; k++) {
+    const a = r() * Math.PI * 2, l = 3 + r() * 7;
+    const col = Math.sin(a) < -0.2 ? '#93b25a' : Math.cos(a) > 0.3 ? '#4a6630' : '#6a8a42';
+    line(x, ex, ey, ex + Math.cos(a) * l, ey + Math.sin(a) * l * 0.9, col);
+  }
+  return c;
+}
+function shrub(seed, base, w, h, sparse) {
+  const r = mulberry(seed);
+  const [c, x] = makeCanvas(w, h);
+  for (let i = 0; i < 6; i++) line(x, w / 2, h - 1, w / 2 + (r() - 0.5) * w * 0.8, h * (0.2 + r() * 0.4), '#5a4a38');
+  const n = Math.floor(w * h * (sparse ? 0.25 : 0.5));
+  for (let i = 0; i < n; i++) {
+    const a = r() * Math.PI, rad = Math.sqrt(r());
+    const xx = w / 2 + Math.cos(a) * rad * (w / 2 - 1), yy = h - 1 - Math.sin(a) * rad * (h - 2);
+    const up = (h - yy) / h, left = xx < w / 2;
+    px(x, xx, yy, up > 0.6 && left ? shade(base, 0.3) : up < 0.3 ? shade(base, -0.35) : r() < 0.3 ? shade(base, -0.15) : base);
+  }
+  return c;
+}
+function pebbles(seed, base) {
+  const r = mulberry(seed);
+  const [c, x] = makeCanvas(24, 8);
+  for (let i = 0; i < 9; i++) {
+    const xx = 2 + r() * 20, yy = 3 + r() * 4, s = 1 + Math.floor(r() * 2);
+    rect(x, xx, yy, s + 1, s, shade(base, (r() - 0.5) * 0.4)); px(x, xx, yy, shade(base, 0.35));
+    rect(x, xx, yy + s, s + 1, 1, shade(base, -0.5));
+  }
   return c;
 }
 
@@ -420,7 +540,10 @@ function car(type, view, col) {
 export const CAR_TYPES = ['sedan', 'sedan', 'sedan', 'wagon', 'pickup', 'pickup', 'van', 'semi', 'semi', 'rv'];
 export function carSprite(type, view, colorIdx) {
   const key = `car_${type}_${view}_${colorIdx}`;
-  if (!SPR[key]) SPR[key] = { ...car(type, view, CAR_COLORS[colorIdx]), front: view === 'front', type };
+  if (!SPR[key]) {
+    const c = car(type, view, CAR_COLORS[colorIdx]);
+    SPR[key] = { ...c, img: refine(c.img, { flat: true }), glow: upscale(c.glow, 2), front: view === 'front', type };
+  }
   return SPR[key];
 }
 
@@ -434,20 +557,22 @@ export const BUILDINGS = [];
 export const ADS_COUNT = ADS.length;
 
 export function buildSprites() {
-  reg('pine', pine(1, '#25502e', 5), 17, { solid: true });
-  reg('pine2', pine(2, '#2b5a32', 6), 21, { solid: true });
-  reg('pine3', pine(3, '#335f35', 4), 12, { solid: true });
-  reg('juniper', juniper(4), 3.5, { solid: true });
-  reg('juniper2', juniper(5, '#5a7040'), 2.8, { solid: true });
+  reg('pine', pineHi(1, '#25502e', 130), 17, { solid: true, scale: 1 });
+  reg('pine2', pineHi(2, '#2b5a32', 150), 21, { solid: true, scale: 1 });
+  reg('pine3', pineHi(3, '#335f35', 96), 12, { solid: true, scale: 1 });
+  reg('juniper', shrub(4, '#4f6b3a', 44, 34), 3.5, { solid: true, scale: 1 });
+  reg('juniper2', shrub(5, '#5a7040', 38, 28), 2.8, { solid: true, scale: 1 });
   reg('rock', rock(6, '#8a7f72'), 1.1);
   reg('redrock', rock(7, '#a0583a'), 1.3);
   reg('boulder', rock(8, '#9a5a3c', 30, 18), 3.5, { solid: true });
   reg('grass', tuft(9), 0.7);
-  reg('sage', bush(10, '#8a9a6a', 15, 9, 0.3), 1.0);
-  reg('creosote', bush(11, '#6d7a3a', 17, 11, 0.6), 1.2);
-  reg('joshua', joshua(12), 7, { solid: true });
-  reg('saguaro', saguaro(), 7, { solid: true });
+  reg('sage', shrub(10, '#8a9a6a', 30, 16, true), 1.0, { scale: 1 });
+  reg('creosote', shrub(11, '#6d7a3a', 34, 20, true), 1.2, { scale: 1 });
+  reg('joshua', joshuaHi(12), 7.5, { solid: true, scale: 1 });
+  reg('saguaro', saguaroHi(13), 7, { solid: true, scale: 1 });
   reg('barrel', barrel(), 0.8);
+  reg('pebbles', pebbles(14, '#9a8a78'), 0.35, { scale: 1, noOutline: true });
+  reg('pebbles2', pebbles(15, '#b09070'), 0.35, { scale: 1, noOutline: true });
   reg('pole', pole(), 10, { solid: true });
   reg('fence', fencePost(), 1.3);
   reg('mile', mileMarker(), 1.3);

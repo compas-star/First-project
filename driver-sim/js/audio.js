@@ -61,6 +61,7 @@ export class Audio {
     const gears = [0, 12, 25, 40, 55, 80];
     let g = 1; while (g < gears.length - 1 && speed > gears[g]) g++;
     const frac = (speed - gears[g - 1]) / (gears[g] - gears[g - 1]);
+    this.rpm = speed < 0.5 ? 0.17 + throttle * 0.1 : 0.25 + frac * 0.45 + throttle * 0.08;
     const f = speed < 0.5 ? 34 : 40 + frac * 38 + g * 3;
     this.eng1.frequency.setTargetAtTime(f, t, 0.08);
     this.eng2.frequency.setTargetAtTime(f * 0.5, t, 0.08);

@@ -7,6 +7,15 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 4: diners, motels and a driver who gets tired
+- **Hunger and tiredness** (FOOD / REST meters, top left) drop as game time passes and are saved with your career.
+  Tired drivers yawn, their eyelids start to close and their hands drift on the wheel; hungry drivers tire faster.
+- **Diners** on the way out of every town and at highway truck stops: pull into the lot and press Space to eat ($6.45, 35 min).
+- **Motels** on the way into every town and at truck stops: sleep until 07:00 (or 8 hours) for $24.95. Car trips only.
+- **Coffee** at any gas pump once your tank is full (75 cents) for a quick pick-me-up.
+- The hub's REST tab shows your meters and has the local diner and motel.
+- Fixed: the gas pumps in towns offered to return the rental car instead of refuelling.
+
 ## Update 3: real driving
 - **Reverse gear**: stop, then hold the brake to back up (the bus beeps). Press gas at a standstill to go forward.
 - **U-turns** (car): slow below 15 mph and press U (or U-TURN) for a hairpin turn back the way you came.

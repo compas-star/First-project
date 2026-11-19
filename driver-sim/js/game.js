@@ -4,7 +4,7 @@ import { clamp, timeStr, mulberry } from './gfx.js';
 import { Track, nodeKind, reverseEdge, edgeSegs, RING } from './track.js';
 import { Traffic } from './traffic.js';
 import { NODES, outEdges, shortestPath, pathMiles, startHeading, endHeading, normAng } from './world.js';
-import { GAS_PRICE, TOW_PRICE } from './career.js';
+import { GAS_PRICE, TOW_PRICE, MEAL_PRICE, MOTEL_PRICE } from './career.js';
 
 const CHATTER_GOOD = [
   'PASSENGER: NICE AND SMOOTH, DRIVER.', 'KID: MOM, LOOK! A COW!', 'PASSENGER: GREAT VIEW OUT HERE.',
@@ -41,6 +41,7 @@ export class Game {
     this.lightsManual = null; this.finished = false; this.finishTimer = 0; this.result = null;
     this.announced = {}; this.chatterT = 45; this.outOfFuelT = 0; this.lowFuelWarned = false;
     this.offroad = false; this.lastSteer = 0; this.airDrop = 0; this.mapOpen = false;
+    this.busy = null; this.blink = 0; this.blinking = null;
     this.stops = []; this.choice = null; this.junction = null; this.tailAdded = false; this.revT = 0; this.roadHint = null; this.wrongWayLeg = null;
     this.odometer = vehicle === 'bus' ? 48213 : 23871;
   }
@@ -172,6 +173,67 @@ export class Game {
     if (b.stop.first && this.clock < b.stop.dep) this.clock = b.stop.dep; // wait for the scheduled departure
     if (b.stop.final) { this.finish(b.stop.node); this.audio.chime(); this.msg('END OF THE LINE. GOOD JOB, DRIVER!', 5, '#ffd36a'); return; }
     this.msg(b.stop.first ? `ALL ABOARD! DEPARTING ${timeStr(this.clock)}` : 'ALL ABOARD! DOORS CLOSING.', 3, '#9aff8a');
+  }
+
+  // ---------- food, coffee and sleep ----------
+  drinkCoffee() {
+    const c = this.career;
+    c.add(`COFFEE - ${this.pumpName}`, -0.75);
+    c.fatigue = Math.max(0, c.fatigue - 18); c.hunger = Math.max(0, c.hunger - 3);
+    this.clock += 8 * 60;
+    this.msg('HOT, BLACK AND STRONG. YOU FEEL MORE AWAKE.', 3, '#ffd36a');
+  }
+  updateBusy(dt) {
+    const b = this.busy, c = this.career;
+    b.t -= dt;
+    this.prompt = b.type === 'eat' ? 'EATING... THE PIE IS GOOD' : 'SLEEPING... ZZZ';
+    if (b.t > 0) return;
+    if (b.type === 'eat') {
+      c.add(`MEAL - ${b.sv.name}`, -MEAL_PRICE);
+      c.hunger = 0; c.fatigue = Math.max(0, c.fatigue - 8);
+      this.clock += 35 * 60;
+      this.msg('FULL AND HAPPY. BACK ON THE ROAD.', 3, '#9aff8a');
+    } else {
+      c.add(`MOTEL - ${b.sv.name}`, -MOTEL_PRICE);
+      const hr = (this.clock % 86400) / 3600;
+      // a night's sleep: until 07:00 if it's late, otherwise eight hours
+      let wake = this.clock + 8 * 3600;
+      if (hr > 18 || hr < 4) { const day = Math.floor(this.clock / 86400) * 86400; wake = day + 7 * 3600; if (wake <= this.clock) wake += 86400; }
+      this.clock = wake;
+      c.fatigue = 0; c.hunger = Math.min(100, c.hunger + 25);
+      this.audio.door();
+      const morning = (this.clock % 86400) / 3600 < 11;
+      this.msg(morning ? `GOOD MORNING! IT'S ${timeStr(this.clock)}.` : `YOU WAKE UP REFRESHED AT ${timeStr(this.clock)}.`, 4, '#ffd36a');
+    }
+    this.busy = null;
+  }
+  // hunger and tiredness grow with game time; being tired makes your eyes close
+  updateNeeds(dt) {
+    const c = this.career, hrs = dt * TIME_SCALE / 3600;
+    if (this.busy) { this.blink = this.busy.type === 'sleep' ? 1 : 0; return; }
+    c.hunger = Math.min(100, c.hunger + hrs * 13);
+    c.fatigue = Math.min(100, c.fatigue + hrs * 6.5 * (c.hunger > 85 ? 1.6 : 1));
+    const f = c.fatigue;
+    this.blinkT = (this.blinkT ?? 6) - dt;
+    if (f > 70 && this.blinkT <= 0 && !this.blinking) {
+      this.blinking = { t: 0, dur: 0.25 + (f - 70) / 30 * 1.4 };
+      this.blinkT = (3 + Math.random() * 10) * (1.3 - (f - 70) / 30);
+    }
+    if (this.blinking) {
+      const bl = this.blinking;
+      bl.t += dt;
+      const u = bl.t / bl.dur;
+      this.blink = u < 0.3 ? u / 0.3 : u > 0.75 ? Math.max(0, (1 - u) / 0.25) : 1;
+      if (u >= 1) { this.blinking = null; this.blink = 0; }
+    } else this.blink = 0;
+    this.needT = (this.needT ?? 20) - dt;
+    if (this.needT <= 0) {
+      this.needT = 25 + Math.random() * 20;
+      if (f > 92) this.msg('YOU KEEP NODDING OFF. FIND A MOTEL!', 3.5, '#ff8a6a');
+      else if (f > 75) this.msg('YAWN... YOUR EYES FEEL HEAVY.', 3, '#ffb040');
+      else if (c.hunger > 90) this.msg('YOU FEEL WEAK. YOU NEED A REAL MEAL.', 3.5, '#ff8a6a');
+      else if (c.hunger > 70) this.msg('GRUMBLE... YOUR STOMACH WANTS A DINER.', 3, '#ffb040');
+    }
   }
 
   finish(node) { this.finished = true; this.finishTimer = 2.5; this.endNode = node; }
@@ -356,7 +418,32 @@ export class Game {
         if (V.tankGal) { this.career.add(`GAS - ${this.pumpName}`, -Math.round(this.pendingFuel * 100) / 100); }
         this.msg(V.tankGal ? `PAID $${this.pendingFuel.toFixed(2)} FOR GAS.` : 'TANK FULL. COMPANY CARD, NO CHARGE.', 3);
       }
-    } else if (!this.finished) {
+    } else if (this.busy) this.updateBusy(dt);
+    else if (!this.finished) {
+      // pumps, diners and motels come first, so stopping at them never ends the trip by mistake
+      for (const pump of this.track.pumps) {
+        if (front >= pump.idx - ZONE_LEN && front <= pump.idx + 2 && p.x > 0.15 && this.track.segs[pump.idx]?.zone === 'gas') {
+          const slow = Math.abs(p.speed) < 2.5;
+          if (p.fuel < 0.97) {
+            if (slow) { action = 'fuel'; this.prompt = touch ? 'TAP REFUEL' : 'SPACE: REFUEL'; this.pumpName = pump.name; }
+            else this.prompt = 'STOP AT THE PUMPS TO REFUEL';
+          } else if (slow && this.career.fatigue > 12) { action = 'coffee'; this.prompt = `${touch ? 'TAP' : 'SPACE:'} BUY A COFFEE (75 CENTS)`; this.pumpName = pump.name; }
+        }
+      }
+      if (!action) for (const sv of this.track.services) {
+        if (front < sv.idx - ZONE_LEN || front > sv.idx + 2 || p.x <= 0.15) continue;
+        const slow = Math.abs(p.speed) < 2.5;
+        if (sv.type === 'diner') {
+          if (!slow) this.prompt = `${sv.name}: PULL IN TO EAT`;
+          else if (this.career.hunger < 8) this.prompt = "YOU'RE NOT HUNGRY RIGHT NOW";
+          else { action = 'eat'; this.prompt = `${touch ? 'TAP' : 'SPACE:'} EAT AT ${sv.name} ($${MEAL_PRICE})`; this.service = sv; }
+        } else {
+          if (!slow) this.prompt = `${sv.name}: PULL IN TO SLEEP`;
+          else if (this.mode === 'bus') this.prompt = 'NO NAPS DURING A SHIFT';
+          else if (this.career.fatigue < 20) this.prompt = "YOU'RE NOT TIRED YET";
+          else { action = 'sleep'; this.prompt = `${touch ? 'TAP' : 'SPACE:'} SLEEP AT ${sv.name} ($${MOTEL_PRICE})`; this.service = sv; }
+        }
+      }
       if (this.mode === 'bus') {
         const stop = this.nextStop();
         if (stop && stop.state === 'pending') {
@@ -375,31 +462,31 @@ export class Game {
             this.msg(`MISSED THE STOP AT ${stop.name}!`, 4, '#ff8a6a');
             if (stop.final) this.finish(stop.node);
           }
-          if (input.take('action') && action === 'doors') { p.speed = 0; p.cruise = false; this.openDoors(stop); }
         }
-      } else {
+      } else if (!action) {
         // car: stop anywhere in a town (right lane) to end the trip there
         const tw = this.seg().town;
         if (tw && (tw !== this.startNode || this.milesDriven > 3) && p.x > 0.15 && !this.seg().island) {
           if (Math.abs(p.speed) < 2.5) { action = 'park'; this.prompt = `${touch ? 'TAP' : 'SPACE:'} RETURN THE CAR IN ${NODES[tw].name}`; this.parkNode = tw; }
-          else if (tw === this.dest && p.speed < 40) this.prompt = `${NODES[tw].name}: STOP ANYWHERE TO RETURN THE CAR`;
-        }
-        if (input.take('action') && action === 'park') { p.speed = 0; this.finish(this.parkNode); this.audio.chime(); this.msg(`ARRIVED IN ${NODES[this.parkNode].name}.`, 4, '#ffd36a'); }
-      }
-      if (!action) for (const pump of this.track.pumps) {
-        if (front >= pump.idx - ZONE_LEN && front <= pump.idx + 2 && p.x > 0.15 && this.track.segs[pump.idx]?.zone === 'gas') {
-          if (p.speed < 2.5 && p.fuel < 0.97) { action = 'fuel'; this.prompt = touch ? 'TAP REFUEL' : 'SPACE: REFUEL'; this.pumpName = pump.name; }
-          else if (p.fuel < 0.97) this.prompt = 'STOP AT THE PUMPS TO REFUEL';
+          else if (tw === this.dest && p.speed < 40 && !this.prompt) this.prompt = `${NODES[tw].name}: STOP ANYWHERE TO RETURN THE CAR`;
         }
       }
-      if (input.take('action') && action === 'fuel') { p.speed = 0; p.cruise = false; this.fueling = true; this.pendingFuel = 0; }
+      if (input.take('action')) {
+        if (action === 'doors') { p.speed = 0; p.cruise = false; this.openDoors(this.nextStop()); }
+        else if (action === 'park') { p.speed = 0; this.finish(this.parkNode); this.audio.chime(); this.msg(`ARRIVED IN ${NODES[this.parkNode].name}.`, 4, '#ffd36a'); }
+        else if (action === 'fuel') { p.speed = 0; p.cruise = false; this.fueling = true; this.pendingFuel = 0; }
+        else if (action === 'coffee') this.drinkCoffee();
+        else if (action === 'eat') { p.speed = 0; p.cruise = false; this.busy = { type: 'eat', t: 3, sv: this.service }; this.msg(`A TABLE AT ${this.service.name}...`, 2.5, '#ffd36a'); }
+        else if (action === 'sleep') { p.speed = 0; p.cruise = false; this.busy = { type: 'sleep', t: 3.5, sv: this.service }; this.audio.door(); }
+      }
     }
     input.take('action');
     if (!this.prompt && this.roadHint) this.prompt = this.roadHint;
     this.action = action;
 
     // ---- driving ----
-    const held = this.doorsOpen || this.fueling || this.finished;
+    const held = this.doorsOpen || this.fueling || this.finished || !!this.busy;
+    this.updateNeeds(dt);
     const seg = segs[Math.floor(p.z / SEG)];
     let throttle = held || p.fuel <= 0 ? 0 : input.gas ? 1 : 0;
     // gears: hold the brake at a standstill to back up, press gas at a standstill to go forward again
@@ -435,6 +522,8 @@ export class Game {
 
     let target = input.analogSteer;
     if (target === null || target === undefined) target = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+    // eyes shut: your hands drift on the wheel
+    if (this.blink > 0.7) { if (this.dozeDrift === undefined) this.dozeDrift = (Math.random() - 0.5) * 0.7; target = this.dozeDrift; } else this.dozeDrift = undefined;
     const rate = input.analogSteer != null ? 6 : target === 0 ? 2.6 : 1.6;
     p.wheel += clamp(target - p.wheel, -rate * dt, rate * dt);
     const sp = p.speed / 60;

@@ -20,6 +20,8 @@ initCockpit();
 initInput(canvas);
 if (document.body.classList.contains('touch')) input.touch = true;
 const audio = new Audio();
+// browsers (and sandboxed frames) only allow audio to start from a user gesture
+for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, () => { try { audio.init(); } catch (e) {} }, true);
 const game = new Game(audio);
 let state = 'title', paused = false, report = null, t = 0;
 

@@ -29,7 +29,7 @@ export class Audio {
     this.eng1.start(); this.eng2.start();
     // road noise
     this.road = ctx.createBufferSource(); this.road.buffer = nb; this.road.loop = true;
-    this.roadF = ctx.createBiquadFilter(); this.roadF.type = 'bandpass'; this.roadF.frequency.value = 500; this.roadF.Q.value = 0.6;
+    this.roadF = ctx.createBiquadFilter(); this.roadF.type = 'lowpass'; this.roadF.frequency.value = 140; this.roadF.Q.value = 0.7;
     this.roadG = ctx.createGain(); this.roadG.gain.value = 0;
     this.road.connect(this.roadF); this.roadF.connect(this.roadG); this.roadG.connect(this.master); this.road.start();
     // horn
@@ -50,7 +50,7 @@ export class Audio {
   radioLabel() { return STATIONS[this.station].label; }
   cycleRadio() {
     this.station = (this.station + 1) % STATIONS.length;
-    this.noise(0.25, 1800, 0.05, this.radioIn);
+    this.noise(0.12, 1200, 0.02, this.radioIn);
     this.step = 0;
     return STATIONS[this.station];
   }
@@ -67,8 +67,8 @@ export class Audio {
     this.eng2.frequency.setTargetAtTime(f * 0.5, t, 0.08);
     this.engF.frequency.setTargetAtTime(260 + throttle * 300 + speed * 3, t, 0.1);
     this.engG.gain.setTargetAtTime(paused ? 0 : 0.05 + throttle * 0.05, t, 0.1);
-    this.roadG.gain.setTargetAtTime(paused ? 0 : Math.min(0.06, speed / 1100) + (offroad ? 0.08 : 0), t, 0.1);
-    this.roadF.frequency.setTargetAtTime(offroad ? 180 : 500, t, 0.1);
+    this.roadG.gain.setTargetAtTime(paused ? 0 : Math.min(0.035, speed / 2000) + (offroad ? 0.06 : 0), t, 0.15);
+    this.roadF.frequency.setTargetAtTime(offroad ? 220 : 90 + speed, t, 0.2);
     this.radioG.gain.setTargetAtTime(paused ? 0 : 0.09, t, 0.1);
   }
 
@@ -132,7 +132,6 @@ export class Audio {
         this.mel = Math.max(0, Math.min(pent.length - 1, this.mel));
         this.tone(mtof(root + 24 + pent[this.mel]), 0.22, 0.12, 'square', out, when, mtof(root + 24 + pent[this.mel]) * 0.995);
       }
-      if (beat % 2 === 0) this.noise(0.04, 6000, 0.05, out, 'highpass');
     } else {
       const prog = [57, 53, 48, 55]; // Am F C G
       const root = prog[Math.floor(step / 16) % 4];

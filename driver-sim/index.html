@@ -8,13 +8,13 @@
 <meta name="theme-color" content="#000000">
 <title>Mother Road - Route 66 Bus Driver</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none;
+  html, body { margin: 0; overscroll-behavior: none; height: 100%; background: #000; overflow: hidden; touch-action: none;
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   body { display: flex; align-items: center; justify-content: center; font-family: monospace; }
   #screen { image-rendering: pixelated; image-rendering: crisp-edges; display: block; touch-action: none; }
   #touch { display: none; }
   body.touch #touch { display: block; }
-  .tbtn { position: fixed; display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+  .tbtn { position: fixed; -webkit-tap-highlight-color: transparent; touch-action: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box;
     color: #f2e2b8; font: bold 13px monospace; letter-spacing: 1px; background: rgba(30, 24, 20, 0.4);
     border: 2px solid rgba(242, 226, 184, 0.45); border-radius: 6px; touch-action: none; z-index: 5; }
   .tbtn.on { background: rgba(255, 211, 106, 0.45); }
@@ -60,6 +60,13 @@
 </div>
 <script>
   if ('ontouchstart' in window || matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch');
+</script>
+<script>
+  // iOS Safari ignores user-scalable=no: block double-tap and pinch zoom ourselves
+  let lastTouch = 0;
+  document.addEventListener('touchend', e => { const now = Date.now(); if (now - lastTouch < 400) e.preventDefault(); lastTouch = now; }, { passive: false });
+  document.addEventListener('touchmove', e => { if (e.touches.length > 1 || e.scale && e.scale !== 1) e.preventDefault(); }, { passive: false });
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
 </script>
 <script type="module" src="js/main.js"></script>
 </body>

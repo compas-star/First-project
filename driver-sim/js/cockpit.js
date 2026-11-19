@@ -4,6 +4,7 @@
 import { W, H } from './config.js';
 import { makeCanvas, mulberry, rect, px, line, ellipse, circle, poly, shade, clamp, timeStr, css, ditherV, bayer, hex, lerpC } from './gfx.js';
 import { drawText } from './font.js';
+import { NODES } from './world.js';
 
 const [layer, lctx] = makeCanvas(W, H);
 let base, handL, handR, armL, armR;
@@ -273,6 +274,7 @@ function drawArm(ctx, wx, wy, ex, ey, watch) {
 
 export function initCockpit() {
   base = buildBase();
+  carBase = buildCarBase();
   handL = buildHand(false); handR = buildHand(true);
 }
 
@@ -289,8 +291,8 @@ function needle(ctx, [cx, cy, r], frac, start, sweep, col) {
 
 // Steering wheel: a flat ellipse seen from above. The rim doesn't change when it turns;
 // the spokes, grips and hands slide around it.
-function drawWheel(ctx, ang) {
-  const { cx, cy, rx, ry, t } = WH;
+function drawWheel(ctx, ang, geo = WH) {
+  const { cx, cy, rx, ry, t } = geo;
   for (let yy = Math.floor(cy - ry - 1); yy < H; yy++) for (let xx = cx - rx - 2; xx <= cx + rx + 2; xx++) {
     const dx = xx - cx, dy = yy - cy;
     const o = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
@@ -330,6 +332,7 @@ function mirrorGlass(ctx, [mx, my, mw, mh], sky, flip) {
 }
 
 export function renderCockpit(main, game, sky, t) {
+  if (game.mode === 'car') return renderCarCockpit(main, game, sky, t);
   const ctx = lctx;
   const p = game.player;
   ctx.clearRect(0, 0, W, H);
@@ -441,9 +444,123 @@ export function renderCockpit(main, game, sky, t) {
   if (ns) {
     drawText(ctx, 'NEXT STOP', 314, 210, lcd);
     drawText(ctx, ns.name, 314, 217, lcd);
-    const dist = Math.max(0, ns.mile - game.mile());
+    const dist = game.distTo(ns.idx);
     drawText(ctx, ns.arr ? `DUE ${timeStr(ns.arr)}` : `DEP ${timeStr(ns.dep)}`, 314, 226, lcd);
     drawText(ctx, `${dist.toFixed(1)} MI`, 404, 226, lcd, 1, 'right');
   }
+  main.drawImage(layer, 0, 0);
+}
+
+// ======================= RENTAL CAR CAB =======================
+const CAR_DASH = 182;
+const CWH = { cx: 206, cy: 280, rx: 78, ry: 46, t: 9 };
+const CG = { speed: [184, 208, 20], tach: [238, 208, 16], fuel: [156, 226, 7], temp: [266, 226, 7] };
+let carBase;
+
+function buildCarBase() {
+  const [c, x] = makeCanvas(W, H);
+  const r = mulberry(8);
+  ditherV(x, 0, 0, W, 15, ['#8a8478', '#6a655c', '#4a463f']);
+  rect(x, 0, 14, W, 1, '#2a2622');
+  poly(x, [0, 0, 48, 0, 18, CAR_DASH, 0, CAR_DASH], '#3a3a40'); line(x, 47, 0, 17, CAR_DASH, '#5a5a62');
+  poly(x, [432, 0, W, 0, W, CAR_DASH, 462, CAR_DASH], '#3a3a40'); line(x, 433, 0, 463, CAR_DASH, '#5a5a62');
+  poly(x, [50, 14, 170, 14, 166, 30, 54, 30], '#7a7268'); rect(x, 56, 28, 108, 1, '#5a544c');
+  rect(x, 238, 13, 4, 6, '#222');
+  // hood of the rental, beige like every rental in 1994
+  poly(x, [24, CAR_DASH, 120, 160, 360, 160, 456, CAR_DASH], '#b8a27c');
+  poly(x, [120, 160, 360, 160, 366, 163, 114, 163], '#d8c8a4');
+  poly(x, [150, 166, 330, 166, 336, 170, 144, 170], 'rgba(255,255,255,0.12)');
+  rect(x, 238, 157, 4, 4, '#c8c8c8');
+  // bugs on the glass
+  for (let i = 0; i < 6; i++) { const bx = 60 + r() * 360, by = 40 + r() * 100; x.fillStyle = 'rgba(80,70,30,0.7)'; x.fillRect(bx, by, 2, 1); }
+  // dashboard
+  rect(x, 0, CAR_DASH, W, 8, '#4c505a'); rect(x, 0, CAR_DASH, W, 1, '#6c707a');
+  ditherV(x, 0, CAR_DASH + 8, W, H - CAR_DASH - 8, ['#40444e', '#33363e', '#24262c']);
+  for (let i = 0; i < 600; i++) px(x, r() * W, CAR_DASH + 9 + r() * 80, r() < 0.5 ? '#464a54' : '#2a2c32');
+  // binnacle
+  poly(x, [140, 192, 150, 184, 276, 184, 286, 192], '#2a2c32');
+  rect(x, 146, 190, 134, 44, '#121316'); rect(x, 146, 190, 134, 1, '#2a2c32');
+  gaugeFace(x, CG.speed, { start: 135, sweep: 270, ticks: 20, major: 4, nums: [0, 20, 40, 60, 80, 100], red: 0.86, label: 'MPH' });
+  gaugeFace(x, CG.tach, { start: 135, sweep: 270, ticks: 12, major: 2, nums: [0, 1, 2, 3, 4, 5, 6], red: 0.8, label: 'RPM' });
+  gaugeFace(x, CG.fuel, { start: 180, sweep: 180, ticks: 4 });
+  gaugeFace(x, CG.temp, { start: 180, sweep: 180, ticks: 4, red: 0.8 });
+  drawText(x, 'F', 156, 216, '#7a7a74', 1, 'center'); drawText(x, 'T', 266, 216, '#7a7a74', 1, 'center');
+  // vents, radio, climate
+  for (const [vx, vy, vw] of [[20, 192, 50], [300, 188, 86], [410, 192, 50]]) { rect(x, vx, vy, vw, 10, '#16171a'); for (let k = vy + 2; k < vy + 10; k += 2) rect(x, vx + 1, k, vw - 2, 1, '#3a3c44'); }
+  rect(x, 304, 202, 80, 24, '#16171a'); rect(x, 305, 203, 78, 22, '#2a2c32'); rect(x, 305, 203, 78, 1, '#5a5c64');
+  rect(x, 312, 206, 46, 8, '#08100a'); rect(x, 312, 217, 46, 3, '#0a0a0a'); 
+  circle(x, 368, 210, 4, '#4a4c54'); circle(x, 368, 210, 2, '#8a8c94');
+  for (let i = 0; i < 3; i++) { circle(x, 318 + i * 26, 236, 6, '#16171a'); circle(x, 318 + i * 26, 236, 4, '#4a4c54'); px(x, 318 + i * 26, 232, '#e84a3a'); }
+  drawText(x, 'FAN   TEMP   VENT', 344, 245, '#6a6c74', 1, 'center');
+  // glovebox and a can of soda in the cup holder
+  rect(x, 398, 208, 72, 32, '#2e3036'); rect(x, 398, 208, 72, 1, '#4a4c54'); rect(x, 426, 214, 16, 3, '#6a6c74');
+  rect(x, 318, 252, 10, 14, '#c82a2a'); rect(x, 318, 252, 10, 2, '#d8d8d8'); rect(x, 320, 256, 2, 8, '#e84a4a');
+  // folded paper map lying on the dash
+  poly(x, [380, CAR_DASH - 1, 386, CAR_DASH - 9, 440, CAR_DASH - 9, 436, CAR_DASH - 1], '#efe6cc');
+  for (const fx of [398, 416]) line(x, fx, CAR_DASH - 9, fx - 2, CAR_DASH - 1, '#b8ac90');
+  line(x, 392, CAR_DASH - 6, 428, CAR_DASH - 4, '#d8382e');
+  ditherV(x, 186, 250, 40, 20, ['#2a2c32', '#141518']);
+  return c;
+}
+
+function renderCarCockpit(main, game, sky, t) {
+  const ctx = lctx;
+  const p = game.player;
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(carBase, 0, 0);
+  // rear-view mirror: back window and empty back seat
+  rect(ctx, 196, 18, 88, 18, '#0e0e0e'); rect(ctx, 198, 19, 84, 15, css(lerpC(sky.top, sky.bottom, 0.6)));
+  rect(ctx, 198, 28, 84, 6, '#5a5048'); rect(ctx, 204, 26, 30, 4, '#6a6058'); rect(ctx, 246, 26, 30, 4, '#6a6058');
+  rect(ctx, 198, 19, 84, 1, '#a8a298');
+  // pine-tree air freshener swinging from the mirror
+  const sw = game.diceSwing;
+  const fx = 236 + Math.sin(sw) * 10, fy = 36 + Math.cos(sw) * 12;
+  line(ctx, 236, 36, fx, fy, '#e8e8e8');
+  for (let k = 0; k < 4; k++) rect(ctx, fx - 1 - k, fy + 1 + k * 3, 3 + k * 2, 3, k % 2 ? '#2a8a3a' : '#3aa84a');
+  rect(ctx, fx, fy + 13, 1, 2, '#6a4a2a');
+  // wheel, arms, hands
+  const wa = p.wheel * 0.85;
+  drawWheel(ctx, wa, CWH);
+  rect(ctx, CWH.cx - 14, CWH.cy - 10, 28, 9, '#2a2826'); drawText(ctx, 'SRS', CWH.cx, CWH.cy - 8, '#5a5650', 1, 'center');
+  for (const side of [-1, 1]) {
+    const a = -Math.PI / 2 + side * 1.0 + wa * 0.6;
+    const hx = CWH.cx + Math.cos(a) * (CWH.rx - 4), hy = CWH.cy + Math.sin(a) * (CWH.ry - 4);
+    drawArm(ctx, hx, hy + 26, side < 0 ? 30 : 380, 360, side < 0);
+    ctx.drawImage(side < 0 ? handL : handR, Math.round(hx - 24), Math.round(hy - 12));
+  }
+  const tintA = sky.tintA * 0.92;
+  if (tintA > 0) {
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = css(sky.tint.map(v => v * 0.6), tintA);
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  const glow = 0.35 + sky.night * 0.65;
+  if (sky.night > 0.1) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgba(30,60,110,${sky.night * 0.4})`;
+    for (const g of Object.values(CG)) { ctx.beginPath(); ctx.arc(g[0], g[1], g[2], 0, 6.29); ctx.fill(); }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  needle(ctx, CG.speed, p.speed / 100, 135, 270, '#ff6a2a');
+  needle(ctx, CG.tach, (game.audio.rpm || 0.15) * 0.9, 135, 270, '#ff6a2a');
+  needle(ctx, CG.fuel, p.fuel, 180, 180, '#ffb040');
+  needle(ctx, CG.temp, 0.45, 180, 180, '#ffb040');
+  drawText(ctx, String(Math.floor(game.odometer)).padStart(6, '0'), 211, 224, '#e8e8e0', 1, 'center');
+  const lamps = [['C', p.cruise, '#5aff5a'], ['=', game.lightsOn, '#5a9aff'], ['F', p.fuel < 0.15 && Math.floor(t * 2) % 2 === 0, '#ffb030']];
+  lamps.forEach(([ch, on, col], i) => {
+    const lx = 190 + i * 14, ly = 194;
+    rect(ctx, lx, ly, 9, 7, '#050505'); rect(ctx, lx + 1, ly + 1, 7, 5, on ? col : '#1c1c1c');
+    drawText(ctx, ch, lx + 4.5, ly + 1, on ? '#111' : '#3a3a3a', 1, 'center');
+  });
+  // radio display shows the station and the clock
+  const amber = `rgba(255,170,60,${glow})`;
+  drawText(ctx, game.audio.radioLabel(), 335, 207, amber, 1, 'center');
+  drawText(ctx, timeStr(game.clock), 362, 197, `rgba(120,220,255,${glow})`, 1, 'center');
+  // sticky note with the destination
+  ctx.fillStyle = '#f4e46a'; ctx.fillRect(84, 194, 50, 28); ctx.fillStyle = '#e0cc4a'; ctx.fillRect(84, 194, 50, 3);
+  drawText(ctx, 'RETURN TO', 109, 199, '#5a4a1a', 1, 'center');
+  drawText(ctx, NODES[game.dest].name.slice(0, 12), 109, 206, '#1a1a6a', 1, 'center');
+  drawText(ctx, `${game.milesToDest().toFixed(0)} MI`, 109, 214, '#c0202a', 1, 'center');
   main.drawImage(layer, 0, 0);
 }

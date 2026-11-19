@@ -80,6 +80,11 @@ export function buildBackgrounds() {
     ridge(117, 60, 52, [[3, 7], [7, 5], [15, 2]], '#a8664a', { mesa: 4, top: 22, strata: true }),
     ridge(108, 40, 34, [[3, 4], [7, 3], [15, 1.5]], '#a0583a', { dots: '#5a6a3a' }),
   ];
+  LAYERS.sonoran = [
+    ridge(121, 90, 80, [[4, 10], [9, 7], [19, 4], [33, 2]], '#8a6e8a', { haze: '#b0a0b0' }),
+    ridge(122, 60, 52, [[5, 6], [11, 4], [27, 2]], '#9a7068', { haze: '#b8a090' }),
+    ridge(123, 40, 34, [[3, 3], [7, 2], [16, 1]], '#b89a70', { dots: '#5a7a3a' }),
+  ];
   LAYERS.desert = [
     ridge(109, 90, 80, [[3, 12], [7, 8], [16, 4], [29, 2]], '#86749a', { haze: '#a898b4' }),
     ridge(119, 60, 52, [[4, 5], [9, 4], [23, 2]], '#9a7a80', { haze: '#b49a98' }),
@@ -110,27 +115,37 @@ export function buildBackgrounds() {
 // ---------- time of day ----------
 // [clock hours, sky top, sky bottom, world tint rgb, tint alpha]
 const KEYS = [
+  [0, '#04050e', '#141932', '#0a0c26', 0.7],
+  [5.3, '#04050e', '#141932', '#0a0c26', 0.7],
+  [6.0, '#2a2a5e', '#c8705a', '#604070', 0.38],
+  [6.6, '#4a6aaa', '#f4b88a', '#ffb070', 0.15],
+  [7.6, '#3672c8', '#b8d8ee', '#ffe8c0', 0.03],
+  [9.0, '#2e6cc8', '#a8d4ee', '#ffffff', 0],
   [14.0, '#2e6cc8', '#a8d4ee', '#ffffff', 0],
   [16.2, '#3a6cba', '#f2deac', '#ffd090', 0.08],
   [17.0, '#33468e', '#ffa25a', '#ff9a50', 0.18],
   [17.45, '#24245e', '#e0605a', '#704070', 0.35],
   [17.9, '#10123a', '#4a2a5a', '#202050', 0.55],
   [18.4, '#04050e', '#141932', '#0a0c26', 0.7],
-  [30, '#04050e', '#141932', '#0a0c26', 0.7],
+  [24, '#04050e', '#141932', '#0a0c26', 0.7],
 ];
 const KEYS_RGB = KEYS.map(k => [k[0], hex(k[1]), hex(k[2]), hex(k[3]), k[4]]);
 
 export function skyAt(clockSec) {
-  const h = clockSec / 3600;
+  const h = (clockSec % 86400) / 3600;
   let k = 0;
   while (k < KEYS_RGB.length - 2 && h > KEYS_RGB[k + 1][0]) k++;
   const A = KEYS_RGB[k], B = KEYS_RGB[k + 1];
   const t = clamp((h - A[0]) / (B[0] - A[0]), 0, 1);
-  const night = clamp((h - 17.6) / 0.8, 0, 1);
+  const night = h > 12 ? clamp((h - 17.6) / 0.8, 0, 1) : clamp((6.2 - h) / 0.8, 0, 1);
+  // sun: rises in the east-southeast, sets in the west-southwest (November)
+  const dayF = (h - 6.6) / (17.25 - 6.6);
+  const sunEl = Math.sin(clamp(dayF, -0.1, 1.1) * Math.PI) * 0.6;
+  const sunAz = (110 + clamp(dayF, -0.1, 1.1) * 140) * Math.PI / 180;
   return {
     top: lerpC(A[1], B[1], t), bottom: lerpC(A[2], B[2], t),
     tint: lerpC(A[3], B[3], t), tintA: A[4] + (B[4] - A[4]) * t,
-    night, sunElev: (17.25 - h) / 2.2, h, key: Math.floor(clockSec / 60),
+    night, sunEl, sunAz, h, key: Math.floor(clockSec / 60),
   };
 }
 
@@ -167,7 +182,8 @@ function rebuildSky(sky) {
 }
 
 const STARS = (() => { const r = mulberry(5); return Array.from({ length: 110 }, () => [r() * W | 0, r() * (HORIZON - 6) | 0, r()]); })();
-export function drawSky(ctx, sky, sunX, t, bgOffset) {
+export function drawSky(ctx, sky, hdg, t) {
+  const bgOffset = hdg * (1920 / (2 * Math.PI));
   if (sky.key !== skyKey) { skyKey = sky.key; rebuildSky(sky); }
   ctx.drawImage(skyC, 0, 0);
   ctx.fillStyle = css(sky.bottom); ctx.fillRect(0, skyC.height, W, 270 - skyC.height);
@@ -176,12 +192,15 @@ export function drawSky(ctx, sky, sunX, t, bgOffset) {
     ctx.fillStyle = `rgba(255,255,240,${sky.night * tw * (0.35 + b * 0.65)})`;
     ctx.fillRect(sx, sy, b > 0.93 ? 2 : 1, 1);
   }
-  // sun, sinking ahead of us in the west
-  const e = sky.sunElev;
-  if (e > -0.15) {
-    const sy = Math.round(HORIZON - e * 105);
-    const r = Math.round(9 + clamp(1 - e, 0, 1) * 5);
-    const col = lerpC([255, 246, 190], [255, 110, 50], clamp(1 - e * 1.4, 0, 1));
+  // sun: placed by its real compass direction relative to where we are heading
+  let rel = sky.sunAz - hdg;
+  while (rel > Math.PI) rel -= 2 * Math.PI; while (rel < -Math.PI) rel += 2 * Math.PI;
+  if (Math.abs(rel) < 1.2 && sky.sunEl > -0.1) {
+    const sunX = Math.round(W / 2 + Math.tan(rel) * W / 2);
+    const sy = Math.round(HORIZON - Math.tan(sky.sunEl) * W / 2);
+    const low = clamp(1 - sky.sunEl * 5, 0, 1);
+    const r = Math.round(9 + low * 5);
+    const col = lerpC([255, 246, 190], [255, 110, 50], low);
     for (const [rr, a] of [[r + 14, 0.08], [r + 8, 0.14], [r + 4, 0.22]]) {
       ctx.fillStyle = css(col, a);
       for (let y = -rr; y <= rr; y++) { const w = Math.round(Math.sqrt(Math.max(0, rr * rr - y * y))); ctx.fillRect(sunX - w, sy + y, w * 2 + 1, 1); }

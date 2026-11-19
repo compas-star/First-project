@@ -1,188 +1,252 @@
-// The route: Historic Route 66 from Flagstaff to Kingman, Arizona (compressed).
-import { SEG, SEG_PER_MILE, DRAW_DIST, RUMBLE, ZONE_LEN } from './config.js';
-import { mulberry, hex, lerpC, easeIn, easeInOut, parseTime } from './gfx.js';
-import { BUILDINGS, ADS_COUNT, welcomeSprite } from './sprites.js';
-
-export const PRE_MILES = 0.6;
-export const END_MILE = 163;
-export const segOfMile = m => Math.round((m + PRE_MILES) * SEG_PER_MILE);
-export const mileOfSeg = i => i / SEG_PER_MILE - PRE_MILES;
+// Builds the drivable pseudo-3D road from the map: each highway edge becomes a run of segments
+// whose curves follow the real road's turns, whose scenery follows the real landscape,
+// and whose towns sit where they are on the map. Edges are appended as you drive.
+import { SEG, SEG_PER_MILE, RUMBLE, ZONE_LEN, DRAW_DIST } from './config.js';
+import { mulberry, hex, lerpC, easeInOut } from './gfx.js';
+import { BUILDINGS, ADS_COUNT, welcomeSprite, greenSign, routeShield } from './sprites.js';
+import { NODES, edgePoly, heading, normAng, biomeAtMap } from './world.js';
 
 export const BIOMES = {
   forest: {
     ground: ['#3d6a2c', '#376227'], veg: [['pine', 0.5], ['pine2', 0.25], ['pine3', 0.17], ['rock', 0.08]],
-    density: 0.6, curves: [0, 1, 1, 2, 2, 3], hill: 2200, len: [90, 260], traffic: 1,
+    density: 0.6, curves: [0, 1, 1, 2], hill: 2200, len: [120, 300], traffic: 1,
   },
   woodland: {
     ground: ['#6c7a3c', '#657236'], veg: [['juniper', 0.4], ['juniper2', 0.2], ['pine3', 0.12], ['rock', 0.13], ['grass', 0.15]],
-    density: 0.4, curves: [0, 1, 2, 2], hill: 1500, len: [150, 350], traffic: 0.9,
+    density: 0.4, curves: [0, 1, 1, 2], hill: 1500, len: [150, 350], traffic: 0.9,
   },
   plains: {
     ground: ['#b6a45a', '#ae9c53'], veg: [['grass', 0.55], ['sage', 0.3], ['juniper2', 0.08], ['rock', 0.07]],
-    density: 0.3, curves: [0, 0, 1, 1, 2], hill: 900, len: [200, 500], traffic: 0.8,
+    density: 0.3, curves: [0, 0, 1, 1], hill: 900, len: [200, 500], traffic: 0.8,
   },
   mesa: {
     ground: ['#a5643e', '#9c5c38'], veg: [['juniper', 0.3], ['redrock', 0.3], ['boulder', 0.15], ['grass', 0.25]],
-    density: 0.35, curves: [0, 2, 3, 3, 4], hill: 2600, len: [100, 260], traffic: 0.7,
+    density: 0.35, curves: [0, 1, 2, 2], hill: 2600, len: [120, 280], traffic: 0.7,
   },
   desert: {
-    ground: ['#d0b089', '#c8a880'], veg: [['creosote', 0.42], ['joshua', 0.22], ['barrel', 0.12], ['rock', 0.12], ['saguaro', 0.06], ['boulder', 0.06]],
-    density: 0.3, curves: [0, 0, 0, 1, 2], hill: 700, len: [300, 800], traffic: 0.7,
+    ground: ['#d0b089', '#c8a880'], veg: [['creosote', 0.45], ['joshua', 0.28], ['barrel', 0.1], ['rock', 0.11], ['boulder', 0.06]],
+    density: 0.3, curves: [0, 0, 0, 1], hill: 700, len: [300, 800], traffic: 0.7,
+  },
+  sonoran: {
+    ground: ['#c8a47a', '#c09c72'], veg: [['saguaro', 0.32], ['creosote', 0.3], ['barrel', 0.14], ['rock', 0.12], ['boulder', 0.12]],
+    density: 0.36, curves: [0, 0, 1, 1], hill: 900, len: [250, 600], traffic: 0.9,
   },
 };
-export const BIOME_NAMES = Object.keys(BIOMES);
 for (const b of Object.values(BIOMES)) b.groundRGB = b.ground.map(hex);
 
-const BANDS = [[-99, 'forest'], [38, 'woodland'], [56, 'plains'], [96, 'mesa'], [118, 'desert']];
-const BLEND = 1.5;
-export function biomeAt(m) {
-  let k = 0;
-  while (k + 1 < BANDS.length && m >= BANDS[k + 1][0]) k++;
-  const cur = BANDS[k][1];
-  if (k + 1 < BANDS.length && m > BANDS[k + 1][0] - BLEND)
-    return { a: cur, b: BANDS[k + 1][1], t: (m - (BANDS[k + 1][0] - BLEND)) / (2 * BLEND) };
-  if (k > 0 && m < BANDS[k][0] + BLEND)
-    return { a: BANDS[k - 1][1], b: cur, t: (m - (BANDS[k][0] - BLEND)) / (2 * BLEND) };
-  return { a: cur, b: cur, t: 0 };
-}
+const HALF = { city: 1.3, town: 0.9, junction: 0 };
+const halfSegs = node => Math.round(HALF[NODES[node].type] * SEG_PER_MILE);
 
-export const TOWNS = [
-  { name: 'FLAGSTAFF', mile: 0, from: -0.6, to: 1.2, stop: { dep: '15:30', on: 14, first: true } },
-  { name: 'WILLIAMS', mile: 32, from: -0.7, to: 0.9, stop: { arr: '16:15', off: 3, on: 5 }, gas: 0.45 },
-  { name: 'ASH FORK', mile: 51, from: -0.5, to: 0.5, stop: { arr: '16:45', off: 2, on: 1 } },
-  { name: 'SELIGMAN', mile: 74, from: -0.7, to: 0.8, stop: { arr: '17:25', off: 4, on: 6 }, gas: 0.45 },
-  { name: 'PEACH SPRINGS', mile: 111, from: -0.5, to: 0.6, stop: { arr: '18:20', off: 5, on: 2 }, gas: 0.4 },
-  { name: 'TRUXTON', mile: 128, from: -0.3, to: 0.35, gas: 0 },
-  { name: 'KINGMAN', mile: 161, from: -1.0, to: 2.0, stop: { arr: '19:35', off: 'all', final: true } },
-];
-
-export function buildTrack(seed = 66) {
-  const r = mulberry(seed);
-  const total = segOfMile(END_MILE) + DRAW_DIST + 20;
-  const segs = [];
-  const ranges = TOWNS.map(t => [segOfMile(t.mile + t.from), segOfMile(t.mile + t.to), t]);
-  const add = (curve, y1, y2) => {
-    const i = segs.length;
-    segs.push({ i, curve, p1: { wy: y1, wz: i * SEG }, p2: { wy: y2, wz: (i + 1) * SEG }, sprites: [], cars: [] });
-  };
-  let y = 0;
-  while (segs.length < total) {
-    const i = segs.length;
-    const town = ranges.find(([a, b]) => i >= a && i < b);
-    if (town) { for (let k = i; k < town[1]; k++) add(0, y, y); continue; }
-    let next = total;
-    for (const [a] of ranges) if (a > i && a < next) next = a;
-    const bio = BIOMES[biomeAt(mileOfSeg(i)).a];
-    let len = Math.round(bio.len[0] + r() * (bio.len[1] - bio.len[0]));
-    if (next - i < len + 60) len = next - i;
-    const curve = len < 60 ? 0 : bio.curves[Math.floor(r() * bio.curves.length)] * (r() < 0.5 ? -1 : 1);
-    let target = y + (r() * 2 - 1) * bio.hill;
-    target = Math.max(-4500, Math.min(4500, target));
-    if (len < 40) target = y;
-    const enter = Math.floor(len * 0.25), leave = Math.floor(len * 0.25), hold = len - enter - leave;
-    const y0 = y;
-    for (let k = 0; k < len; k++) {
-      let c;
-      if (k < enter) c = easeIn(0, curve, k / enter);
-      else if (k < enter + hold) c = curve;
-      else c = easeInOut(curve, 0, (k - enter - hold) / leave);
-      add(c, easeInOut(y0, target, k / len), easeInOut(y0, target, (k + 1) / len));
-    }
-    y = target;
+export class Track {
+  constructor(seed = 66) {
+    this.segs = []; this.r = mulberry(seed);
+    this.y = 0; this.heading = null; this.legs = []; this.pumps = []; this.marks = [];
+    this.nextAd = 300; this.centerAt = null; this.reserved = null;
   }
+  get length() { return this.segs.length * SEG; }
 
-  // colours, zones and flags
-  for (const s of segs) {
-    const m = mileOfSeg(s.i);
-    const b = biomeAt(m);
-    const alt = Math.floor(s.i / RUMBLE) % 2;
-    s.alt = alt;
-    s.ground = lerpC(BIOMES[b.a].groundRGB[alt], BIOMES[b.b].groundRGB[alt], b.t);
-    s.noPass = Math.abs(s.curve) > 0.6 || Math.abs(s.p2.wy - s.p1.wy) > 14;
+  push(curve, y1, y2, info) {
+    const i = this.segs.length;
+    const r = this.r;
+    const alt = Math.floor(i / RUMBLE) % 2;
+    const bio = info.bio;
+    let ground = lerpC(BIOMES[bio.a].groundRGB[alt], BIOMES[bio.b].groundRGB[alt], bio.t);
     const j = 1 + (r() - 0.5) * 0.07;
-    s.ground = s.ground.map(v => v * j);
-    s.dirt = lerpC(s.ground, [150, 130, 100], 0.35);
+    ground = ground.map(v => v * j);
+    const s = {
+      i, curve, alt, bio, ground, dirt: lerpC(ground, [150, 130, 100], 0.35),
+      p1: { wy: y1, wz: i * SEG }, p2: { wy: y2, wz: (i + 1) * SEG }, sprites: [], cars: [],
+      noPass: Math.abs(curve) > 0.6 || Math.abs(y2 - y1) > 14,
+      heading: info.heading, mx: info.mx, my: info.my, town: info.town || null,
+    };
+    if (r() < 0.012) this.crackRun = [r() * 1.6 - 0.8, 4 + Math.floor(r() * 18)];
+    if (this.crackRun && this.crackRun[1]-- > 0) s.crack = this.crackRun[0] + Math.sin(i * 0.7) * 0.05;
+    if (r() < 0.004) this.patchRun = [r() * 1.2 - 0.6, 0.12 + r() * 0.2, 3 + Math.floor(r() * 8)];
+    if (this.patchRun && this.patchRun[2]-- > 0) s.patch = [this.patchRun[0], this.patchRun[1]];
+    this.segs.push(s);
+    return s;
   }
-  // asphalt wear: tar-snake cracks and patches spanning several segments
-  for (let i = 0; i < segs.length; i++) {
-    if (r() < 0.012) { const o = r() * 1.6 - 0.8, len = 4 + Math.floor(r() * 18); for (let k = 0; k < len && segs[i + k]; k++) segs[i + k].crack = o + Math.sin(k * 0.7) * 0.05; }
-    if (r() < 0.004) { const o = r() * 1.2 - 0.6, w = 0.12 + r() * 0.2, len = 3 + Math.floor(r() * 8); for (let k = 0; k < len && segs[i + k]; k++) segs[i + k].patch = [o, w]; }
+
+  place(i, k, o, extra) { const s = this.segs[i]; if (!s) return null; const sp = { k, o, ...extra }; s.sprites.push(sp); return sp; }
+
+  // Arriving half of a town, ending at its centre (used to start a trip inside a town).
+  appendStart(nodeId, hdg) {
+    const N = halfSegs(nodeId) || 60;
+    const n = NODES[nodeId];
+    const s0 = this.segs.length;
+    this.heading = hdg;
+    const bio = biomeAtMap(n.x, n.y);
+    for (let j = 0; j < N; j++) {
+      const back = (N - j) / SEG_PER_MILE;
+      this.push(0, this.y, this.y, { bio, heading: hdg, mx: n.x - Math.sin(hdg) * back, my: n.y + Math.cos(hdg) * back, town: n.type !== 'junction' ? nodeId : null });
+    }
+    this.centerAt = this.segs.length - 1;
+    this.decorate(s0, this.segs.length);
+    this.centerAt = null;
+    this.townCenter(nodeId, this.segs.length - 1, s0);
   }
-  for (const [a, b] of ranges) for (let k = a; k < b; k++) segs[k].town = true;
 
-  const stops = [], pumps = [];
-  const place = (i, k, o, extra) => { if (segs[i]) { const sp = { k, o, ...extra }; segs[i].sprites.push(sp); return sp; } };
-  const busy = new Set(); // right-side segments reserved for stops/pumps
-  const reserve = (idx) => { for (let k = idx - ZONE_LEN - 6; k <= idx + 10; k++) busy.add(k); };
+  // A directed highway edge from one node to the next.
+  appendEdge(e) {
+    const r = this.r;
+    const poly = edgePoly(e);
+    const cum = [0];
+    for (let k = 1; k < poly.length; k++) cum.push(cum[k - 1] + Math.hypot(poly[k][0] - poly[k - 1][0], poly[k][1] - poly[k - 1][1]));
+    const Lp = cum[cum.length - 1];
+    const N = Math.max(240, Math.round(e.road.miles * SEG_PER_MILE));
+    const hA = halfSegs(e.from), hB = halfSegs(e.to);
+    const lo = hA + 6, hi = N - hB - 6;
+    const curves = new Float32Array(N);
+    const h0 = heading(poly[0], poly[1]);
+    if (this.heading === null) this.heading = h0;
+    // turns: the first one swings us from our current heading onto the road
+    const events = [[lo, normAng(h0 - this.heading)]];
+    for (let k = 1; k < poly.length - 1; k++)
+      events.push([cum[k] / Lp * N, normAng(heading(poly[k], poly[k + 1]) - heading(poly[k - 1], poly[k]))]);
+    for (const [pos, d] of events) {
+      if (Math.abs(d) < 1e-4) continue;
+      let T = Math.min(Math.max(30, Math.round(Math.abs(d) * 140) + 30), Math.max(30, hi - lo));
+      let st = Math.round(pos - T / 2);
+      st = Math.max(lo, Math.min(hi - T, st));
+      let wsum = 0; for (let k = 0; k < T; k++) wsum += Math.sin(Math.PI * (k + 0.5) / T);
+      for (let k = 0; k < T; k++) if (st + k >= 0 && st + k < N) curves[st + k] += d * SEG * Math.sin(Math.PI * (k + 0.5) / T) / wsum;
+    }
+    // map position for each segment
+    const posAt = f => {
+      const d = f * Lp;
+      let k = 1; while (k < cum.length - 1 && cum[k] < d) k++;
+      const t = (d - cum[k - 1]) / Math.max(1e-6, cum[k] - cum[k - 1]);
+      return [poly[k - 1][0] + (poly[k][0] - poly[k - 1][0]) * t, poly[k - 1][1] + (poly[k][1] - poly[k - 1][1]) * t];
+    };
+    // gentle wiggles that cancel out, so the heading always matches the map
+    let k = lo + 40;
+    while (k < hi - 60) {
+      const [mx, my] = posAt(k / N);
+      const bio = BIOMES[biomeAtMap(mx, my).a];
+      const L = Math.round(bio.len[0] + r() * (bio.len[1] - bio.len[0]));
+      if (k + L > hi) break;
+      const amp = bio.curves[Math.floor(r() * bio.curves.length)] * 0.7 * (r() < 0.5 ? -1 : 1);
+      for (let j = 0; j < L; j++) curves[k + j] += amp * Math.sin(2 * Math.PI * (j + 0.5) / L);
+      k += L + Math.floor(r() * 120);
+    }
+    // hills, flat through towns
+    const ys = new Float32Array(N + 1);
+    ys[0] = this.y;
+    let j = 0;
+    while (j < N) {
+      if (j < hA || j >= N - hB) { ys[j + 1] = ys[j]; j++; continue; }
+      const [mx, my] = posAt(j / N);
+      const bio = BIOMES[biomeAtMap(mx, my).a];
+      let len = Math.round(bio.len[0] + r() * (bio.len[1] - bio.len[0]));
+      len = Math.min(len, N - hB - j);
+      let target = ys[j] + (r() * 2 - 1) * bio.hill;
+      target = Math.max(-4500, Math.min(4500, target));
+      if (len < 40) target = ys[j];
+      const y0 = ys[j];
+      for (let q = 0; q < len; q++) ys[j + q + 1] = easeInOut(y0, target, (q + 1) / len);
+      j += len;
+    }
+    const s0 = this.segs.length;
+    let h = this.heading;
+    for (let q = 0; q < N; q++) {
+      const [mx, my] = posAt((q + 0.5) / N);
+      h += curves[q] / SEG;
+      const town = q < hA && NODES[e.from].type !== 'junction' ? e.from : q >= N - hB && NODES[e.to].type !== 'junction' ? e.to : null;
+      this.push(curves[q], ys[q], ys[q + 1], { bio: biomeAtMap(mx, my), heading: h, mx, my, town });
+    }
+    this.heading = h; this.y = ys[N];
+    const s1 = this.segs.length;
+    this.legs.push({ e, s0, s1 });
+    // roadside: route shield and mileage sign leaving town
+    this.place(s0 + hA + 12, routeShield(e.road.hw), 1.5, { solid: true });
+    this.place(s0 + hA + 30, greenSign([NODES[e.to].name, `${e.road.miles} MI`]), 1.7);
+    // mid-route truck stop on long, empty stretches
+    if (e.road.miles > 55) {
+      const m = s0 + Math.round(N / 2);
+      for (let q = m - ZONE_LEN; q <= m; q++) this.segs[q].zone = 'gas';
+      this.place(m, 'gas', 2.35); this.place(m - ZONE_LEN - 4, 'price', 1.7);
+      this.place(m - 200, greenSign(['TRUCK STOP', '2 MI']), 1.7);
+      this.place(m + 30, BUILDINGS[Math.floor(r() * BUILDINGS.length)], -2.6);
+      this.pumps.push({ name: 'TRUCK STOP', idx: m });
+      this.reserved = [m - ZONE_LEN - 8, m + 12];
+    }
+    this.centerAt = NODES[e.to].type !== 'junction' ? s1 - 1 : null;
+    this.decorate(s0, s1);
+    this.reserved = null; this.centerAt = null;
+    if (NODES[e.to].type !== 'junction') this.townCenter(e.to, s1 - 1, s1 - hB);
+    else this.marks.push({ node: e.to, idx: s1 - 1 });
+    return { s0, s1 };
+  }
 
-  for (const [a, b, t] of ranges) {
-    if (t.stop) {
-      const idx = segOfMile(t.mile);
-      for (let k = idx - ZONE_LEN; k <= idx; k++) segs[k].zone = 'stop';
-      reserve(idx);
-      const sh = place(idx, 'shelter_full', 1.55);
-      stops.push({
-        name: t.name, mile: t.mile, idx, shelter: sh,
-        arr: t.stop.arr ? parseTime(t.stop.arr) : null, dep: t.stop.dep ? parseTime(t.stop.dep) : null,
-        off: t.stop.off || 0, on: t.stop.on || 0, final: !!t.stop.final, first: !!t.stop.first,
-        state: 'pending', arrivedAt: null,
-      });
-      if (t.stop.first) place(idx + 6, 'depot', 2.7);
+  // Straight continuation so the renderer always has road ahead after the final stop.
+  appendTail(n = DRAW_DIST + 240) {
+    const last = this.segs[this.segs.length - 1];
+    const s0 = this.segs.length;
+    for (let q = 0; q < n; q++) {
+      const ahead = (q + 1) / SEG_PER_MILE;
+      const town = q < 100 && last.town ? last.town : null;
+      this.push(0, this.y, this.y, { bio: last.bio, heading: this.heading, mx: last.mx + Math.sin(this.heading) * ahead, my: last.my - Math.cos(this.heading) * ahead, town });
     }
-    if (t.gas !== undefined) {
-      const idx = segOfMile(t.mile + t.gas);
-      for (let k = idx - ZONE_LEN; k <= idx; k++) segs[k].zone = 'gas';
-      reserve(idx);
-      place(idx, 'gas', 2.35);
-      place(idx - ZONE_LEN - 4, 'price', 1.7);
-      pumps.push({ name: t.name, mile: t.mile + t.gas, idx });
-    }
-    place(a + 2, welcomeSprite(t.name), 1.8);
-    place(a + 8, 'speed35', 1.5);
-    place(b + 3, 'speed65', 1.5);
-    place(b + 14, 'shield', 1.5);
-    for (let k = a + 4; k < b; k += 16) { place(k, 'lamp', -1.45); if (!busy.has(k + 8)) place(k + 8, 'lamp', 1.45); }
-    for (const side of [-1, 1]) {
-      let k = a + 6 + Math.floor(r() * 6);
-      while (k < b - 3) {
-        if (side === 1 && busy.has(k)) { k += 4; continue; }
-        const key = BUILDINGS[Math.floor(r() * BUILDINGS.length)];
-        place(k, key, side * (2.5 + r() * 0.6));
-        k += 9 + Math.floor(r() * 9);
+    this.centerAt = null;
+    this.decorate(s0, this.segs.length);
+  }
+
+  // Centre of a town: bus stop / parking box, gas station, welcome sign.
+  townCenter(nodeId, E, a) {
+    const n = NODES[nodeId];
+    for (let q = E - ZONE_LEN; q <= E; q++) this.segs[q].zone = 'stop';
+    const shelter = this.place(E, 'shelter_full', 1.55, { solid: true });
+    const g = E - 60;
+    for (let q = g - ZONE_LEN; q <= g; q++) if (this.segs[q] && this.segs[q].town) this.segs[q].zone = 'gas';
+    this.place(g, 'gas', 2.35); this.place(g - ZONE_LEN - 4, 'price', 1.7);
+    this.pumps.push({ name: n.name, idx: g });
+    if (n.type === 'city') this.place(E - 18, 'rental', 2.9);
+    this.place(a + 2, welcomeSprite(n.name), 1.8, { solid: true });
+    this.place(a + 8, 'speed35', 1.5, { solid: true });
+    this.marks.push({ node: nodeId, idx: E, shelter });
+  }
+
+  decorate(s0, s1) {
+    const r = this.r, segs = this.segs;
+    for (let i = s0; i < s1; i++) {
+      const s = segs[i];
+      if (s.town) {
+        // town blocks: streetlights and buildings on both sides, leaving room for the bus stop and pumps
+        if (i % 16 === 0) this.place(i, 'lamp', -1.45);
+        const nearCenter = this.isReserved(i);
+        if (i % 16 === 8 && !nearCenter) this.place(i, 'lamp', 1.45);
+        for (const side of [-1, 1]) {
+          if (side === 1 && nearCenter) continue;
+          if (r() < 0.085) this.place(i, BUILDINGS[Math.floor(r() * BUILDINGS.length)], side * (2.5 + r() * 0.6));
+        }
+        continue;
+      }
+      if (this.reserved && i >= this.reserved[0] && i <= this.reserved[1]) continue;
+      if (i % SEG_PER_MILE === 0) this.place(i, 'mile', 1.32);
+      if (i % 22 === 0) this.place(i, 'pole', -1.65);
+      if (i >= this.nextAd) {
+        this.place(i, 'bb' + Math.floor(r() * ADS_COUNT), (r() < 0.5 ? -1 : 1) * (2.1 + r() * 0.6), { solid: true });
+        this.nextAd = i + Math.floor(SEG_PER_MILE * (2 + r() * 3));
+      }
+      const b = s.bio;
+      const bn = r() < b.t ? b.b : b.a;
+      const bio = BIOMES[bn];
+      if (r() < 0.5) this.place(i, bn === 'desert' || bn === 'mesa' || bn === 'sonoran' ? 'pebbles2' : 'pebbles', (r() < 0.5 ? -1 : 1) * (1.36 + r() * 1.4));
+      for (const side of [-1, 1]) {
+        if (r() < bio.density * 0.55) {
+          let roll = r(), key = bio.veg[0][0];
+          for (const [k, w] of bio.veg) { if (roll < w) { key = k; break; } roll -= w; }
+          const big = key.startsWith('pine') || key === 'joshua' || key === 'saguaro' || key === 'boulder' || key.startsWith('juniper');
+          this.place(i, key, side * ((big ? 1.9 : 1.4) + r() * r() * 7));
+        }
+      }
+      if (bn === 'plains') {
+        if (i % 5 === 0) { this.place(i, 'fence', -1.95); this.place(i, 'fence', 1.95); }
+        if (r() < 0.004) this.place(i, r() < 0.5 ? 'cow' : 'cow2', (r() < 0.5 ? -1 : 1) * (2.6 + r() * 3));
+        if (r() < 0.0012) this.place(i, 'windmill', (r() < 0.5 ? -1 : 1) * (3 + r() * 3));
       }
     }
   }
-
-  // countryside
-  let nextAd = segOfMile(3);
-  for (const s of segs) {
-    const i = s.i, m = mileOfSeg(i);
-    if (s.town || m < -0.5) continue;
-    if (i % SEG_PER_MILE === 0) place(i, 'mile', 1.32);
-    if (i % 22 === 0) place(i, 'pole', -1.65);
-    if (i % (SEG_PER_MILE * 7) === 40) place(i, 'shield', 1.5);
-    if (i >= nextAd) {
-      place(i, 'bb' + Math.floor(r() * ADS_COUNT), (r() < 0.5 ? -1 : 1) * (2.1 + r() * 0.6));
-      nextAd = i + Math.floor(SEG_PER_MILE * (2 + r() * 3));
-    }
-    const b = biomeAt(m);
-    const bn = r() < b.t ? b.b : b.a;
-    const bio = BIOMES[bn];
-    if (r() < 0.5) place(i, bn === 'desert' || bn === 'mesa' ? 'pebbles2' : 'pebbles', (r() < 0.5 ? -1 : 1) * (1.36 + r() * 1.4));
-    for (const side of [-1, 1]) {
-      if (r() < bio.density * 0.55) {
-        let roll = r(), key = bio.veg[0][0];
-        for (const [k, w] of bio.veg) { if (roll < w) { key = k; break; } roll -= w; }
-        const big = key.startsWith('pine') || key === 'joshua' || key === 'saguaro' || key === 'boulder' || key.startsWith('juniper');
-        const off = side * ((big ? 1.9 : 1.4) + r() * r() * 7);
-        place(i, key, off);
-      }
-    }
-    if (bn === 'plains') {
-      if (i % 5 === 0) { place(i, 'fence', -1.95); place(i, 'fence', 1.95); }
-      if (r() < 0.004) place(i, r() < 0.5 ? 'cow' : 'cow2', (r() < 0.5 ? -1 : 1) * (2.6 + r() * 3));
-      if (r() < 0.0012) place(i, 'windmill', (r() < 0.5 ? -1 : 1) * (3 + r() * 3));
-    }
-  }
-  return { segs, stops, pumps, length: segs.length * SEG };
+  // the last 120 segments of each arriving town half hold the stop and the pumps
+  isReserved(i) { return this.centerAt !== null && i >= this.centerAt - 120 && i <= this.centerAt + 4; }
 }

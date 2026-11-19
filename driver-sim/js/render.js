@@ -1,9 +1,8 @@
 // Pseudo-3D road renderer (classic segment projection), drawn at 320x180.
-import { W, H, HORIZON, SEG, ROAD_W, CAM_H, CAM_DEPTH, DRAW_DIST, FOG, METER } from './config.js';
+import { W, H, HORIZON, SEG, ROAD_W, CAM_DEPTH, DRAW_DIST, FOG, METER } from './config.js';
 import { makeCanvas, lerpC, hex, css, clamp } from './gfx.js';
 import { SPR } from './sprites.js';
 import { LAYERS, BG_W } from './backgrounds.js';
-import { biomeAt, mileOfSeg } from './track.js';
 
 const [world, wctx] = makeCanvas(W, H);
 export const worldCanvas = world;
@@ -105,7 +104,8 @@ export function renderWorld(game, sky) {
   const fog = lerpC(sky.bottom, [128, 128, 140], 0.1);
 
   // backgrounds with biome cross-fade
-  const bio = biomeAt(mileOfSeg(player.z / SEG));
+  const bio = (segs[Math.floor(player.z / SEG)] || segs[0]).bio;
+  const hdg = game.heading();
   hazeRGB = fog;
   // when the landscape changes, the old ranges sink below the horizon and the new ones rise
   let name = bio.a, sink = 0;
@@ -115,7 +115,7 @@ export function renderWorld(game, sky) {
   sink = sink * sink * (3 - 2 * sink);
   for (let L = 0; L < 3; L++) {
     const img = LAYERS[name][L];
-    const off = Math.round((((game.bgOffset * [1.0, 1.7, 2.6][L]) % BG_W) + BG_W) % BG_W);
+    const off = Math.round((((hdg * (1920 / (2 * Math.PI)) * [1.0, 1.04, 1.08][L]) % BG_W) + BG_W) % BG_W);
     const y = Math.round(HORIZON - img.height + [4, 8, 12][L] + sink * (img.height + 4));
     ctx.drawImage(img, -off, y); ctx.drawImage(img, BG_W - off, y);
   }
@@ -129,7 +129,7 @@ export function renderWorld(game, sky) {
   const base = segs[baseIdx];
   const pct = (player.z % SEG) / SEG;
   const playerY = base.p1.wy + (base.p2.wy - base.p1.wy) * pct;
-  const camY = playerY + CAM_H;
+  const camY = playerY + game.vehicle.camH;
   // far ground fill
   ctx.fillStyle = css(lerpC(base.ground, fog, 0.85));
   ctx.fillRect(0, HORIZON + 6, W, H);

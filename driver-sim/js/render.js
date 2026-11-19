@@ -68,6 +68,10 @@ function drawSegment(ctx, s, fog, f) {
   if (s.i % 6 === 0 && w1 > 30) { ctx.fillStyle = fogC([250, 220, 120], fog, f); const r = Math.max(1, Math.round(w1 * 0.012)); ctx.fillRect(x1 - r, y1 - r, r * 2, r); }
 }
 
+const [scratch, sctx] = makeCanvas(W, H);
+let hazeRGB = [128, 128, 128];
+const hazeCss = a => `rgba(${hazeRGB[0] | 0},${hazeRGB[1] | 0},${hazeRGB[2] | 0},${Math.min(1, a).toFixed(2)})`;
+
 function drawSprite(ctx, spr, scale, sx, sy, clipY, alpha, emissive, night, side = 0) {
   const img = spr.img;
   const dh = spr.h * METER * scale * W / 2;
@@ -78,9 +82,17 @@ function drawSprite(ctx, spr, scale, sx, sy, clipY, alpha, emissive, night, side
   const clipH = clipY ? Math.max(0, dy + dh - clipY) : 0;
   if (clipH >= dh) return;
   const srcH = img.height * (1 - clipH / dh);
-  ctx.globalAlpha = alpha;
-  ctx.drawImage(img, 0, 0, img.width, srcH, Math.round(dx), Math.round(dy), Math.round(dw), Math.round(dh - clipH));
-  ctx.globalAlpha = 1;
+  const rx = Math.round(dx), ry = Math.round(dy), rw = Math.max(1, Math.round(dw)), rh = Math.max(1, Math.round(dh - clipH));
+  const haze = 1 - alpha;
+  if (haze > 0.04 && rw <= W && rh <= H) {
+    // distant objects fade into the haze colour instead of turning see-through
+    sctx.globalCompositeOperation = 'copy';
+    sctx.drawImage(img, 0, 0, img.width, srcH, 0, 0, rw, rh);
+    sctx.globalCompositeOperation = 'source-atop';
+    sctx.fillStyle = hazeCss(haze);
+    sctx.fillRect(0, 0, rw, rh);
+    ctx.drawImage(scratch, 0, 0, rw, rh, rx, ry, rw, rh);
+  } else ctx.drawImage(img, 0, 0, img.width, srcH, rx, ry, rw, rh);
   if (night > 0.05 && (spr.glow || spr.lights)) emissive.push({ spr, dx, dy, dw, dh, clipH, srcH, alpha });
 }
 
@@ -94,20 +106,24 @@ export function renderWorld(game, sky) {
 
   // backgrounds with biome cross-fade
   const bio = biomeAt(mileOfSeg(player.z / SEG));
-  const layerSets = bio.t > 0 && bio.a !== bio.b ? [[bio.a, 1], [bio.b, bio.t]] : [[bio.a, 1]];
-  for (let L = 0; L < 3; L++) {
-    for (const [name, alpha] of layerSets) {
-      const img = LAYERS[name][L];
-      const off = (((game.bgOffset * [1.0, 1.7, 2.6][L]) % BG_W) + BG_W) % BG_W;
-      const y = HORIZON - img.height + [4, 8, 12][L];
-      ctx.globalAlpha = alpha;
-      ctx.drawImage(img, -off, y); ctx.drawImage(img, BG_W - off, y);
-    }
-    ctx.globalAlpha = 1;
+  hazeRGB = fog;
+  // when the landscape changes, the old ranges sink below the horizon and the new ones rise
+  let name = bio.a, sink = 0;
+  if (bio.a !== bio.b && bio.t > 0) {
+    if (bio.t < 0.5) sink = bio.t * 2; else { name = bio.b; sink = (1 - bio.t) * 2; }
   }
-  // haze over the background so the road blends in
-  ctx.fillStyle = css(fog, 0.25);
+  sink = sink * sink * (3 - 2 * sink);
+  for (let L = 0; L < 3; L++) {
+    const img = LAYERS[name][L];
+    const off = Math.round((((game.bgOffset * [1.0, 1.7, 2.6][L]) % BG_W) + BG_W) % BG_W);
+    const y = Math.round(HORIZON - img.height + [4, 8, 12][L] + sink * (img.height + 4));
+    ctx.drawImage(img, -off, y); ctx.drawImage(img, BG_W - off, y);
+  }
+  // a little haze on the mountains only (not on the sky)
+  ctx.globalCompositeOperation = 'source-atop';
+  ctx.fillStyle = css(fog, 0.15);
   ctx.fillRect(0, 0, W, HORIZON + 12);
+  ctx.globalCompositeOperation = 'source-over';
 
   const baseIdx = Math.floor(player.z / SEG);
   const base = segs[baseIdx];
@@ -143,7 +159,7 @@ export function renderWorld(game, sky) {
   for (let n = drawn.length - 1; n > 0; n--) {
     const s = drawn[n];
     if (s.p1.cz <= 50) continue;
-    const alpha = clamp(1 - s.fog * 1.1, 0, 1);
+    const alpha = clamp(1 - s.fog * 0.9, 0, 1);
     for (const sp of s.sprites) {
       const spr = SPR[sp.k];
       if (!spr) continue;

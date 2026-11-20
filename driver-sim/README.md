@@ -7,6 +7,13 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 6: service roads
+
+- Gas stations, diners and motels now sit on their own one-way service road instead of on the highway's shoulder. The service road leaves on the right, runs past the businesses, and merges back into the same highway.
+- Every town has one on the way out, with gas, a diner and a motel. The long empty highways have one at the truck stop.
+- A green SERVICES sign and a striped marker show where it starts. Keep right onto it (a hint pops up if you're low on gas, hungry or tired), stop in the painted bay next to the pump, diner or motel, and press Space. Then keep driving and it brings you back to the highway.
+- Highway traffic stays on the highway, and you can't stop for gas or food on the highway itself any more.
+
 ## Update 5: roads that split in front of you
 
 - Highway interchanges (I-40/AZ-95, Cordes Jct) and the big cities with several roads out (Kingman, Williams, Flagstaff, Prescott) no longer use a menu. The road visibly splits into one road per destination, and they peel apart in front of you.

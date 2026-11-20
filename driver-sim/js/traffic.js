@@ -38,14 +38,14 @@ export class Traffic {
       c.z += c.dir * c.mph * MPH2U * dt;
       const dist = c.z - p.z;
       let target = c.lane;
-      if (c.dir < 0 && dist > 0 && dist < 9000 && p.x < 0.1) {
+      if (c.dir < 0 && dist > 0 && dist < 9000 && game.mainX() < 0.1) {
         target = -1.05; // swerve onto the shoulder
         if (!c.honked && dist < 7000) { c.honked = true; game.audio.honk(0.6); }
       }
       c.x += Math.sign(target - c.x) * Math.min(Math.abs(target - c.x), 1.2 * dt);
       // collisions with the bus
       const wide = c.type === 'semi' || c.type === 'rv' ? 0.72 : 0.62;
-      if (dist > 0 && dist < 900 && Math.abs(c.x - p.x) < wide) {
+      if (dist > 0 && dist < 900 && Math.abs(c.x - game.mainX()) < wide) {
         if (c.dir > 0) {
           if (p.speed > c.mph) {
             p.speed = Math.max(0, c.mph - 6);

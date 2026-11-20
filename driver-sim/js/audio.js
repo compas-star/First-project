@@ -1,4 +1,6 @@
 // All sound is synthesized with WebAudio: engine, road, horn, doors and a little AM radio.
+// After the built-in stations, the radio dial has real internet stations (see netradio.js).
+import { NetRadio } from './netradio.js';
 const STATIONS = [
   { label: 'OFF' },
   { label: 'KRTE 66AM', style: 'country' },
@@ -6,9 +8,21 @@ const STATIONS = [
 ];
 
 export class Audio {
-  constructor() { this.ctx = null; this.muted = false; this.station = 1; this.step = 0; }
+  constructor() {
+    this.ctx = null; this.muted = false; this.station = 1; this.step = 0;
+    this.net = new NetRadio();
+    // if you tuned to the internet stations while they were still being found, start the first one
+    this.net.onReady = () => { const st = this.dial()[this.station]; if (st && st.online) this.net.play(st); };
+  }
+  // the whole dial: off, the two built-in stations, then the internet stations
+  dial() {
+    const n = this.net;
+    const net = n.stations.length ? n.stations : [{ label: n.status === 'failed' ? 'NO NET RADIO' : 'SEARCHING..', placeholder: true }];
+    return [...STATIONS, ...net];
+  }
 
   init() {
+    try { this.net.unlock(); } catch (e) { /* no internet radio then */ }
     if (this.ctx) { this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
@@ -46,13 +60,21 @@ export class Audio {
     setInterval(() => this.schedule(), 40);
   }
 
-  setMuted(m) { this.muted = m; if (this.master) this.master.gain.value = m ? 0 : 0.8; }
-  radioLabel() { return STATIONS[this.station].label; }
+  setMuted(m) { this.muted = m; if (this.master) this.master.gain.value = m ? 0 : 0.8; this.net.setMuted(m); }
+  radioLabel() {
+    const st = this.dial()[this.station] || STATIONS[0];
+    if (st.online) return this.net.state === 'tuning' ? 'TUNING...' : this.net.state === 'nosignal' ? 'NO SIGNAL' : st.label;
+    return st.label;
+  }
+  // returns { label, off } for the on-screen message
   cycleRadio() {
-    this.station = (this.station + 1) % STATIONS.length;
-    this.noise(0.12, 1200, 0.02, this.radioIn);
+    const dial = this.dial();
+    this.station = (this.station + 1) % dial.length;
+    const st = dial[this.station];
+    if (st.online) this.net.play(st); else this.net.stop();
+    if (this.ctx) this.noise(0.12, 1200, 0.02, this.radioIn);
     this.step = 0;
-    return STATIONS[this.station];
+    return { label: st.online ? `${st.name} (ONLINE)` : st.label, off: this.station === 0 };
   }
 
   update(speed, throttle, offroad, paused) {
@@ -70,6 +92,7 @@ export class Audio {
     this.roadG.gain.setTargetAtTime(paused ? 0 : Math.min(0.035, speed / 2000) + (offroad ? 0.06 : 0), t, 0.15);
     this.roadF.frequency.setTargetAtTime(offroad ? 220 : 90 + speed, t, 0.2);
     this.radioG.gain.setTargetAtTime(paused ? 0 : 0.09, t, 0.1);
+    this.net.setPaused(paused);
   }
 
   horn(on) { if (this.ctx) this.hornG.gain.setTargetAtTime(on ? 0.09 : 0, this.ctx.currentTime, 0.02); }
@@ -108,7 +131,7 @@ export class Audio {
   // ---------- generative radio ----------
   schedule() {
     if (!this.ctx) return;
-    const st = STATIONS[this.station];
+    const st = STATIONS[this.station] || {};
     while (this.nextNote < this.ctx.currentTime + 0.15) {
       if (st.style) this.playStep(st.style, this.step, this.nextNote - this.ctx.currentTime);
       const bpm = st.style === 'desert' ? 72 : 104;

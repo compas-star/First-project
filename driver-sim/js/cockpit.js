@@ -291,7 +291,7 @@ function needle(ctx, [cx, cy, r], frac, start, sweep, col) {
 
 // Steering wheel: a flat ellipse seen from above. The rim doesn't change when it turns;
 // the spokes, grips and hands slide around it.
-function drawWheel(ctx, ang, geo = WH) {
+function drawWheel(ctx, ang, geo = WH, badge = 'PDC') {
   const { cx, cy, rx, ry, t } = geo;
   for (let yy = Math.floor(cy - ry - 1); yy < H; yy++) for (let xx = cx - rx - 2; xx <= cx + rx + 2; xx++) {
     const dx = xx - cx, dy = yy - cy;
@@ -315,7 +315,7 @@ function drawWheel(ctx, ang, geo = WH) {
   }
   ellipse(ctx, cx, cy, 26, 12, '#1a1816'); ellipse(ctx, cx, cy, 23, 10, '#2e2a27');
   ellipse(ctx, cx, cy - 1, 15, 6, '#3a3632');
-  drawText(ctx, 'PDC', cx, cy - 6, '#c8a050', 1, 'center');
+  drawText(ctx, badge, cx, cy - 6, '#c8a050', 1, 'center');
 }
 
 function mirrorGlass(ctx, [mx, my, mw, mh], sky, flip) {
@@ -339,6 +339,13 @@ export function renderCockpit(main, game, sky, t) {
   mirrorGlass(ctx, MIRL, sky, false); mirrorGlass(ctx, MIRR, sky, true);
   ctx.drawImage(base, 0, 0);
 
+  const truck = game.mode === 'truck';
+  if (truck) {
+    // the mirror shows the sleeper berth curtain behind you
+    rect(ctx, 196, 19, 88, 18, '#0e0e0e'); rect(ctx, 198, 20, 84, 15, '#6a2a2a');
+    for (let k = 0; k < 84; k += 6) rect(ctx, 198 + k, 20, 2, 15, '#5a2222');
+    rect(ctx, 198, 20, 84, 2, '#8a8a8a');
+  } else {
   // interior mirror with passengers
   rect(ctx, 196, 19, 88, 18, '#0e0e0e'); rect(ctx, 198, 20, 84, 15, '#5a544c');
   rect(ctx, 198, 20, 84, 4, '#7a746a');
@@ -356,7 +363,21 @@ export function renderCockpit(main, game, sky, t) {
     }
   }
   rect(ctx, 198, 20, 84, 1, '#a8a298');
+  }
 
+  if (truck) {
+    // a truck cab, not a bus: company plate, a cab door with a side window, parking brake knob
+    rect(ctx, 152, 2, 176, 10, '#1e1e1e');
+    drawText(ctx, 'DESERT FREIGHT CO.', 240, 4, '#8a6a3a', 1, 'center');
+    ctx.clearRect(444, 23, 7, 133);
+    rect(ctx, 412, 17, 68, 12, '#3a3a40'); rect(ctx, 412, 100, 68, 56, '#3a3a40');
+    rect(ctx, 412, 17, 6, 139, '#2c2c30'); rect(ctx, 474, 17, 6, 139, '#2c2c30');
+    rect(ctx, 418, 29, 56, 2, '#1c1c1e'); rect(ctx, 418, 98, 56, 2, '#1c1c1e');
+    rect(ctx, 424, 112, 30, 6, '#26262a'); rect(ctx, 426, 113, 12, 3, '#8a8a90');   // door handle
+    rect(ctx, 360, 246, 28, 12, '#1c1a18');
+    poly(ctx, [366, 252, 371, 247, 376, 252, 371, 257], '#e8c020');
+    drawText(ctx, 'P', 371, 250, '#111', 1, 'center');
+  }
   // fuzzy dice
   const sw = game.diceSwing;
   const dx = 240 + Math.sin(sw) * 14, dy = 36 + Math.cos(sw) * 16;
@@ -384,7 +405,7 @@ export function renderCockpit(main, game, sky, t) {
 
   // steering wheel, arms and hands
   const wa = p.wheel * 0.85;
-  drawWheel(ctx, wa);
+  drawWheel(ctx, wa, WH, truck ? 'DF' : 'PDC');
   for (const side of [-1, 1]) {
     const a = -Math.PI / 2 + side * 1.0 + wa * 0.6;
     const hx = WH.cx + Math.cos(a) * (WH.rx - 4), hy = WH.cy + Math.sin(a) * (WH.ry - 4);
@@ -430,13 +451,25 @@ export function renderCockpit(main, game, sky, t) {
 
   // radio display
   drawText(ctx, game.audio.radioLabel(), 59, 199, `rgba(255,170,60,${glow})`, 1, 'center');
+  const lcd = `rgba(125,255,122,${0.55 + glow * 0.45})`;
+  if (truck) {
+    // trip computer: the load, where it goes and when it's due
+    drawText(ctx, timeStr(game.clock), 314, 196, lcd, 2);
+    drawText(ctx, `${Math.round(game.cargo)}%`, 404, 196, game.cargo > 60 ? lcd : '#ff8a6a', 1, 'right');
+    drawText(ctx, game.load.cargo.slice(0, 14), 314, 210, lcd);
+    drawText(ctx, NODES[game.dest].name.slice(0, 14), 314, 217, lcd);
+    const left = Math.round((game.deadline - game.clock) / 60);
+    drawText(ctx, `DUE ${timeStr(game.deadline)}`, 314, 226, left < 0 ? '#ff8a6a' : lcd);
+    drawText(ctx, `${(game.milesLeft ?? game.milesToDest()).toFixed(0)} MI`, 404, 226, lcd, 1, 'right');
+    main.drawImage(layer, 0, 0);
+    return;
+  }
   // door lever + lamp
   const open = game.doorsOpen;
   line(ctx, 390, 264, open ? 400 : 380, 254, '#c8c8c8', 2); circle(ctx, open ? 400 : 380, 254, 2, '#c02020');
   rect(ctx, 396, 249, 5, 4, open ? '#ff4a3a' : '#2a1010');
 
   // destination LCD
-  const lcd = `rgba(125,255,122,${0.55 + glow * 0.45})`;
   drawText(ctx, timeStr(game.clock), 314, 196, lcd, 2);
   drawText(ctx, `PAX ${String(game.passengers).padStart(2, '0')}`, 404, 196, lcd, 1, 'right');
   drawText(ctx, game.comfort > 70 ? ':)' : game.comfort > 40 ? ':|' : ':(', 404, 203, lcd, 1, 'right');

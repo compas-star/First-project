@@ -126,7 +126,7 @@ function drawHud(g) {
   }
   if (g.player.reverse) { box(CX - 34, 40, 68, 14, 0.7); drawText(ctx, 'R - REVERSE', CX, 44, '#ffd36a', 1, 'center'); }
   const act = document.getElementById('tAction');
-  if (g.action) { act.textContent = g.action === 'doors' ? 'OPEN DOORS' : g.action === 'park' ? 'RETURN CAR' : 'REFUEL'; act.classList.add('show'); }
+  if (g.action) { act.textContent = { doors: 'OPEN DOORS', park: 'RETURN CAR', deliver: 'DELIVER', fuel: 'REFUEL', coffee: 'COFFEE', eat: 'EAT', sleep: 'SLEEP' }[g.action] || 'OK'; act.classList.add('show'); }
   else act.classList.remove('show');
 }
 
@@ -142,8 +142,8 @@ function drawPaperMap(g) {
   }
   const view = { x: 18, y: 14, w: W - 36, h: H - 40, cx: s.mx, cy: s.my, s: 1.9 };
   box(0, 0, W, H, 0.45);
-  drawMap(ctx, view, { route, player: { mx: s.mx, my: s.my, heading: g.heading() }, selected: g.mode === 'car' ? g.dest : g.job.stops[g.job.stops.length - 1] }, t);
-  const info = g.mode === 'car' ? `TO ${NODES[g.dest].name}: ${g.milesToDest().toFixed(0)} MI` : `${g.job.name}: NEXT ${g.nextStop()?.name || '-'}`;
+  drawMap(ctx, view, { route, player: { mx: s.mx, my: s.my, heading: g.heading() }, selected: g.mode !== 'bus' ? g.dest : g.job.stops[g.job.stops.length - 1] }, t);
+  const info = g.mode === 'truck' ? `${g.load.cargo} TO ${NODES[g.dest].name}: ${g.milesToDest().toFixed(0)} MI, DUE ${timeStr(g.deadline)}` : g.mode === 'car' ? `TO ${NODES[g.dest].name}: ${g.milesToDest().toFixed(0)} MI` : `${g.job.name}: NEXT ${g.nextStop()?.name || '-'}`;
   box(18, H - 26, W - 36, 14, 0.85);
   drawText(ctx, info, 24, H - 22, '#ffd36a');
   drawText(ctx, input.touch ? 'TAP MAP TO FOLD' : 'M - FOLD THE MAP', W - 24, H - 22, '#c8c8c8', 1, 'right');
@@ -154,8 +154,8 @@ function drawTitle() {
   drawText(ctx, 'MOTHER ROAD', CX, 22, '#ffd36a', 6, 'center', '#6a2a1a');
   say('DRIVING FOR A LIVING - ARIZONA, 1994', 62, '#f2e2b8', 2);
   rect(ctx, 90, 78, 300, 1, '#8a6a3a');
-  say('TAKE BUS SHIFTS ACROSS THE STATE. RENT A CAR TO GET', 86, '#c8d8ff', 1);
-  say('TO THE NEXT DEPOT. WATCH YOUR MONEY, SLEEP IN MOTELS.', 94, '#c8d8ff', 1);
+  say('DRIVE BUS SHIFTS, HAUL FREIGHT ON A DEADLINE, RENT A CAR', 86, '#c8d8ff', 1);
+  say('TO GET AROUND. WATCH YOUR MONEY, SLEEP IN MOTELS.', 94, '#c8d8ff', 1);
   const items = hasSave ? [`CONTINUE - DAY ${career.day}, ${career.here.name}, $${career.money.toFixed(0)}`, 'NEW CAREER'] : ['START A NEW CAREER'];
   titleSel = Math.min(titleSel, items.length - 1);
   if (input.take('up')) titleSel = Math.max(0, titleSel - 1);
@@ -177,14 +177,23 @@ function drawTitle() {
   }
   if (!input.touch) {
     box(70, 168, 340, 84, 0.8);
-    ['ARROWS / WASD - DRIVE AND STEER     SPACE - DOORS / FUEL / PARK', 'M - PAPER MAP     Q / E - PICK A ROAD AT JUNCTIONS',
-      'C - CRUISE   R - RADIO   H - HORN   L - LIGHTS   N - MUTE', 'P - PAUSE (BACK TO MAP IN THE MENU)'].forEach((k, i) => say(k, 176 + i * 18, '#e8e0d0', 1));
+    ['ARROWS / WASD - DRIVE AND STEER     SPACE - DOORS / FUEL / PARK', 'M - PAPER MAP     STEER ONTO THE ROAD YOU WANT AT SPLITS',
+      'C - CRUISE   R - RADIO (+ ONLINE)   H - HORN   L - LIGHTS   N - MUTE', 'P - PAUSE (BACK TO MAP IN THE MENU)'].forEach((k, i) => say(k, 176 + i * 18, '#e8e0d0', 1));
   }
 }
 
 function drawReport() {
   box(0, 0, W, H, 0.86);
-  if (report.mode === 'car') {
+  if (report.mode === 'truck') {
+    const L = report.load;
+    drawText(ctx, 'LOAD DELIVERED', CX, 24, '#ffd36a', 3, 'center', '#6a2a1a');
+    say(`${L.tons} TONS OF ${L.cargo} TO ${NODES[L.dest].name}`, 58, '#ffffff', 2);
+    say(`DUE ${timeStr(report.deadline)}   DELIVERED ${timeStr(report.arrived)}`, 84, '#e8e0d0', 1);
+    say(report.late <= 0 ? `ON TIME${report.late < -5 ? ` - ${-report.late} MIN EARLY` : ''}! +15% BONUS` : `${report.late} MIN LATE`, 98, report.late <= 0 ? '#9aff8a' : '#ff8a6a', 2);
+    say(`LOAD CONDITION: ${Math.round(report.cargo)}%`, 120, report.cargo > 80 ? '#9aff8a' : report.cargo > 50 ? '#ffd36a' : '#ff8a6a', 1);
+    say(`${report.miles.toFixed(0)} MILES DRIVEN   CRASHES: ${report.crashes}`, 132, '#e8e0d0', 1);
+    drawText(ctx, `PAID: $${report.pay.toFixed(2)}`, CX, 156, '#9aff8a', 3, 'center');
+  } else if (report.mode === 'car') {
     drawText(ctx, 'TRIP COMPLETE', CX, 30, '#ffd36a', 3, 'center', '#6a2a1a');
     say(`YOU ARRIVED IN ${NODES[report.node].name}`, 70, '#ffffff', 2);
     say(`${report.miles.toFixed(0)} MILES DRIVEN`, 96, '#e8e0d0', 1);
@@ -228,6 +237,7 @@ function frame(now) {
     const r = hub.update(input);
     hub.draw(ctx, t);
     if (r && r.type === 'bus') { game = new Game(audio, career); game.startBus(r.job); state = 'drive'; paused = false; setPlaying(true); }
+    if (r && r.type === 'truck') { game = new Game(audio, career); game.startTruck(r.load); state = 'drive'; paused = false; setPlaying(true); }
     if (r && r.type === 'car') { career.add('CAR RENTAL (U-DRIVE)', -RENT_PRICE); game = new Game(audio, career); game.startCar(r.dest); state = 'drive'; paused = false; setPlaying(true); }
     if (r && r.type === 'title') { state = 'title'; setPlaying(false); }
   } else if (state === 'drive') {

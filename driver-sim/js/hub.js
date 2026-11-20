@@ -5,10 +5,12 @@ import { drawText, textWidth } from './font.js';
 import { NODES, JOBS, shortestPath, pathMiles, pathVia } from './world.js';
 import { drawMap, nodeAt, FULL_VIEW } from './mapview.js';
 import { RENT_PRICE, MOTEL_PRICE, MEAL_PRICE } from './career.js';
+import { freightOffers } from './freight.js';
 
 const MAP = { x: 4, y: 4, w: 296, h: 262, ...FULL_VIEW };
 const PX = 306, PW = 170;
-const TABS = ['JOBS', 'CAR', 'REST', 'MONEY'];
+const TABS = ['BUS', 'CAR', 'REST', 'MONEY', 'TRUCK'];
+const ORDER = [0, 4, 1, 2, 3];   // left to right on the clipboard
 const money = v => `${v < 0 ? '-' : ''}$${Math.abs(v).toFixed(2)}`;
 const dur = miles => { const m = Math.round(miles / 50 * 60); return `${Math.floor(m / 60)}H ${String(m % 60).padStart(2, '0')}M`; };
 
@@ -21,6 +23,10 @@ export class Hub {
     const others = JOBS.filter(j => j.stops[0] !== here).sort((a, b) => (shortestPathMiles(here, a.stops[0]) - shortestPathMiles(here, b.stops[0])));
     return [...mine, ...others];
   }
+  loads() {
+    const c = this.career, taken = c.taken || [];
+    return freightOffers(c.node, c.day).filter(l => !taken.includes(l.id));
+  }
   destList() {
     const here = this.career.node;
     return Object.values(NODES).filter(n => n.type !== 'junction' && n.id !== here).sort((a, b) => shortestPathMiles(here, a.id) - shortestPathMiles(here, b.id));
@@ -30,9 +36,10 @@ export class Hub {
   update(input) {
     let result = null;
     const c = this.career;
-    if (input.take('left')) { this.tab = (this.tab + 3) % 4; this.sel = 0; this.scroll = 0; }
-    if (input.take('right')) { this.tab = (this.tab + 1) % 4; this.sel = 0; this.scroll = 0; }
-    const list = this.tab === 0 ? this.jobList() : this.tab === 1 ? this.destList() : [];
+    const step = d => { this.tab = ORDER[(ORDER.indexOf(this.tab) + d + ORDER.length) % ORDER.length]; this.sel = 0; this.scroll = 0; };
+    if (input.take('left')) step(-1);
+    if (input.take('right')) step(1);
+    const list = this.tab === 0 ? this.jobList() : this.tab === 1 ? this.destList() : this.tab === 4 ? this.loads() : [];
     if (list.length) {
       if (input.take('up')) this.sel = Math.max(0, this.sel - 1);
       if (input.take('down')) this.sel = Math.min(list.length - 1, this.sel + 1);
@@ -59,10 +66,11 @@ export class Hub {
     for (let y = 0; y < H; y += 6) { ctx.fillStyle = y % 12 ? '#563c2c' : '#5e4434'; ctx.fillRect(0, y, W, 3); } // wooden table
     // route to show on the map
     let route = null;
-    const list = this.tab === 0 ? this.jobList() : this.tab === 1 ? this.destList() : [];
+    const list = this.tab === 0 ? this.jobList() : this.tab === 1 ? this.destList() : this.tab === 4 ? this.loads() : [];
     if (this.tab === 0 && list[this.sel]) route = list[this.sel].path;
+    if (this.tab === 4 && list[this.sel]) route = shortestPath(c.node, list[this.sel].dest);
     if (this.tab === 1 && this.dest) route = shortestPath(c.node, this.dest);
-    drawMap(ctx, MAP, { here: c.node, selected: this.tab === 1 ? this.dest : null, route }, t);
+    drawMap(ctx, MAP, { here: c.node, selected: this.tab === 1 ? this.dest : this.tab === 4 && list[this.sel] ? list[this.sel].dest : null, route }, t);
     rect(ctx, MAP.x + 4, MAP.y + MAP.h - 30, 104, 14, 'rgba(244,236,214,0.92)');
     drawText(ctx, 'ARIZONA ROAD MAP 1994', MAP.x + 8, MAP.y + MAP.h - 26, '#5a2a1a');
 
@@ -75,16 +83,17 @@ export class Hub {
     drawText(ctx, `DAY ${c.day}  ${c.time}`, x0, 27, '#3a3a3a');
     drawText(ctx, money(c.money), PX + PW - 8, 27, c.money < 0 ? '#c0202a' : '#1a7a2a', 1, 'right');
     // tabs
-    TABS.forEach((name, i) => {
-      const bx = PX + 2 + i * 41, by = 36;
-      rect(ctx, bx, by, 40, 12, i === this.tab ? '#2a5a9a' : '#c8bea4');
-      drawText(ctx, name, bx + 20, by + 4, i === this.tab ? '#fff' : '#3a2a1a', 1, 'center');
-      this.buttons.push({ x: bx, y: by, w: 40, h: 12, fn: () => { this.tab = i; this.sel = 0; this.scroll = 0; } });
+    ORDER.forEach((i, pos) => {
+      const name = TABS[i], bx = PX + 2 + pos * 33, by = 36;
+      rect(ctx, bx, by, 32, 12, i === this.tab ? '#2a5a9a' : '#c8bea4');
+      drawText(ctx, name, bx + 16, by + 4, i === this.tab ? '#fff' : '#3a2a1a', 1, 'center');
+      this.buttons.push({ x: bx, y: by, w: 32, h: 12, fn: () => { this.tab = i; this.sel = 0; this.scroll = 0; } });
     });
     const y0 = 54;
     if (this.tab === 0) this.drawJobs(ctx, x0, y0, list);
     else if (this.tab === 1) this.drawCar(ctx, x0, y0, list);
     else if (this.tab === 2) this.drawMotel(ctx, x0, y0);
+    else if (this.tab === 4) this.drawTruck(ctx, x0, y0, list);
     else this.drawMoney(ctx, x0, y0);
     if (this.note) { drawText(ctx, this.note, x0, H - 12, '#c0202a'); }
     drawText(ctx, '< > TABS   ^ v SELECT   ENTER: GO', PX + PW / 2, H - 4 - 2, '#9a8a6a', 1, 'center');
@@ -176,9 +185,35 @@ export class Hub {
     drawText(ctx, 'MOTELS, OR GRAB COFFEE AT THE PUMPS.', x0, y0 + 126, '#6a5a4a');
   }
 
+  drawTruck(ctx, x0, y0, list) {
+    const c = this.career;
+    drawText(ctx, `DESERT FREIGHT - ${c.here.name} YARD`.slice(0, 40), x0, y0, '#8a2a1a');
+    drawText(ctx, 'LOADS POSTED TODAY:', x0, y0 + 9, '#6a5a4a');
+    if (!list.length) { drawText(ctx, 'NO LOADS LEFT TODAY. COME BACK', x0, y0 + 24, '#3a3a3a'); drawText(ctx, 'TOMORROW OR TRY ANOTHER TOWN.', x0, y0 + 33, '#3a3a3a'); return; }
+    this.sel = Math.min(this.sel, list.length - 1);
+    list.forEach((l, i) => {
+      const y = y0 + 22 + i * 10;
+      if (i === this.sel) rect(ctx, x0 - 3, y - 2, PW - 8, 10, '#f4dc7a');
+      drawText(ctx, `${l.cargo.slice(0, 13)} > ${NODES[l.dest].name}`.slice(0, 30), x0, y, '#1a1a1a');
+      drawText(ctx, `$${l.pay}`, PX + PW - 8, y, '#1a7a2a', 1, 'right');
+      this.buttons.push({ x: x0 - 3, y: y - 2, w: PW - 8, h: 10, fn: () => { this.sel = i; } });
+    });
+    const l = list[this.sel];
+    const y = y0 + 22 + 5 * 10 + 4;
+    rect(ctx, x0 - 3, y - 3, PW - 8, 1, '#8a7a5a');
+    drawText(ctx, `${l.tons} TONS OF ${l.cargo}${l.fragile ? ' - FRAGILE' : ''}`.slice(0, 40), x0, y, '#1a1a4a');
+    drawText(ctx, `TO ${NODES[l.dest].name}, ${l.miles} MI SHORTEST WAY`.slice(0, 40), x0, y + 9, '#3a3a3a');
+    const due = Math.ceil((c.clock + 20 * 60 + l.hours * 3600) / 900) * 900;
+    drawText(ctx, `DELIVER BY ${timeStr(due)} (${dur(l.hours * 50)})`.slice(0, 40), x0, y + 18, '#c0202a');
+    drawText(ctx, `PAY $${l.pay}, +15% ON TIME`, x0, y + 27, '#3a3a3a');
+    drawText(ctx, 'LATE OR DAMAGED = LESS PAY. DIESEL IS', x0, y + 36, '#6a5a4a');
+    drawText(ctx, 'ON THE COMPANY CARD. YOU PICK THE ROUTE.', x0, y + 44, '#6a5a4a');
+    this.button(ctx, x0, y + 54, PW - 14, 'HOOK UP THE TRAILER', () => ({ type: 'truck', load: l }), true);
+  }
+
   drawMoney(ctx, x0, y0) {
     const c = this.career;
-    drawText(ctx, `SHIFTS ${c.stats.shifts}  MILES ${c.stats.miles}  RIDERS ${c.stats.passengers}`, x0, y0, '#1a1a4a');
+    drawText(ctx, `SHIFTS ${c.stats.shifts} LOADS ${c.stats.loads || 0} MILES ${c.stats.miles}`, x0, y0, '#1a1a4a');
     c.ledger.slice(0, 18).forEach((e, i) => {
       const y = y0 + 12 + i * 9;
       drawText(ctx, `D${e.day} ${e.text}`.slice(0, 30), x0, y, '#3a3a3a');

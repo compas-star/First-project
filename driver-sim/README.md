@@ -7,6 +7,13 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 7: roundabout exits and side streets you can see
+
+- Roundabouts: each exit is now a real road leaving the circle on the right. You see it coming, with a green sign first. To take it, steer right onto it (a hint says "YOUR EXIT – KEEP RIGHT" at the right one). Miss it and you go round again.
+- Side streets in towns and cities: at a crossing, the streets to the left and right are drawn as roads you can turn into. Slow down and steer into one.
+- Stop sign at the end of a side street: both ways (left and right) are drawn. Steer onto the one you want.
+- You only turn off if you're steering that way, so drifting in your lane never sends you down a side street by accident.
+
 ## Update 6: service roads
 
 - Gas stations, diners and motels now sit on their own one-way service road instead of on the highway's shoulder. The service road leaves on the right, runs past the businesses, and merges back into the same highway.

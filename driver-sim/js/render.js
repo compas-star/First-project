@@ -2,6 +2,7 @@
 import { W, H, HORIZON, SEG, ROAD_W, CAM_DEPTH, DRAW_DIST, FOG, METER } from './config.js';
 import { makeCanvas, lerpC, hex, css, clamp } from './gfx.js';
 import { SPR } from './sprites.js';
+import { walkBranch, BR_M } from './track.js';
 import { LAYERS, BG_W } from './backgrounds.js';
 
 const [world, wctx] = makeCanvas(W, H);
@@ -35,6 +36,8 @@ const fogC = (c, fog, f) => css(lerpC(c, fog, f));
 const GRASS = hex('#5f7a3a'), CURB = hex('#b8b4a8');
 function drawSegment(ctx, s, fog, f) {
   const p1 = s.p1, p2 = s.p2, a = s.alt;
+  // other roads beside this one: static (splits, service roads) and this frame's branch roads
+  const BR = s.dbr ? (s.br ? s.br.concat(s.dbr) : s.dbr) : s.br;
   const x1 = p1.sx, y1 = p1.sy, w1 = p1.sw, x2 = p2.sx, y2 = p2.sy, w2 = p2.sw;
   const asphalt = fogC(ASPHALT[a], fog, f);
   ctx.fillStyle = fogC(s.ground, fog, f);
@@ -45,7 +48,7 @@ function drawSegment(ctx, s, fog, f) {
     ctx.fillRect(0, y2, W, y1 - y2 + 1);
   } else {
     // other roads of a split: their verges first, so every road's asphalt goes over every verge
-    if (s.br) for (const b of s.br) {
+    if (BR) for (const b of BR) {
       const bx1 = x1 + b.o1 * w1, bx2 = x2 + b.o2 * w2;
       if (!s.town) quad(ctx, bx1, y1, w1 * 1.55, bx2, y2, w2 * 1.55, fogC(s.dirt, fog, f));
       quad(ctx, bx1, y1, w1 * 1.3, bx2, y2, w2 * 1.3, fogC((s.town ? SIDEWALK : SHOULDER)[a], fog, f));
@@ -60,19 +63,19 @@ function drawSegment(ctx, s, fog, f) {
     quad(ctx, x1 - w1 * 2.6, y1, w1 * 1.45, x2 - w2 * 2.6, y2, w2 * 1.45, fogC(GRASS.map(v => v * (a ? 0.94 : 1)), fog, f));
     quad(ctx, x1 - w1 * 1.13, y1, w1 * 0.06, x2 - w2 * 1.13, y2, w2 * 0.06, fogC(CURB, fog, f));
   }
-  if (s.br) {
-    for (const b of s.br) quad(ctx, x1 + b.o1 * w1, y1, w1, x2 + b.o2 * w2, y2, w2, asphalt);
+  if (BR) {
+    for (const b of BR) quad(ctx, x1 + b.o1 * w1, y1, w1, x2 + b.o2 * w2, y2, w2, asphalt);
     quad(ctx, x1, y1, w1, x2, y2, w2, asphalt);
     // their paint: a centre line, and edge lines where no other road covers them
     const white = fogC(WHITE, fog, f), yel = fogC(YELLOW, fog, f);
-    for (const b of s.br) {
+    for (const b of BR) {
       const bx1 = x1 + b.o1 * w1, bx2 = x2 + b.o2 * w2;
       if (b.zone) {
         const zc = fogC(b.zone === 'stop' ? STOPPAINT : APRON, fog, f);
         quad(ctx, bx1 + w1 * 0.55, y1, w1 * 0.45, bx2 + w2 * 0.55, y2, w2 * 0.45, zc);
         if (b.zone !== 'stop') quad(ctx, bx1 + w1 * 1.15, y1, w1 * 0.2, bx2 + w2 * 1.15, y2, w2 * 0.2, zc);
       }
-      if (b.svc) { if (s.i % 4 < 2) quad(ctx, bx1, y1, w1 * 0.018, bx2, y2, w2 * 0.018, white); }
+      if (b.svc || b.oneway) { if (s.i % 4 < 2) quad(ctx, bx1, y1, w1 * 0.018, bx2, y2, w2 * 0.018, white); }
       else if (a) quad(ctx, bx1, y1, w1 * 0.02, bx2, y2, w2 * 0.02, yel);
       if (s.town) continue;
       if (!b.noL) quad(ctx, bx1 - w1 * 0.95, y1, w1 * 0.025, bx2 - w2 * 0.95, y2, w2 * 0.025, white);
@@ -227,6 +230,18 @@ export function renderWorld(game, sky) {
   ctx.fillStyle = css(lerpC(base.ground, fog, 0.85));
   ctx.fillRect(0, HORIZON + 6, W, H);
 
+  // branch roads (roundabout exits, side streets) in view: work out where they run this frame
+  for (let n = 0; n < DRAW_DIST; n++) { const s = segs[baseIdx + n]; if (!s) break; s.dbr = null; }
+  for (const br of track.branches) {
+    if (br.i0 >= baseIdx + DRAW_DIST || br.i0 + BR_M <= baseIdx) continue;
+    walkBranch(segs, br, BR_M, (i, D1, D2) => {
+      if (i < baseIdx || i >= baseIdx + DRAW_DIST) return;
+      const o1 = D1 / ROAD_W, o2 = D2 / ROAD_W;
+      if (Math.min(Math.abs(o1), Math.abs(o2)) > 70) return;
+      const sep = Math.abs(o1) > 1.95;
+      (segs[i].dbr ||= []).push({ o1, o2, oneway: br.oneway, noL: !sep, noR: !sep });
+    });
+  }
   let x = 0, dx = -(base.curve * pct) + yaw * SEG;
   let maxy = H;
   const drawn = [], visible = [];

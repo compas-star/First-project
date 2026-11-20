@@ -1,7 +1,7 @@
 // Simulation: a bus shift or a rental-car trip on the map's roads.
 import { SEG, MPH2U, BUS_FRONT_SEGS, ZONE_LEN, SEG_PER_MILE, DRAW_DIST, TIME_SCALE, ROAD_W } from './config.js';
 import { clamp, timeStr, mulberry } from './gfx.js';
-import { Track, nodeKind, reverseEdge, edgeSegs, RING, SPLIT_LOCK, splitL, splitSlope, splitPos } from './track.js';
+import { Track, nodeKind, reverseEdge, edgeSegs, RING, SPLIT_LOCK, splitL, splitSlope, splitPos, loopG, applyLoop } from './track.js';
 import { Traffic } from './traffic.js';
 import { NODES, outEdges, shortestPath, pathMiles, startHeading, endHeading, normAng } from './world.js';
 import { GAS_PRICE, TOW_PRICE, MEAL_PRICE, MOTEL_PRICE } from './career.js';
@@ -295,6 +295,7 @@ export class Game {
     if (this.mode === 'bus') { this.msg('NO U-TURNS IN A BUS. HOLD BRAKE TO BACK UP.', 3, '#ffb040'); return; }
     if (Math.abs(p.speed) > 15) { this.msg('SLOW DOWN TO TURN AROUND', 2, '#ffb040'); return; }
     if (s.island) { this.msg('JUST KEEP GOING AROUND THE CIRCLE', 2.5, '#ffb040'); return; }
+    if (s.loop && s.loop.on) { this.msg('FOLLOW THE SERVICE ROAD BACK TO THE HIGHWAY', 2.5, '#ffb040'); return; }
     if (s.street) { this.msg('USE THE TURNING CIRCLE AT THE END', 2.5, '#ffb040'); return; }
     if (!s.leg) { this.msg("CAN'T TURN AROUND HERE", 2, '#ffb040'); return; }
     const N = edgeSegs(s.leg.e);
@@ -315,7 +316,7 @@ export class Game {
     this.updateSplit(this.dt || 0);
     if (this.mode !== 'car') return;
     for (const f of tr.forks) {
-      if (f.used || i < f.a || i > f.b) continue;
+      if (f.used || i < f.a || i > f.b || this.seg().loop?.on) continue;
       if (this.forkTest(f, input)) { f.used = true; this.takeFork(f, i); break; }
     }
     // hints for side streets and roundabout exits
@@ -396,6 +397,7 @@ export class Game {
         this.roadHint = `STEER ${ch.recommended < act.ref ? '< LEFT' : 'RIGHT >'} FOR ${o.e.road.hw} ${NODES[o.e.to].name}`;
       }
     }
+    this.updateLoop(s);
     if (!sp) return;
     if (s.ref !== sp.ref) {
       // backed up into a stretch built for the other road: rebuild it for the road you're on
@@ -431,6 +433,33 @@ export class Game {
     this.camYaw += yaw;
     if (sp.choice) sp.choice.idx = best;
   }
+
+  // Service roads: steer right onto one where it leaves the highway, and back where it rejoins.
+  updateLoop(s) {
+    const p = this.player, tr = this.track, i = s.i;
+    const near = tr.loops.find(lp => i >= lp.a - 160 && i < lp.a + lp.L);
+    if (near && !near.on && i < near.a + 40) {
+      const c = this.career, needs = [];
+      if (p.fuel < 0.6) needs.push('GAS'); if (c.hunger > 45) needs.push('FOOD'); if (c.fatigue > 50 && this.mode === 'car') needs.push('A BED');
+      if (needs.length) this.roadHint = `NEED ${needs.join(' / ')}? KEEP RIGHT ONTO THE SERVICE ROAD`;
+    }
+    const lp = s.loop;
+    if (!lp) return;
+    const q = s.lq + (p.z % SEG) / SEG;
+    const g = loopG(lp, q), slope = (loopG(lp, q + 0.5) - loopG(lp, q - 0.5)) / SEG;
+    const Lp = (lp.on ? g : 0) + p.x * ROAD_W;
+    // compared with the right-hand lane of each road
+    const dMain = Math.abs(Lp - 0.5 * ROAD_W), dSvc = Math.abs(Lp - g - 0.5 * ROAD_W);
+    const want = lp.on ? !(dMain + 0.3 * ROAD_W < dSvc) : (g > 0.3 * ROAD_W && dSvc + 0.3 * ROAD_W < dMain);
+    if (want === lp.on && !(lp.on && (q > lp.L - 4 || q < 1))) return;
+    if (lp.on && (q > lp.L - 4 || q < 1)) { applyLoop(lp, false); p.x = Lp / ROAD_W; return; }
+    applyLoop(lp, want);
+    p.x = (Lp - (want ? g : 0)) / ROAD_W;
+    this.camYaw += want ? slope : -slope;
+    if (want) this.msg(`SERVICE ROAD - ${lp.title}`, 2.5, '#c8d8ff');
+  }
+  // where the player is across the highway (for traffic), even when on a service road
+  mainX() { const s = this.seg(); return this.player.x - (s.carOff || 0); }
 
   wrongWayCheck() {
     // heading the wrong way?
@@ -494,7 +523,7 @@ export class Game {
         }
       }
       if (!action) for (const sv of this.track.services) {
-        if (front < sv.idx - ZONE_LEN || front > sv.idx + 2 || p.x <= 0.15) continue;
+        if (front < sv.idx - ZONE_LEN || front > sv.idx + 2 || p.x <= 0.15 || (sv.loop && !sv.loop.on)) continue;
         const slow = Math.abs(p.speed) < 2.5;
         if (sv.type === 'diner') {
           if (!slow) this.prompt = `${sv.name}: PULL IN TO EAT`;
@@ -594,7 +623,12 @@ export class Game {
     const sp = p.speed / 60;
     p.x += p.wheel * V.steer * Math.min(1, Math.abs(sp) * 1.4) * dt;
     p.x -= seg.curve * 0.2 * sp * sp * dt;
-    p.x = clamp(p.x, -2.1, 2.1);
+    {
+      // you can wander across to a road beside you (a split or a service road), but no further
+      let lo = -2.1, hi = 2.1;
+      if (seg.br) for (const b of seg.br) { lo = Math.min(lo, b.o1 - 2.1); hi = Math.max(hi, b.o1 + 2.1); }
+      p.x = clamp(p.x, lo, hi);
+    }
 
     if (Math.abs(p.x) > 1.25 && Math.abs(p.speed) > 3) {
       const sObj = segs[Math.floor(p.z / SEG) + (p.speed > 0 ? 6 : -1)];

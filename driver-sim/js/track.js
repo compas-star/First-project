@@ -82,6 +82,46 @@ export function splitPos(j, k) {
 }
 const arrowFor = rel => rel < -0.5 ? '<' : rel > 0.5 ? '>' : '^';
 
+// ---------- service roads ----------
+// A one-way side road that leaves the highway on the right, runs past gas, a diner and a motel,
+// and rejoins. Its lateral offset from the highway is g(q) (world units).
+const LOOP_R = 90, LOOP_D = 4.4, LOOP_SLOT = 60;
+const LOOP_TOWN_K = 80;
+const loopLen = n => 2 * LOOP_R + 20 + n * LOOP_SLOT;
+const LOOP_TOWN_END = LOOP_TOWN_K + loopLen(3);
+const smooth = t => t * t * (3 - 2 * t);
+export function loopG(lp, q) {
+  const L = lp.L, D = LOOP_D * ROAD_W;
+  if (q <= 0 || q >= L) return 0;
+  if (q < LOOP_R) return D * smooth(q / LOOP_R);
+  if (q > L - LOOP_R) return D * smooth((L - q) / LOOP_R);
+  return D;
+}
+// Put the highway (on = false) or the service road (on = true) under the camera: the segments
+// are rewritten in place, the other road becomes the "branch" drawn beside it.
+export function applyLoop(lp, on) {
+  lp.on = on;
+  const G = q => loopG(lp, q);
+  for (const s of lp.segs) {
+    const q = s.lq, o1 = G(q) / ROAD_W, o2 = G(q + 1) / ROAD_W;
+    s.curve = s.base.curve + (on ? G(q + 2) - 2 * G(q + 1) + G(q) : 0);
+    s.heading = s.base.heading + (on ? (G(q + 2) - G(q + 1)) / SEG : 0);
+    s.zone = on ? s.svcZone : s.mainZone;
+    s.oneway = on ? true : s.base.oneway;
+    s.carOff = on ? -o1 : 0;
+    s.noL = on ? Math.abs(o1 - 0.95) < 0.99 && o1 > 0.01 : false;
+    s.noR = on ? false : Math.abs(o1 - 0.95) < 0.99 && o1 > 0.01;
+    if (o1 > 0.01 || o2 > 0.01) {
+      const b = on ? { o1: -o1, o2: -o2, zone: s.mainZone, noR: Math.abs(o1 - 0.95) < 0.99 } : { o1, o2, zone: s.svcZone, svc: true, noL: Math.abs(o1 - 0.95) < 0.99 };
+      s.br = [b];
+    } else s.br = null;
+    for (const sp of s.sprites) {
+      if (sp.att === 'svc') sp.o = (on ? 0 : o1) + sp.lo;
+      else { if (sp.o0 === undefined) sp.o0 = sp.o; sp.o = sp.o0 - (on ? o1 : 0); }
+    }
+  }
+}
+
 // ---------- road profiles: each road is built once, so it looks the same in both directions ----------
 const PROFILES = new Map();
 export function profile(road) {
@@ -149,7 +189,7 @@ export function profile(road) {
     P.town.push(q < hA && NODES[road.a].type !== 'junction' ? road.a : q >= N - hB && NODES[road.b].type !== 'junction' ? road.b : null);
   }
   // side streets in the bigger towns
-  for (const [half, qc] of [[hA, 170], [hB, N - 1 - 170]]) {
+  for (const [half, qc] of [[hA, 66], [hB, N - 1 - 66]]) {
     if (half < 150) continue;
     P.crossAt.push(qc);
     for (let q = qc - 2; q <= qc + 2; q++) P.cross[q] = q === qc - 2 || q === qc + 2 ? 2 : 1;
@@ -164,7 +204,10 @@ export function profile(road) {
 function decorateProfile(P, r) {
   const N = P.N, mid = Math.round(N / 2);
   const truck = P.road.miles > 55;
-  const reserved = (q, side) => side > 0 ? (q <= 70 || q >= N - 152) : (q <= 151 || q >= N - 71);
+  // keep the right-hand side clear where each direction's service road runs out of town
+  const depA = NODES[P.road.a].type !== 'junction', depB = NODES[P.road.b].type !== 'junction';
+  const reserved = (q, side) => side > 0 ? (q <= 70 || (depA && q <= LOOP_TOWN_END + 10) || q >= N - 70)
+    : (q <= 70 || (depB && q >= N - 1 - LOOP_TOWN_END - 10) || q >= N - 71);
   const nearCross = q => P.crossAt.some(c => Math.abs(q - c) < 7);
   let nextAd = 300;
   for (let q = 0; q < N; q++) {
@@ -181,18 +224,21 @@ function decorateProfile(P, r) {
       }
       continue;
     }
-    if (truck && (Math.abs(q - mid) < 108 || Math.abs(q - (N - 1 - mid)) < 108)) continue;
-    if (q % SEG_PER_MILE === 0) add('mile', 1.32);
-    if (q % 22 === 0) add('pole', -1.65);
+    if (truck && (Math.abs(q - mid) < 240 || Math.abs(q - (N - 1 - mid)) < 240)) continue;
+    if (q % SEG_PER_MILE === 0 && !reserved(q, 1)) add('mile', 1.32);
+    if (q % 22 === 0 && !reserved(q, -1)) add('pole', -1.65);
     if (q >= nextAd) {
-      add('bb' + Math.floor(r() * ADS_COUNT), (r() < 0.5 ? -1 : 1) * (2.1 + r() * 0.6), true);
+      const sd = r() < 0.5 ? -1 : 1;
+      if (!reserved(q, sd)) add('bb' + Math.floor(r() * ADS_COUNT), sd * (2.1 + r() * 0.6), true);
       nextAd = q + Math.floor(SEG_PER_MILE * (2 + r() * 3));
     }
     const b = P.bio[q];
     const bn = r() < b.t ? b.b : b.a;
     const bio = BIOMES[bn];
-    if (r() < 0.5) add(bn === 'desert' || bn === 'mesa' || bn === 'sonoran' ? 'pebbles2' : 'pebbles', (r() < 0.5 ? -1 : 1) * (1.36 + r() * 1.4));
+    const ps = r() < 0.5 ? -1 : 1, pr = r();
+    if (pr < 0.5 && !reserved(q, ps)) add(bn === 'desert' || bn === 'mesa' || bn === 'sonoran' ? 'pebbles2' : 'pebbles', ps * (1.36 + r() * 1.4));
     for (const side of [-1, 1]) {
+      if (reserved(q, side)) { r(); continue; }
       if (r() < bio.density * 0.55) {
         let roll = r(), key = bio.veg[0][0];
         for (const [kk, w] of bio.veg) { if (roll < w) { key = kk; break; } roll -= w; }
@@ -226,7 +272,7 @@ function pickVeg(bioName, r) {
 export class Track {
   constructor(seed = 66, opts = {}) {
     this.segs = []; this.r = mulberry(seed);
-    this.y = 0; this.heading = 0; this.legs = []; this.pumps = []; this.services = []; this.marks = []; this.forks = []; this.notices = []; this.splits = [];
+    this.y = 0; this.heading = 0; this.legs = []; this.pumps = []; this.services = []; this.marks = []; this.forks = []; this.notices = []; this.splits = []; this.loops = [];
     this.pending = null; this.ring = null; this.sideStreets = !!opts.sideStreets;
   }
   get length() { return this.segs.length * SEG; }
@@ -274,6 +320,7 @@ export class Track {
     this.forks = this.forks.filter(f => f.a < at);
     this.notices = this.notices.filter(n => n.idx < at);
     this.splits = this.splits.filter(sp => sp.s0 <= at);
+    this.loops = this.loops.filter(lp => lp.a < at);
     this.pending = null; this.ring = null;
   }
 
@@ -299,8 +346,10 @@ export class Track {
     const at = k => k >= k0 && k < N ? s0 + (k - k0) : -1;
     const put = (k, key, o, extra) => { const i = at(k); return i >= 0 ? this.place(i, key, o, extra) : null; };
     const hDep = e.rev ? P.hB : P.hA, hArr = e.rev ? P.hA : P.hB;
-    put(hDep + 12, routeShield(e.road.hw), 1.5, { solid: true });
-    put(hDep + 30, greenSign([NODES[e.to].name, `${e.road.miles} MI`]), 1.7);
+    const svcFrom = NODES[e.from].type !== 'junction';
+    const kSign = svcFrom ? Math.max(hDep, LOOP_TOWN_END) : hDep;
+    put(kSign + 12, routeShield(e.road.hw), 1.5, { solid: true });
+    put(kSign + 30, greenSign([NODES[e.to].name, `${e.road.miles} MI`]), 1.7);
     // side streets
     if (this.sideStreets) for (const qc of P.crossAt) {
       const kc = e.rev ? N - 1 - qc : qc, i = at(kc);
@@ -308,15 +357,12 @@ export class Track {
       this.forks.push({ a: i - 12, b: i + 1, kind: 'side', ret: { kind: 'leg', e, kc }, town: P.town[qc] });
     }
     // mid-route truck stop on long, empty stretches
+    const loops = [];
     if (e.road.miles > 55) {
       const m = Math.round(N / 2);
-      for (let k = m - ZONE_LEN; k <= m; k++) { const i = at(k); if (i >= 0) this.segs[i].zone = 'gas'; }
-      put(m, 'gas', 2.35); put(m - ZONE_LEN - 4, 'price', 1.7);
-      put(m - 260, greenSign(['TRUCK STOP', 'GAS FOOD LODGING']), 1.7);
-      if (at(m) >= 0) this.pumps.push({ name: 'TRUCK STOP', idx: at(m) });
+      put(m - 200 - 260, greenSign(['TRUCK STOP', '2 MI']), 1.7);
       const nm = serviceNames(e.road.id * 7 + (e.rev ? 3 : 0));
-      this.service(at, 'motel', nm.motel, m - 60);
-      this.service(at, 'diner', nm.diner, m + 46);
+      loops.push([m - 200, 'TRUCK STOP', [['gas', 'TRUCK STOP'], ['diner', nm.diner], ['motel', nm.motel]]]);
     }
     // the departure stop of a bus line
     if (opts.depart) {
@@ -325,25 +371,54 @@ export class Track {
       if (NODES[e.from].type === 'city') put(40, 'depot', 2.9, { solid: true });
       this.marks.push({ node: e.from, idx: at(60), shelter });
     }
-    if (!opts.depart && NODES[e.from].type !== 'junction') this.service(at, 'diner', serviceNames(e.from).diner, 66);
-    if (NODES[e.to].type !== 'junction') {
-      this.service(at, 'motel', serviceNames(e.to).motel, N - 1 - 110);
-      this.townCenter(e.to, s0 + (N - 1 - k0), at(N - hArr), s0);
+    if (svcFrom) {
+      const nm = serviceNames(e.from);
+      loops.push([LOOP_TOWN_K, NODES[e.from].name, [['gas', NODES[e.from].name], ['diner', nm.diner], ['motel', nm.motel]]]);
     }
+    if (NODES[e.to].type !== 'junction') this.townCenter(e.to, s0 + (N - 1 - k0), at(N - hArr), s0);
+    for (const [kl, title, items] of loops) this.serviceLoop(at, kl, title, items);
     this.pending = { node: e.to, at: this.segs.length, e };
     return leg;
   }
 
-  // A diner or motel with its parking lot (a painted zone ending at edge-order index k).
-  service(at, type, name, k) {
-    const i = at(k);
-    if (i < 0) return;
-    for (let q = k - ZONE_LEN; q <= k; q++) { const j = at(q); if (j >= 0) this.segs[j].zone = 'lot'; }
+  // A service road from edge-order k0: gas, diner and motel in a row on its right-hand side.
+  serviceLoop(at, k0, title, items) {
+    const L = loopLen(items.length);
+    for (let q = -2; q < L; q++) if (at(k0 + q) < 0) return;   // only on a whole stretch of road
+    const lp = { a: at(k0), L, on: false, segs: [], title };
+    for (let q = -2; q < L; q++) {
+      const s = this.segs[at(k0 + q)];
+      s.loop = lp; s.lq = q;
+      s.base = { curve: s.curve, heading: s.heading, oneway: s.oneway };
+      s.mainZone = s.zone; s.svcZone = undefined;
+      lp.segs.push(s);
+    }
     const r = this.r;
-    this.place(i, type === 'diner' ? 'diner' + Math.floor(r() * 3) : 'motel' + Math.floor(r() * 4), 2.75, { solid: true });
-    const si = at(k - ZONE_LEN - 30);
-    if (si >= 0) this.place(si, greenSign([type === 'diner' ? 'FOOD' : 'LODGING', name]), 1.7);
-    this.services.push({ type, name, idx: i });
+    const putS = (q, key, lo, extra) => { const s = this.segs[at(k0 + q)]; if (s) s.sprites.push({ k: key, att: 'svc', lo, o: lo, ...extra }); };
+    const want = items.map(([type]) => type === 'gas' ? 'GAS' : type === 'diner' ? 'FOOD' : 'LODGING').join(' ');
+    this.place(at(k0 - 70), greenSign(['SERVICES', want]), 1.75, { solid: true });
+    // the striped marker where the service road leaves, and again where it comes back
+    for (const q of [Math.round(LOOP_R * 0.62), Math.round(L - LOOP_R * 0.62)]) {
+      const s = this.segs[at(k0 + q)];
+      s.sprites.push({ k: 'gore', o: loopG(lp, q) / 2 / ROAD_W, solid: true, side: 0 });
+    }
+    items.forEach(([type, name], n) => {
+      const kz = LOOP_R + 20 + n * LOOP_SLOT + ZONE_LEN;
+      for (let q = kz - ZONE_LEN; q <= kz; q++) this.segs[at(k0 + q)].svcZone = type === 'gas' ? 'gas' : 'lot';
+      const i = at(k0 + kz);
+      if (type === 'gas') {
+        putS(kz, 'gas', 2.35, { solid: true }); putS(kz - ZONE_LEN - 4, 'price', 1.7, { solid: true });
+        this.pumps.push({ name, idx: i, loop: lp });
+      } else {
+        putS(kz, type === 'diner' ? 'diner' + Math.floor(r() * 3) : 'motel' + Math.floor(r() * 4), 2.75, { solid: true });
+        putS(kz - ZONE_LEN - 8, greenSign([type === 'diner' ? 'FOOD' : 'LODGING', name]), 1.7, { solid: true });
+        this.services.push({ type, name, idx: i, loop: lp });
+      }
+    });
+    // a few lamps and bushes along it
+    for (let q = LOOP_R; q < L - LOOP_R; q += 18) putS(q, 'lamp', -1.4, { solid: true });
+    applyLoop(lp, false);
+    this.loops.push(lp);
   }
 
   // Centre of a town: bus stop / parking box, gas station, welcome sign.
@@ -352,10 +427,6 @@ export class Track {
     const ok = q => q >= s0 && this.segs[q];
     for (let q = E - ZONE_LEN; q <= E; q++) if (ok(q)) this.segs[q].zone = 'stop';
     const shelter = ok(E) ? this.place(E, 'shelter_full', 1.55, { solid: true }) : null;
-    const g = E - 60;
-    for (let q = g - ZONE_LEN; q <= g; q++) if (ok(q) && this.segs[q].town) this.segs[q].zone = 'gas';
-    if (ok(g)) { this.place(g, 'gas', 2.35); this.pumps.push({ name: n.name, idx: g }); }
-    if (ok(g - ZONE_LEN - 4)) this.place(g - ZONE_LEN - 4, 'price', 1.7);
     if (n.type === 'city' && ok(E - 18)) this.place(E - 18, 'rental', 2.9);
     if (a >= 0 && ok(a + 8)) { this.place(a + 2, welcomeSprite(n.name), 1.8, { solid: true }); this.place(a + 8, 'speed35', 1.5, { solid: true }); }
     this.marks.push({ node: nodeId, idx: E, shelter });

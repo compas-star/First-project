@@ -67,7 +67,13 @@ function drawSegment(ctx, s, fog, f) {
     const white = fogC(WHITE, fog, f), yel = fogC(YELLOW, fog, f);
     for (const b of s.br) {
       const bx1 = x1 + b.o1 * w1, bx2 = x2 + b.o2 * w2;
-      if (a) quad(ctx, bx1, y1, w1 * 0.02, bx2, y2, w2 * 0.02, yel);
+      if (b.zone) {
+        const zc = fogC(b.zone === 'stop' ? STOPPAINT : APRON, fog, f);
+        quad(ctx, bx1 + w1 * 0.55, y1, w1 * 0.45, bx2 + w2 * 0.55, y2, w2 * 0.45, zc);
+        if (b.zone !== 'stop') quad(ctx, bx1 + w1 * 1.15, y1, w1 * 0.2, bx2 + w2 * 1.15, y2, w2 * 0.2, zc);
+      }
+      if (b.svc) { if (s.i % 4 < 2) quad(ctx, bx1, y1, w1 * 0.018, bx2, y2, w2 * 0.018, white); }
+      else if (a) quad(ctx, bx1, y1, w1 * 0.02, bx2, y2, w2 * 0.02, yel);
       if (s.town) continue;
       if (!b.noL) quad(ctx, bx1 - w1 * 0.95, y1, w1 * 0.025, bx2 - w2 * 0.95, y2, w2 * 0.025, white);
       if (!b.noR) quad(ctx, bx1 + w1 * 0.95, y1, w1 * 0.025, bx2 + w2 * 0.95, y2, w2 * 0.025, white);
@@ -271,7 +277,7 @@ export function renderWorld(game, sky) {
       const scale = s.p1.scale + (s.p2.scale - s.p1.scale) * t;
       const roadX = s.p1.sx + (s.p2.sx - s.p1.sx) * t;
       const sy = s.p1.sy + (s.p2.sy - s.p1.sy) * t;
-      const sx = roadX + scale * car.x * ROAD_W * W / 2;
+      const sx = roadX + scale * (car.x + (s.carOff || 0)) * ROAD_W * W / 2;
       drawSprite(ctx, car.spr, scale, sx, sy + 1, s.clip, alpha, emissive, night);
     }
   }

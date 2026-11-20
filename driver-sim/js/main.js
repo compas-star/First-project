@@ -110,16 +110,16 @@ function drawHud(g) {
   // junction chooser
   const ch = g.choice;
   const showChoice = ch && ch.opts.length > 1;
-  document.body.classList.toggle('junction', !!showChoice && !ch.ring);
+  document.body.classList.toggle('junction', !!showChoice && !ch.ring && !ch.split);
   if (showChoice) {
-    const head = ch.ring ? `ROUNDABOUT: STEER RIGHT AT YOUR EXIT` : `AT ${NODES[ch.node].name}: ${input.touch ? 'ROAD BUTTONS' : 'Q / E'}`;
+    const head = ch.ring ? `ROUNDABOUT: STEER RIGHT AT YOUR EXIT` : ch.split ? `ROAD SPLITS: STEER ONTO YOUR ROAD` : `AT ${NODES[ch.node].name}: ${input.touch ? 'ROAD BUTTONS' : 'Q / E'}`;
     const w = Math.max(textWidth(head) + 10, ...ch.opts.map(o => textWidth(o.label) + 26));
     const x = W - w - 30, y = 82;
     box(x, y, w, 14 + ch.opts.length * 9, 0.8);
     drawText(ctx, head, x + 5, y + 4, '#9aff8a');
     ch.opts.forEach((o, i) => {
       const yy = y + 14 + i * 9;
-      if (i === ch.idx && !ch.ring) { rect(ctx, x + 2, yy - 2, w - 4, 9, '#2a5a9a'); drawText(ctx, '>', x + 5, yy, '#ffd36a'); }
+      if (i === ch.idx && !ch.ring && (!ch.split || g.track.splits.some(sp => sp.choice === ch))) { rect(ctx, x + 2, yy - 2, w - 4, 9, '#2a5a9a'); drawText(ctx, '>', x + 5, yy, '#ffd36a'); }
       drawText(ctx, o.label, x + 12, yy, i === ch.idx ? '#ffffff' : '#c8c8c8');
       if (i === ch.recommended) drawText(ctx, '*', x + w - 8, yy, '#ffd36a');
     });

@@ -1,7 +1,7 @@
 // Simulation: a bus shift or a rental-car trip on the map's roads.
-import { SEG, MPH2U, BUS_FRONT_SEGS, ZONE_LEN, SEG_PER_MILE, DRAW_DIST, TIME_SCALE } from './config.js';
+import { SEG, MPH2U, BUS_FRONT_SEGS, ZONE_LEN, SEG_PER_MILE, DRAW_DIST, TIME_SCALE, ROAD_W } from './config.js';
 import { clamp, timeStr, mulberry } from './gfx.js';
-import { Track, nodeKind, reverseEdge, edgeSegs, RING } from './track.js';
+import { Track, nodeKind, reverseEdge, edgeSegs, RING, SPLIT_LOCK, splitL, splitSlope, splitPos } from './track.js';
 import { Traffic } from './traffic.js';
 import { NODES, outEdges, shortestPath, pathMiles, startHeading, endHeading, normAng } from './world.js';
 import { GAS_PRICE, TOW_PRICE, MEAL_PRICE, MOTEL_PRICE } from './career.js';
@@ -42,7 +42,7 @@ export class Game {
     this.announced = {}; this.chatterT = 45; this.outOfFuelT = 0; this.lowFuelWarned = false;
     this.offroad = false; this.lastSteer = 0; this.airDrop = 0; this.mapOpen = false;
     this.busy = null; this.blink = 0; this.blinking = null;
-    this.stops = []; this.choice = null; this.junction = null; this.tailAdded = false; this.revT = 0; this.roadHint = null; this.wrongWayLeg = null;
+    this.stops = []; this.choice = null; this.junction = null; this.tailAdded = false; this.revT = 0; this.roadHint = null; this.wrongWayLeg = null; this.camYaw = 0;
     this.odometer = vehicle === 'bus' ? 48213 : 23871;
   }
 
@@ -117,7 +117,7 @@ export class Game {
     }
     // on a turn, roundabout or side street: use the next stretch of highway we are heading for
     const segs = this.track.segs;
-    for (let j = s.i + 1; j < Math.min(segs.length, s.i + 400); j++) {
+    for (let j = s.i + 1; j < Math.min(segs.length, s.i + 700); j++) {
       const t = segs[j];
       if (t.leg) { const N = edgeSegs(t.leg.e); return { node: t.leg.e.to, miles: (N - t.k + (j - s.i)) / SEG_PER_MILE, back: t.leg.e.from, backMiles: Math.max(0, t.k - (j - s.i)) / SEG_PER_MILE, e: t.leg.e }; }
     }
@@ -240,7 +240,7 @@ export class Game {
 
   // ---------- junctions, roundabouts, side streets (car) ----------
   buildChoice(pd) {
-    const node = pd.node, ring = nodeKind(node) === 'roundabout';
+    const node = pd.node, kind = nodeKind(node), ring = kind === 'roundabout', split = kind === 'split';
     let outs = outEdges(node);
     if (!ring) { const f = outs.filter(e => e.road.id !== pd.e.road.id); if (f.length) outs = f; }
     const inH = endHeading(pd.e);
@@ -249,10 +249,11 @@ export class Game {
       const dir = Math.abs(rel) > 2.6 ? 'BACK' : rel < -0.6 ? 'LEFT' : rel > 0.6 ? 'RIGHT' : 'AHEAD';
       return { e, rel, label: `${dir}: ${e.road.hw} ${NODES[e.to].name}` };
     }).sort((a, b) => a.rel - b.rel);
+    if (split) opts.forEach((o, j) => { o.label = `${splitPos(j, opts.length)}: ${o.e.road.hw} ${NODES[o.e.to].name}`; });
     const plan = node !== this.dest ? shortestPath(node, this.dest) : null;
     let idx = plan && plan.length ? opts.findIndex(o => o.e.road.id === plan[0].road.id && o.e.to === plan[0].to) : -1;
     if (idx < 0) { let best = 1e9; opts.forEach((o, i) => { if (Math.abs(o.rel) < best) { best = Math.abs(o.rel); idx = i; } }); }
-    return { node, opts, idx, recommended: plan && plan.length ? idx : -1, ring };
+    return { node, opts, idx, recommended: plan && plan.length ? idx : -1, ring, split: split && opts.length > 1 };
   }
 
   cutTrack(at) {
@@ -311,6 +312,7 @@ export class Game {
     this.roadHint = null;
     for (const n of tr.notices) if (!n.done && front > n.idx - 150 && front < n.idx) { n.done = true; this.msg(n.text, 3, n.color); }
     if (input.take('uturn')) this.uturn();
+    this.updateSplit(this.dt || 0);
     if (this.mode !== 'car') return;
     for (const f of tr.forks) {
       if (f.used || i < f.a || i > f.b) continue;
@@ -337,14 +339,21 @@ export class Game {
     const pd = tr.pending;
     if (pd) {
       const left = pd.at - front;
-      if ((!this.choice || this.choice.node !== pd.node) && left < 900) {
+      if ((!this.choice || this.choice.node !== pd.node) && left < 900 && !this.activeSplit()) {
         this.junction = null;
         this.choice = this.buildChoice(pd);
-        if (this.choice.opts.length > 1 && !this.choice.ring) this.msg(`JUNCTION AHEAD AT ${NODES[pd.node].name}`, 3, '#9aff8a');
+        if (this.choice.split) {
+          tr.splitSigns(pd.at, this.choice.opts.map(o => o.e));
+          this.msg(`THE ROAD SPLITS AT ${NODES[pd.node].name}`, 3, '#9aff8a');
+        } else if (this.choice.opts.length > 1 && !this.choice.ring) this.msg(`JUNCTION AHEAD AT ${NODES[pd.node].name}`, 3, '#9aff8a');
       }
-      if (left < DRAW_DIST + 60) {
+      if (left < DRAW_DIST + 60 && this.choice && this.choice.node === pd.node) {
         tr.pending = null;
         if (this.choice.ring) tr.appendRoundabout(pd.node);
+        else if (this.choice.split) {
+          const sp = tr.appendSplit(pd.node, this.choice.opts.map(o => o.e), this.choice.idx, false);
+          tr.splits[tr.splits.length - 1].choice = this.choice;
+        }
         else {
           const o = this.choice.opts[this.choice.idx];
           this.junction = { cut: pd.at, node: pd.node, idx: this.choice.idx };
@@ -354,7 +363,7 @@ export class Game {
       }
     }
     const ch = this.choice;
-    if (ch && !ch.ring) {
+    if (ch && !ch.ring && !ch.split) {
       if (input.take('prevRoute')) ch.idx = Math.max(0, ch.idx - 1);
       if (input.take('nextRoute')) ch.idx = Math.min(ch.opts.length - 1, ch.idx + 1);
       const j = this.junction;
@@ -370,6 +379,59 @@ export class Game {
     }
   }
 
+  // a split you are approaching or driving through, before your road is settled
+  activeSplit() {
+    const i = Math.floor(this.player.z / SEG);
+    return this.track.splits.find(sp => !sp.locked && i > sp.s0 - 400 && i < sp.s0 + SPLIT_LOCK) || null;
+  }
+  // In a split, whichever road you are closest to is the road you are on.
+  updateSplit(dt) {
+    this.camYaw -= this.camYaw * Math.min(1, dt * 2.2);
+    const s = this.seg(), sp = s.split, p = this.player;
+    const act = this.activeSplit();
+    if (act && act.choice && this.mode === 'car') {
+      const ch = act.choice, i = Math.floor(p.z / SEG);
+      if (ch.recommended >= 0 && ch.recommended !== act.ref && i > act.s0 - 200) {
+        const o = ch.opts[ch.recommended];
+        this.roadHint = `STEER ${ch.recommended < act.ref ? '< LEFT' : 'RIGHT >'} FOR ${o.e.road.hw} ${NODES[o.e.to].name}`;
+      }
+    }
+    if (!sp) return;
+    if (s.ref !== sp.ref) {
+      // backed up into a stretch built for the other road: rebuild it for the road you're on
+      const ch = this.choice;
+      this.cutTrack(s.i);
+      this.choice = ch;
+      this.track.heading += (sp.theta[sp.ref] - sp.theta[s.ref]) * splitSlope(s.q);
+      this.track.appendSplitRun(sp, sp.ref, s.q);
+      return;
+    }
+    const qf = s.q + (p.z % SEG) / SEG;
+    if (!sp.locked && qf > SPLIT_LOCK) {
+      sp.locked = true;
+      const e = sp.edges[sp.ref];
+      if (sp.choice) { if (this.choice === sp.choice) this.choice = null; this.msg(`${e.road.hw} TO ${NODES[e.to].name}`, 3, '#9aff8a'); }
+    }
+    if (sp.locked && qf < SPLIT_LOCK - 8 && sp.choice) { sp.locked = false; if (this.mode === 'car') this.choice = sp.choice; }
+    if (sp.fixed || sp.locked) return;
+    const Lr = splitL(sp, sp.ref, qf), Lp = Lr + p.x * ROAD_W;
+    // measured to the middle of each road's right-hand lane, where you normally drive
+    const lane = 0.5 * ROAD_W;
+    let best = sp.ref, bd = Math.abs(Lp - Lr - lane) - 0.25 * ROAD_W;
+    for (let j = 0; j < sp.k; j++) { const d = Math.abs(Lp - splitL(sp, j, qf) - lane); if (d < bd) { bd = d; best = j; } }
+    if (best === sp.ref) return;
+    // swap roads: rebuild what's ahead around the new road, keeping the view exactly where it was
+    const yaw = (sp.theta[best] - sp.theta[sp.ref]) * splitSlope(qf);
+    p.x = (Lp - splitL(sp, best, qf)) / ROAD_W;
+    const ch = this.choice;
+    this.cutTrack(s.i);
+    this.choice = ch;
+    this.track.heading += yaw;
+    this.track.appendSplitRun(sp, best, s.q);
+    this.camYaw += yaw;
+    if (sp.choice) sp.choice.idx = best;
+  }
+
   wrongWayCheck() {
     // heading the wrong way?
     const s = this.seg();
@@ -381,6 +443,7 @@ export class Game {
 
   // ---------- per frame ----------
   update(dt, input) {
+    this.dt = dt;
     const p = this.player, segs = this.track.segs, V = this.vehicle;
     if (input.take('map')) this.mapOpen = !this.mapOpen;
     if (this.mapOpen) { input.take('action'); return; }
@@ -495,7 +558,9 @@ export class Game {
       if (this.revT > 0.45 && !p.reverse) { p.reverse = true; p.cruise = false; this.msg('REVERSE', 1.2, '#ffd36a'); }
     } else if (!input.brake) this.revT = 0;
     if (p.reverse && input.gas && p.speed > -0.3) p.reverse = false;
-    this.offroad = Math.abs(p.x) > 1.12;
+    let onRoad = Math.abs(p.x) <= 1.12;
+    if (!onRoad && seg.br) { const t = (p.z % SEG) / SEG; onRoad = seg.br.some(b => Math.abs(p.x - (b.o1 + (b.o2 - b.o1) * t)) <= 1.12); }
+    this.offroad = !onRoad;
     if (p.reverse) {
       if (held) p.speed = Math.min(0, p.speed + 30 * dt);
       else if (input.brake && p.fuel > 0) p.speed = Math.max(-V.revMph, p.speed - 6 * dt);

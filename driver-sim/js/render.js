@@ -44,6 +44,12 @@ function drawSegment(ctx, s, fog, f) {
     ctx.fillStyle = asphalt;
     ctx.fillRect(0, y2, W, y1 - y2 + 1);
   } else {
+    // other roads of a split: their verges first, so every road's asphalt goes over every verge
+    if (s.br) for (const b of s.br) {
+      const bx1 = x1 + b.o1 * w1, bx2 = x2 + b.o2 * w2;
+      if (!s.town) quad(ctx, bx1, y1, w1 * 1.55, bx2, y2, w2 * 1.55, fogC(s.dirt, fog, f));
+      quad(ctx, bx1, y1, w1 * 1.3, bx2, y2, w2 * 1.3, fogC((s.town ? SIDEWALK : SHOULDER)[a], fog, f));
+    }
     if (!s.town && !s.street) quad(ctx, x1, y1, w1 * 1.55, x2, y2, w2 * 1.55, fogC(s.dirt, fog, f));
     quad(ctx, x1, y1, w1 * 1.3, x2, y2, w2 * 1.3, fogC((s.town || s.street ? SIDEWALK : SHOULDER)[a], fog, f));
   }
@@ -54,7 +60,19 @@ function drawSegment(ctx, s, fog, f) {
     quad(ctx, x1 - w1 * 2.6, y1, w1 * 1.45, x2 - w2 * 2.6, y2, w2 * 1.45, fogC(GRASS.map(v => v * (a ? 0.94 : 1)), fog, f));
     quad(ctx, x1 - w1 * 1.13, y1, w1 * 0.06, x2 - w2 * 1.13, y2, w2 * 0.06, fogC(CURB, fog, f));
   }
-  quad(ctx, x1, y1, w1, x2, y2, w2, asphalt);
+  if (s.br) {
+    for (const b of s.br) quad(ctx, x1 + b.o1 * w1, y1, w1, x2 + b.o2 * w2, y2, w2, asphalt);
+    quad(ctx, x1, y1, w1, x2, y2, w2, asphalt);
+    // their paint: a centre line, and edge lines where no other road covers them
+    const white = fogC(WHITE, fog, f), yel = fogC(YELLOW, fog, f);
+    for (const b of s.br) {
+      const bx1 = x1 + b.o1 * w1, bx2 = x2 + b.o2 * w2;
+      if (a) quad(ctx, bx1, y1, w1 * 0.02, bx2, y2, w2 * 0.02, yel);
+      if (s.town) continue;
+      if (!b.noL) quad(ctx, bx1 - w1 * 0.95, y1, w1 * 0.025, bx2 - w2 * 0.95, y2, w2 * 0.025, white);
+      if (!b.noR) quad(ctx, bx1 + w1 * 0.95, y1, w1 * 0.025, bx2 + w2 * 0.95, y2, w2 * 0.025, white);
+    }
+  } else quad(ctx, x1, y1, w1, x2, y2, w2, asphalt);
   if (s.cross) {
     if (s.cross === 2) for (let o = -0.85; o <= 0.86; o += 0.24) quad(ctx, x1 + w1 * o, y1, w1 * 0.08, x2 + w2 * o, y2, w2 * 0.08, fogC(WHITE, fog, f));
     return;
@@ -75,8 +93,8 @@ function drawSegment(ctx, s, fog, f) {
   // edge lines
   const white = fogC(WHITE, fog, f);
   if (!s.town) {
-    if (s.stub !== -1) quad(ctx, x1 - w1 * 0.95, y1, w1 * 0.025, x2 - w2 * 0.95, y2, w2 * 0.025, white);
-    if (s.stub !== 1) quad(ctx, x1 + w1 * 0.95, y1, w1 * 0.025, x2 + w2 * 0.95, y2, w2 * 0.025, white);
+    if (s.stub !== -1 && !s.noL) quad(ctx, x1 - w1 * 0.95, y1, w1 * 0.025, x2 - w2 * 0.95, y2, w2 * 0.025, white);
+    if (s.stub !== 1 && !s.noR) quad(ctx, x1 + w1 * 0.95, y1, w1 * 0.025, x2 + w2 * 0.95, y2, w2 * 0.025, white);
   }
   if (s.oneway) {
     // roundabout: a dashed white lane line instead of the yellow centre line
@@ -170,7 +188,9 @@ export function renderWorld(game, sky) {
 
   // backgrounds with biome cross-fade
   const bio = (segs[Math.floor(player.z / SEG)] || segs[0]).bio;
-  const hdg = game.heading();
+  // camYaw: after you swap roads in a split the view eases round to the new road
+  const yaw = game.camYaw || 0;
+  const hdg = game.heading() - yaw;
   hazeRGB = fog;
   // quantised so silhouettes are rebuilt only now and then as the sky changes
   hazeKey = `rgb(${(fog[0] >> 2) << 2},${(fog[1] >> 2) << 2},${(fog[2] >> 2) << 2})`;
@@ -201,7 +221,7 @@ export function renderWorld(game, sky) {
   ctx.fillStyle = css(lerpC(base.ground, fog, 0.85));
   ctx.fillRect(0, HORIZON + 6, W, H);
 
-  let x = 0, dx = -(base.curve * pct);
+  let x = 0, dx = -(base.curve * pct) + yaw * SEG;
   let maxy = H;
   const drawn = [], visible = [];
   for (let n = 0; n < DRAW_DIST; n++) {
@@ -244,7 +264,7 @@ export function renderWorld(game, sky) {
         }
         lastPole = { l, r: rr, top, n };
       }
-      drawSprite(ctx, spr, s.p1.scale, sx, s.p1.sy + 1, s.clip, alpha, emissive, night, Math.abs(sp.o) > 1.2 ? Math.sign(sp.o) : 0);
+      drawSprite(ctx, spr, s.p1.scale, sx, s.p1.sy + 1, s.clip, alpha, emissive, night, sp.side ?? (Math.abs(sp.o) > 1.2 ? Math.sign(sp.o) : 0));
     }
     for (const car of s.cars) {
       const t = (car.z % SEG) / SEG;

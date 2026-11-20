@@ -605,6 +605,48 @@ export function greenSign(lines) {
   reg(key, c, 3.2 + lines.length * 0.6, { solid: true });
   return key;
 }
+// overhead sign bridge over a splitting road: one panel per road, left to right
+// panels: [{ arrow: '<' | '^' | '>', lines: ['I-40', 'KINGMAN'] }]
+export function gantrySign(panels, widthM) {
+  const key = 'gantry_' + panels.map(p => p.arrow + p.lines.join('/')).join('|');
+  if (SPR[key]) return key;
+  const pws = panels.map(p => Math.max(...p.lines.map(l => textWidth(l)), 5) + 8);
+  const ph = panels[0].lines.length * 7 + 13;
+  const inner = pws.reduce((a, b) => a + b, 0) + (panels.length - 1) * 3;
+  const cw = inner + 10;
+  // keep the posts about 7 m tall whatever the width
+  const ch = Math.max(ph + 14, Math.round(7.2 * cw / widthM));
+  const [c, x] = makeCanvas(cw, ch);
+  rect(x, 1, 2, 3, ch - 2, '#7a7a7a'); rect(x, cw - 4, 2, 3, ch - 2, '#7a7a7a');
+  rect(x, 2, 2, 1, ch - 2, '#9a9a9a'); rect(x, cw - 3, 2, 1, ch - 2, '#9a9a9a');
+  rect(x, 0, 4, cw, 3, '#6a6a6a'); rect(x, 0, 4 + ph - 6, cw, 2, '#6a6a6a');
+  for (let i = 0; i < cw; i += 4) px(x, i, 5, '#8a8a8a');
+  let px0 = 5;
+  panels.forEach((p, i) => {
+    const w = pws[i];
+    rect(x, px0, 1, w, ph, '#e8e8e0'); rect(x, px0 + 1, 2, w - 2, ph - 2, '#1f6a3a');
+    p.lines.forEach((l, li) => drawText(x, l, px0 + w / 2, 4 + li * 7, '#f4f4ee', 1, 'center'));
+    // the arrow at the bottom of each panel
+    const ax = Math.round(px0 + w / 2), ay = 4 + p.lines.length * 7 + 1;
+    if (p.arrow === '^') { rect(x, ax, ay + 1, 1, 4, '#f4f4ee'); rect(x, ax - 1, ay + 1, 3, 1, '#f4f4ee'); px(x, ax, ay, '#f4f4ee'); }
+    else {
+      const d = p.arrow === '<' ? -1 : 1;
+      for (let k = 0; k < 4; k++) px(x, ax - d * k, ay + 4 - k, '#f4f4ee');
+      rect(x, ax + d * 0 - (d < 0 ? 0 : 2), ay, 3, 1, '#f4f4ee'); rect(x, ax, ay, 1, 3, '#f4f4ee');
+    }
+    px0 += w + 3;
+  });
+  reg(key, c, widthM * ch / cw, { solid: false });
+  return key;
+}
+// the striped marker at the point where two roads part
+function goreSign() {
+  const [c, x] = makeCanvas(15, 24);
+  rect(x, 7, 12, 1, 12, '#8a8a8a');
+  rect(x, 0, 0, 15, 12, '#222'); rect(x, 1, 1, 13, 10, '#e8c020');
+  for (const [cx, d] of [[4, -1], [10, 1]]) for (let k = 0; k < 4; k++) { px(x, cx + d * k, 2 + k, '#111'); px(x, cx + d * k, 9 - k, '#111'); px(x, cx + d * k + d, 2 + k, '#111'); px(x, cx + d * k + d, 9 - k, '#111'); }
+  return c;
+}
 // route marker: interstate (red/blue shield), US (white shield), state (white circle)
 export function routeShield(hw) {
   const key = 'shield_' + hw;
@@ -674,6 +716,7 @@ export function buildSprites() {
   reg('stop', stopSign(), 2.8, { solid: true });
   reg('roundabout', roundSign(), 2.8, { solid: true });
   reg('deadend', diamond(['DEAD', 'END']), 2.8, { solid: true });
+  reg('gore', goreSign(), 2.2, { solid: true });
   reg('mailbox0', mailbox(1), 1.25); reg('mailbox1', mailbox(2), 1.25); reg('mailbox2', mailbox(3), 1.25);
   ADS.forEach((ad, i) => reg('bb' + i, billboard(ad), 7.5, { solid: true }));
   reg('cow', cow(13), 1.6); reg('cow2', cow(14), 1.6);

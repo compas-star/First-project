@@ -1,7 +1,7 @@
 // Simulation: a bus shift or a rental-car trip on the map's roads.
 import { SEG, MPH2U, BUS_FRONT_SEGS, ZONE_LEN, SEG_PER_MILE, DRAW_DIST, TIME_SCALE, ROAD_W } from './config.js';
 import { clamp, timeStr, mulberry } from './gfx.js';
-import { Track, nodeKind, reverseEdge, edgeSegs, RING, SPLIT_LOCK, splitL, splitSlope, splitPos, loopG, applyLoop } from './track.js';
+import { Track, nodeKind, reverseEdge, edgeSegs, RING, SPLIT_LOCK, splitL, splitSlope, splitPos, loopG, applyLoop, walkBranch, BR_M } from './track.js';
 import { Traffic } from './traffic.js';
 import { NODES, outEdges, shortestPath, pathMiles, startHeading, endHeading, normAng } from './world.js';
 import { GAS_PRICE, TOW_PRICE, MEAL_PRICE, MOTEL_PRICE } from './career.js';
@@ -398,6 +398,7 @@ export class Game {
       }
     }
     this.updateLoop(s);
+    this.updateBranches(s);
     if (!sp) return;
     if (s.ref !== sp.ref) {
       // backed up into a stretch built for the other road: rebuild it for the road you're on
@@ -458,6 +459,56 @@ export class Game {
     this.camYaw += want ? slope : -slope;
     if (want) this.msg(`SERVICE ROAD - ${lp.title}`, 2.5, '#c8d8ff');
   }
+  // Branch roads: roundabout exits, side streets, the other way at a stop sign. Steer into one to take it.
+  branchesAt(i) {
+    const out = [];
+    for (const br of this.track.branches) {
+      if (i < br.i0 || i >= br.i0 + BR_M) continue;
+      const st = walkBranch(this.track.segs, br, i - br.i0);
+      out.push({ br, D: st.D, dx: st.dx });
+    }
+    return out;
+  }
+  updateBranches(s) {
+    const p = this.player, tr = this.track, i = s.i, pct = (p.z % SEG) / SEG;
+    // hints as they come up
+    for (const br of tr.branches) {
+      if (br.fixed || i < br.i0 - 40 || i > br.i0 + 6) continue;
+      if (br.kind === 'side' && Math.abs(p.speed) < 35) this.roadHint = 'SIDE STREETS: STEER LEFT OR RIGHT TO TURN IN';
+      if (br.kind === 'tee') this.roadHint = 'STOP SIGN: STEER LEFT OR RIGHT';
+      if (br.kind === 'exit' && i > br.i0 - 9 && !tr.branches.some(o => o.kind === 'exit' && o !== br && o.i0 < br.i0 && i - o.i0 < 16)) {
+        const ch = this.choice, want = ch && ch.recommended >= 0 ? ch.opts[ch.recommended].e : null;
+        const mine = want && want.road.id === br.e.road.id && want.to === br.e.to;
+        this.roadHint = mine ? `YOUR EXIT: ${br.e.road.hw} - KEEP RIGHT >` : `EXIT: ${br.e.road.hw} ${NODES[br.e.to].name}`;
+      }
+    }
+    if (p.speed <= 0.5) return;
+    for (const { br, D, dx } of this.branchesAt(i)) {
+      if (br.fixed) continue;
+      const Dp = D + dx * pct, Lp = p.x * ROAD_W;
+      if (Math.abs(Dp) < 0.3 * ROAD_W) continue;
+      // you have to be steering that way, so drifting in your lane never turns you off by accident
+      if (Math.sign(p.wheel) !== Math.sign(Dp) || Math.abs(p.wheel) < 0.25) continue;
+      if (br.kind !== 'exit' && Math.abs(p.speed) > 32) continue;
+      const lane = 0.5 * ROAD_W;
+      if (!(Math.abs(Lp - Dp - lane) + 0.25 * ROAD_W < Math.abs(Lp - lane))) continue;
+      // take it: rebuild the road from where the branch starts, keeping the view where it was
+      const ghost = { i0: br.i0, curves: [], fixed: true, oneway: !!s.island || !!s.oneway, kind: 'ghost' };
+      for (let q = 0; q < 60 && tr.segs[br.i0 + q]; q++) ghost.curves.push(tr.segs[br.i0 + q].curve);
+      const ch = this.choice;
+      this.cutTrack(br.i0);
+      if (br.kind !== 'exit') this.choice = ch;
+      br.build(tr);
+      tr.branches.push(ghost);
+      p.x = (Lp - Dp) / ROAD_W;
+      this.camYaw += dx / SEG;
+      p.cruise = false;
+      if (br.kind === 'exit') this.msg(`EXIT: ${br.e.road.hw} TO ${NODES[br.e.to].name}`, 3, '#9aff8a');
+      else if (br.kind === 'side') this.msg(`TURNING ${br.side > 0 ? 'RIGHT' : 'LEFT'} ONTO A SIDE STREET`, 2.5, '#c8d8ff');
+      return;
+    }
+  }
+
   // where the player is across the highway (for traffic), even when on a service road
   mainX() { const s = this.seg(); return this.player.x - (s.carOff || 0); }
 
@@ -588,7 +639,9 @@ export class Game {
     } else if (!input.brake) this.revT = 0;
     if (p.reverse && input.gas && p.speed > -0.3) p.reverse = false;
     let onRoad = Math.abs(p.x) <= 1.12;
-    if (!onRoad && seg.br) { const t = (p.z % SEG) / SEG; onRoad = seg.br.some(b => Math.abs(p.x - (b.o1 + (b.o2 - b.o1) * t)) <= 1.12); }
+    const pct0 = (p.z % SEG) / SEG;
+    const side = (seg.br || []).map(b => b.o1 + (b.o2 - b.o1) * pct0).concat(this.branchesAt(seg.i).map(b => (b.D + b.dx * pct0) / ROAD_W));
+    if (!onRoad) onRoad = side.some(o => Math.abs(p.x - o) <= 1.12);
     this.offroad = !onRoad;
     if (p.reverse) {
       if (held) p.speed = Math.min(0, p.speed + 30 * dt);
@@ -626,7 +679,7 @@ export class Game {
     {
       // you can wander across to a road beside you (a split or a service road), but no further
       let lo = -2.1, hi = 2.1;
-      if (seg.br) for (const b of seg.br) { lo = Math.min(lo, b.o1 - 2.1); hi = Math.max(hi, b.o1 + 2.1); }
+      for (const o of side) if (Math.abs(o) < 12) { lo = Math.min(lo, o - 2.1); hi = Math.max(hi, o + 2.1); }
       p.x = clamp(p.x, lo, hi);
     }
 

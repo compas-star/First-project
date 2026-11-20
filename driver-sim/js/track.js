@@ -38,6 +38,8 @@ const HALF = { city: 1.6, town: 1.2, junction: 0 };
 const halfSegs = node => Math.round(HALF[NODES[node].type] * SEG_PER_MILE);
 const TAU = Math.PI * 2;
 export const RING = 72;          // segments around a roundabout
+const EXIT_T = 16;               // segments of the swing out of a roundabout
+export const BR_M = 90;          // how far ahead a branch road is drawn before it's built for real
 const VEER = 0.6;                // radians: the swing into and out of a roundabout
 const STREETS = ['ELM ST', 'OAK AVE', 'MAPLE ST', 'PINE ST', 'CEDAR AVE', 'MESA DR', 'DESERT VIEW DR', 'JUNIPER LN',
   'SUNSET DR', 'CANYON RD', 'BIRCH AVE', 'CACTUS ST', 'COYOTE TRL', 'ASPEN AVE', 'SAGE ST', 'COPPER ST'];
@@ -254,6 +256,33 @@ function decorateProfile(P, r) {
   }
 }
 
+// Curves of a sine-shaped turn by `delta` over T segments (exactly what appendTurn builds).
+export function turnCurves(delta, T) {
+  let wsum = 0; for (let k = 0; k < T; k++) wsum += Math.sin(Math.PI * (k + 0.5) / T);
+  const c = [];
+  for (let k = 0; k < T; k++) c.push(delta * SEG * Math.sin(Math.PI * (k + 0.5) / T) / wsum);
+  return c;
+}
+function edgeCurves(e, k0, n) {
+  const P = profile(e.road), out = [];
+  for (let k = k0; k < P.N && out.length < n; k++) out.push(e.rev ? -P.curves[P.N - 1 - k] : P.curves[k]);
+  return out;
+}
+// Where a branch road sits relative to the track: walk from its start, adding up the difference
+// between its curves and the track's. Calls fn(i, o1, o2, dx) for segments i0+q, q < n.
+export function walkBranch(segs, br, n, fn) {
+  let D = 0, dx = 0;
+  const m = Math.min(n, br.curves.length);
+  for (let q = 0; q < m; q++) {
+    const s = segs[br.i0 + q];
+    if (!s) break;
+    const D2 = D + dx;
+    if (fn) fn(br.i0 + q, D, D2, dx);
+    D = D2; dx += br.curves[q] - s.curve;
+  }
+  return { D, dx };
+}
+
 // heading on entering edge-order segment k of a directed edge
 export function entryHeading(e, k) {
   const P = profile(e.road);
@@ -272,7 +301,7 @@ function pickVeg(bioName, r) {
 export class Track {
   constructor(seed = 66, opts = {}) {
     this.segs = []; this.r = mulberry(seed);
-    this.y = 0; this.heading = 0; this.legs = []; this.pumps = []; this.services = []; this.marks = []; this.forks = []; this.notices = []; this.splits = []; this.loops = [];
+    this.y = 0; this.heading = 0; this.legs = []; this.pumps = []; this.services = []; this.marks = []; this.forks = []; this.notices = []; this.splits = []; this.loops = []; this.branches = [];
     this.pending = null; this.ring = null; this.sideStreets = !!opts.sideStreets;
   }
   get length() { return this.segs.length * SEG; }
@@ -321,6 +350,7 @@ export class Track {
     this.notices = this.notices.filter(n => n.idx < at);
     this.splits = this.splits.filter(sp => sp.s0 <= at);
     this.loops = this.loops.filter(lp => lp.a < at);
+    this.branches = this.branches.filter(b => b.i0 < at);
     this.pending = null; this.ring = null;
   }
 
@@ -354,7 +384,8 @@ export class Track {
     if (this.sideStreets) for (const qc of P.crossAt) {
       const kc = e.rev ? N - 1 - qc : qc, i = at(kc);
       if (i < 0) continue;
-      this.forks.push({ a: i - 12, b: i + 1, kind: 'side', ret: { kind: 'leg', e, kc }, town: P.town[qc] });
+      const base = { bio: P.bio[qc], mx: P.mx[qc], my: P.my[qc], town: P.town[qc], node: P.town[qc] };
+      this.sideBranches(i - 2, { kind: 'leg', e, kc }, base);
     }
     // mid-route truck stop on long, empty stretches
     const loops = [];
@@ -465,7 +496,7 @@ export class Track {
     if (info.town) this.place(c0 + 1, greenSign([STREETS[Math.floor(this.r() * STREETS.length)]]), -1.6);
     this.appendTurn(delta, Math.round(18 + Math.abs(delta) * 22), info);
     if (this.sideStreets && info.town && Math.abs(delta) < 0.5)
-      this.forks.push({ a: c0 - 6, b: c0 + 6, kind: 'side', ret: { kind: 'node', node }, town: node });
+      this.sideBranches(c0 + 4, { kind: 'node', node }, { ...info, quiet: false });
     return c0;
   }
 
@@ -500,21 +531,26 @@ export class Track {
       const jj = j % RING;
       for (const ex of R.exits) {
         const d = jj - (ex.x % RING);
-        if (d >= -6 && d <= 3) s.stub = 1;
-        if (d === -6 || d === -6 + RING) this.place(s.i, greenSign([ex.e.road.hw, NODES[ex.e.to].name]), 1.45);
-        // the window for steering out: from 9 segments before the exit to 2 after
-        if (forks && (d === -9 || d === RING - 9 || (j === 0 && d > -9 && d <= 2))) this.forks.push({ a: s.i, b: s.i + 11 - (j === 0 && d > -9 ? d + 9 : 0), kind: 'exit', e: ex.e });
+        if (d >= 0 && d <= 9) s.noR = true;
+        if (d === -12 || d === -12 + RING) this.place(s.i, greenSign([ex.e.road.hw, NODES[ex.e.to].name]), 1.45);
+        // each exit is a real road leaving the circle on the right
+        if (d === 0) {
+          const h = this.segs[s.i - 1].heading, e = ex.e;
+          const curves = turnCurves(normAng(entryHeading(e, 0) - h), EXIT_T).concat(edgeCurves(e, 0, BR_M));
+          this.branches.push({ i0: s.i, curves, kind: 'exit', e, fixed: !forks, info: R.info, build: tr => tr.appendExit(e, R.info) });
+        }
       }
       if (j % 6 === 0) this.place(s.i, r() < 0.5 ? 'grass' : 'sage', -1.45 - r() * 0.4);
       if (j % 18 === 9) this.place(s.i, pickVeg(R.info.bio.a, r), -2.4 - r() * 0.8);
-      if (j % 12 === 3 && R.info.town) this.place(s.i, BUILDINGS[Math.floor(r() * BUILDINGS.length)], 2.6 + r() * 0.5);
+      const nearExit = R.exits.some(ex => { const d = ((jj - (ex.x % RING)) % RING + RING) % RING; return d < 26 || d > RING - 16; });
+      if (j % 12 === 3 && R.info.town && !nearExit) this.place(s.i, BUILDINGS[Math.floor(r() * BUILDINGS.length)], 2.6 + r() * 0.5);
     }
     if (forks) R.laps++;
   }
   appendExit(e, ringInfo) {
     const info = ringInfo || (this.ring ? this.ring.info : this.nodeInfo(e.from));
     this.ring = null;
-    this.appendTurn(normAng(entryHeading(e, 0) - this.heading), 10, info, s => { s.stub = -1; });
+    this.appendTurn(normAng(entryHeading(e, 0) - this.heading), EXIT_T, info, s => { s.stub = -1; });
     return this.appendEdge(e, 0);
   }
 
@@ -564,14 +600,20 @@ export class Track {
     const t0 = this.appendStraight(4, info, (s, k) => { s.street = true; if (k === 2) s.stopline = true; });
     this.place(t0, 'stop', 1.4, { solid: true });
     const tj = this.segs.length;
+    // the road to the left at the stop sign, drawn; the right turn is built
+    const L = this.planReturn(ret, -1, this.heading);
     this.appendReturn(ret, 1, base);
-    // steer left at the stop sign to turn the other way
-    this.forks.push({ a: tj - 14, b: tj + 3, kind: 'tee', ret, base, cut: tj });
+    this.branches.push({ i0: tj, curves: turnCurves(L.delta, L.T).concat(edgeCurves(L.e, L.k0, BR_M)), kind: 'tee', build: tr => tr.appendReturn(ret, -1, base) });
     this.notices.push({ idx: tj - 30, text: 'STOP SIGN: STEER LEFT OR RIGHT', color: '#ffd36a' });
   }
   // Back onto the main road from a side street: dir +1 = right, -1 = left.
   appendReturn(ret, dir, base) {
-    const want = this.heading + dir * Math.PI / 2;
+    const { e, k0, delta, T } = this.planReturn(ret, dir, this.heading);
+    this.appendTurn(delta, T, { ...base, quiet: true }, (s, k) => { if (k < 5) s.cross = 1; });
+    return this.appendEdge(e, k0);
+  }
+  planReturn(ret, dir, heading) {
+    const want = heading + dir * Math.PI / 2;
     let e, k0;
     if (ret.kind === 'leg') {
       const fwd = Math.abs(normAng(want - entryHeading(ret.e, ret.kc))) < Math.PI / 2;
@@ -582,9 +624,15 @@ export class Track {
       for (const o of outEdges(ret.node)) { const d = Math.abs(normAng(entryHeading(o, 0) - want)); if (d < best) { best = d; e = o; } }
       k0 = 0;
     }
-    const delta = normAng(entryHeading(e, k0) - this.heading);
-    this.appendTurn(delta, Math.round(18 + Math.abs(delta) * 14), { ...base, quiet: true }, (s, k) => { if (k < 5) s.cross = 1; });
-    return this.appendEdge(e, k0);
+    const delta = normAng(entryHeading(e, k0) - heading);
+    return { e, k0, delta, T: Math.round(18 + Math.abs(delta) * 14) };
+  }
+  // Residential streets to the left and right of a crossing (drawn now, built when you turn in).
+  sideBranches(i0, ret, base) {
+    for (const side of [-1, 1]) {
+      const curves = turnCurves(side * Math.PI / 2, 22).concat(new Array(BR_M).fill(0));
+      this.branches.push({ i0, curves, kind: 'side', side, build: tr => tr.appendSideStreet(side, ret, base) });
+    }
   }
 
   // Advance signs for a split, a mile and a bit before it (ending at segment `end`).

@@ -17,6 +17,7 @@ const CHATTER_BAD = [
 ];
 export const VEHICLES = {
   bus: { type: 'bus', camH: 1100, revMph: 7, maxMph: 68, accel: 5.5, brake: 16, tank: 120, steer: 1.2, tankGal: 0 },
+  truck: { type: 'truck', camH: 1150, revMph: 6, maxMph: 65, accel: 5.4, brake: 13, tank: 400, steer: 1.05, tankGal: 0 },
   car: { type: 'car', camH: 600, revMph: 14, maxMph: 88, accel: 9, brake: 24, tank: 330, steer: 1.45, tankGal: 16 },
 };
 
@@ -96,6 +97,26 @@ export class Game {
     this.msg('STOP ANYWHERE IN TOWN TO RETURN IT. M = MAP, U = U-TURN.', 5, '#c8d8ff');
   }
 
+  // A freight haul: from here to load.dest by the deadline, by whatever roads you like.
+  startTruck(load) {
+    this.resetDrive('truck');
+    this.mode = 'truck'; this.dest = load.dest; this.load = load;
+    const from = this.career.node;
+    this.startNode = from;
+    this.clock += 20 * 60;   // hooking up the trailer
+    this.deadline = Math.ceil((this.clock + load.hours * 3600) / 900) * 900;
+    this.cargo = 100; this.warned = {};
+    // heavier loads pull away slower
+    this.vehicle = { ...VEHICLES.truck, accel: VEHICLES.truck.accel * (1.2 - load.tons / 50) };
+    const plan = shortestPath(from, load.dest) || [];
+    this.track = new Track(Math.floor(this.clock) % 9973 + 11, { sideStreets: true });
+    this.track.appendEdge(plan.length ? plan[0] : outEdges(from)[0], 0);
+    this.player = { z: 3 * SEG, x: 0.5, speed: 0, wheel: 0, fuel: 1, cruise: false, cruiseSpeed: 0, throttle: 0, reverse: false };
+    this.msg(`DESERT FREIGHT: ${load.tons} TONS OF ${load.cargo}`, 5);
+    this.msg(`DELIVER TO ${NODES[load.dest].name} BY ${timeStr(this.deadline)}. PICK ANY ROUTE.`, 5, '#c8d8ff');
+  }
+  get free() { return this.mode !== 'bus'; }   // car and truck choose their own roads
+
   msg(text, dur = 3.5, color = '#ffffff') {
     if (this.msgs.length && this.msgs[this.msgs.length - 1].text === text) return;
     this.msgs.push({ text, t: dur, color });
@@ -141,6 +162,10 @@ export class Game {
 
   bump(pen, text, big) {
     this.comfort = Math.max(0, this.comfort - pen);
+    if (this.mode === 'truck') {
+      this.cargo = Math.max(0, this.cargo - pen * (this.load.fragile ? 0.9 : 0.45));
+      text = big ? `CRASH! THE ${this.load.cargo} SHIFTS IN THE TRAILER. LOAD ${Math.round(this.cargo)}%` : `BUMP! LOAD ${Math.round(this.cargo)}%`;
+    }
     this.shake = big ? 1 : 0.5;
     this.crashes++;
     this.audio.bump(big);
@@ -314,7 +339,7 @@ export class Game {
     for (const n of tr.notices) if (!n.done && front > n.idx - 150 && front < n.idx) { n.done = true; this.msg(n.text, 3, n.color); }
     if (input.take('uturn')) this.uturn();
     this.updateSplit(this.dt || 0);
-    if (this.mode !== 'car') return;
+    if (!this.free) return;
     for (const f of tr.forks) {
       if (f.used || i < f.a || i > f.b || this.seg().loop?.on) continue;
       if (this.forkTest(f, input)) { f.used = true; this.takeFork(f, i); break; }
@@ -390,7 +415,7 @@ export class Game {
     this.camYaw -= this.camYaw * Math.min(1, dt * 2.2);
     const s = this.seg(), sp = s.split, p = this.player;
     const act = this.activeSplit();
-    if (act && act.choice && this.mode === 'car') {
+    if (act && act.choice && this.free) {
       const ch = act.choice, i = Math.floor(p.z / SEG);
       if (ch.recommended >= 0 && ch.recommended !== act.ref && i > act.s0 - 200) {
         const o = ch.opts[ch.recommended];
@@ -415,7 +440,7 @@ export class Game {
       const e = sp.edges[sp.ref];
       if (sp.choice) { if (this.choice === sp.choice) this.choice = null; this.msg(`${e.road.hw} TO ${NODES[e.to].name}`, 3, '#9aff8a'); }
     }
-    if (sp.locked && qf < SPLIT_LOCK - 8 && sp.choice) { sp.locked = false; if (this.mode === 'car') this.choice = sp.choice; }
+    if (sp.locked && qf < SPLIT_LOCK - 8 && sp.choice) { sp.locked = false; if (this.free) this.choice = sp.choice; }
     if (sp.fixed || sp.locked) return;
     const Lr = splitL(sp, sp.ref, qf), Lp = Lr + p.x * ROAD_W;
     // measured to the middle of each road's right-hand lane, where you normally drive
@@ -441,7 +466,7 @@ export class Game {
     const near = tr.loops.find(lp => i >= lp.a - 160 && i < lp.a + lp.L);
     if (near && !near.on && i < near.a + 40) {
       const c = this.career, needs = [];
-      if (p.fuel < 0.6) needs.push('GAS'); if (c.hunger > 45) needs.push('FOOD'); if (c.fatigue > 50 && this.mode === 'car') needs.push('A BED');
+      if (p.fuel < 0.6) needs.push('GAS'); if (c.hunger > 45) needs.push('FOOD'); if (c.fatigue > 50 && this.free) needs.push('A BED');
       if (needs.length) this.roadHint = `NEED ${needs.join(' / ')}? KEEP RIGHT ONTO THE SERVICE ROAD`;
     }
     const lp = s.loop;
@@ -536,14 +561,22 @@ export class Game {
       else if (p.speed > 15) { p.cruise = true; p.cruiseSpeed = p.speed; this.msg(`CRUISE SET ${Math.round(p.speed)} MPH`, 1.5, '#9aff8a'); }
       else this.msg('CRUISE NEEDS 15+ MPH', 1.5);
     }
-    if (input.take('radio')) { const st = this.audio.cycleRadio(); this.msg(st.style ? `RADIO: ${st.label}` : 'RADIO OFF', 1.5, '#ffb040'); }
+    if (input.take('radio')) { const st = this.audio.cycleRadio(); this.msg(st.off ? 'RADIO OFF' : `RADIO: ${st.label}`, 2.5, '#ffb040'); }
     if (input.take('lights')) this.lightsManual = !this.lightsOn;
     this.audio.horn(input.horn);
     this.updateRoads(input);
     // route checks are a little costly: a few times a second is plenty
     this.routeT = (this.routeT || 0) - dt;
-    if (this.mode === 'car' && this.routeT <= 0) { this.routeT = 0.5; this.milesLeft = this.milesToDest(); this.wrongWayCheck(); }
+    if (this.free && this.routeT <= 0) { this.routeT = 0.5; this.milesLeft = this.milesToDest(); this.wrongWayCheck(); }
 
+    if (this.mode === 'truck' && !this.finished) {
+      const left = (this.deadline - this.clock) / 60;
+      for (const m of [120, 60, 30, 0]) if (left <= m && !this.warned[m]) {
+        this.warned[m] = 1;
+        if (m > 0) this.msg(`${m >= 60 ? m / 60 + ' HOUR' + (m > 60 ? 'S' : '') : m + ' MINUTES'} LEFT TO DELIVER`, 3.5, '#ffb040');
+        else this.msg(`YOU'RE LATE! THE ${this.load.cargo} WAS DUE AT ${timeStr(this.deadline)}`, 4, '#ff8a6a');
+      }
+    }
     // ---- stops, parking and pumps ----
     const front = this.frontSeg();
     this.prompt = null;
@@ -606,6 +639,13 @@ export class Game {
             if (stop.final) this.finish(stop.node);
           }
         }
+      } else if (this.mode === 'truck' && !action) {
+        // truck: deliver anywhere in the destination town
+        const tw = this.seg().town;
+        if (tw === this.dest && p.x > 0.15 && !this.seg().island) {
+          if (Math.abs(p.speed) < 2.5) { action = 'deliver'; this.prompt = `${touch ? 'TAP' : 'SPACE:'} DELIVER THE ${this.load.cargo}`; }
+          else if (p.speed < 40 && !this.prompt) this.prompt = `${NODES[tw].name}: STOP TO DELIVER THE LOAD`;
+        }
       } else if (!action) {
         // car: stop anywhere in a town (right lane) to end the trip there
         const tw = this.seg().town;
@@ -616,6 +656,7 @@ export class Game {
       }
       if (input.take('action')) {
         if (action === 'doors') { p.speed = 0; p.cruise = false; this.openDoors(this.nextStop()); }
+        else if (action === 'deliver') { p.speed = 0; this.deliveredAt = this.clock; this.finish(this.dest); this.audio.chime(); this.msg(`LOAD DELIVERED IN ${NODES[this.dest].name}.`, 4, '#ffd36a'); }
         else if (action === 'park') { p.speed = 0; this.finish(this.parkNode); this.audio.chime(); this.msg(`ARRIVED IN ${NODES[this.parkNode].name}.`, 4, '#ffd36a'); }
         else if (action === 'fuel') { p.speed = 0; p.cruise = false; this.fueling = true; this.pendingFuel = 0; }
         else if (action === 'coffee') this.drinkCoffee();
@@ -650,7 +691,7 @@ export class Game {
       else p.speed = Math.min(0, p.speed + 2.5 * dt);
       throttle = input.brake && !held ? 0.4 : 0;
       p.throttle = throttle;
-      if (this.mode === 'bus' && p.speed < -0.5) { this.beepT = (this.beepT || 0) - dt; if (this.beepT <= 0) { this.beepT = 0.6; this.audio.beep?.(); } }
+      if (this.mode !== 'car' && p.speed < -0.5) { this.beepT = (this.beepT || 0) - dt; if (this.beepT <= 0) { this.beepT = 0.6; this.audio.beep?.(); } }
     } else {
       const braking = input.brake || held;
       if (braking && p.cruise) { p.cruise = false; if (!held) this.msg('CRUISE OFF', 1.2); }
@@ -661,6 +702,8 @@ export class Game {
       p.throttle = throttle;
       const grade = (seg.p2.wy - seg.p1.wy) / SEG;
       let acc = throttle * V.accel * (1 - p.speed / V.maxMph) - 0.6 - p.speed * 0.008 - grade * 40;
+      // low gear: with the gas down you always crawl up a hill, however heavy the load
+      if (throttle > 0 && p.speed < 12) acc = Math.max(acc, 1.5 * throttle);
       if (braking) acc -= held ? 30 : V.brake;
       if (this.offroad && p.speed > 22) acc -= 12;
       p.speed = clamp(p.speed + acc * dt, 0, V.maxMph);
@@ -712,7 +755,8 @@ export class Game {
       if (this.outOfFuelT > 0.2 && this.outOfFuelT - dt <= 0.2) this.msg('OUT OF FUEL... WAITING FOR HELP.', 3, '#ff8a6a');
       if (this.outOfFuelT > 4) {
         this.outOfFuelT = 0; p.fuel = 0.25; this.clock += 25 * 60; this.rescues++;
-        if (this.mode === 'car') { this.career.add('TOW TRUCK + GAS CAN', -TOW_PRICE); this.msg(`TOW TRUCK BROUGHT GAS. -$${TOW_PRICE} (+25 MIN)`, 4.5, '#ffd36a'); }
+        if (this.mode === 'truck') { this.msg('ROAD SERVICE BROUGHT DIESEL. (+25 MIN)', 4.5, '#ffd36a'); }
+        else if (this.mode === 'car') { this.career.add('TOW TRUCK + GAS CAN', -TOW_PRICE); this.msg(`TOW TRUCK BROUGHT GAS. -$${TOW_PRICE} (+25 MIN)`, 4.5, '#ffd36a'); }
         else { this.comfort = Math.max(0, this.comfort - 15); this.msg('A KIND TRUCKER SHARED SOME DIESEL. (+25 MIN)', 4.5, '#ffd36a'); }
       }
     }
@@ -751,6 +795,16 @@ export class Game {
     this.career.clock = this.clock;
     this.career.node = this.endNode;
     this.career.stats.miles += Math.round(this.milesDriven);
+    if (this.mode === 'truck') {
+      const L = this.load, late = Math.round(((this.deliveredAt ?? this.clock) - this.deadline) / 60);
+      let pay = L.pay * (late <= 0 ? 1.15 : Math.max(0.3, 1 - late / 240));
+      pay *= 0.4 + 0.6 * this.cargo / 100;
+      pay = Math.round(pay * 100) / 100;
+      this.career.add(`FREIGHT: ${L.cargo} TO ${NODES[L.dest].name}`, pay);
+      this.career.stats.loads = (this.career.stats.loads || 0) + 1;
+      this.career.taken = [...(this.career.taken || []).slice(-30), L.id];
+      return { mode: 'truck', load: L, late, deadline: this.deadline, arrived: this.deliveredAt, cargo: this.cargo, pay, miles: this.milesDriven, crashes: this.crashes, rescues: this.rescues };
+    }
     if (this.mode === 'car') {
       return { mode: 'car', node: this.endNode, miles: this.milesDriven, fuel: this.spentFuel, rescues: this.rescues, crashes: this.crashes };
     }

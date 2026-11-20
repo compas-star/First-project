@@ -7,6 +7,14 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 8: trucking and real internet radio
+
+- New **TRUCK** tab in the hub: Desert Freight posts five loads a day at every town's yard (lumber, US mail, fresh eggs, TV sets and so on), each with a destination, weight, pay and a delivery deadline.
+- Hook up the trailer and pick your own route: road splits, roundabout exits, side streets and service roads all work as with the rental car. Stop anywhere in the destination town and press Space to deliver.
+- Pay: +15% if you're on time, less the later you are (down to 30% of the pay). Crashes damage the load (fragile loads more), and the load's condition cuts the pay too. Diesel is on the company card.
+- The truck has its own cab, a trip computer showing the load, destination, deadline and load condition, and warnings at 2 h, 1 h and 30 min left. Heavier loads pull away slower. Every vehicle now has a crawl gear for steep hills.
+- **Radio (R):** after OFF and the two built-in stations, the dial has real internet radio. The game asks the free, public Radio Browser directory (radio-browser.info) for the most-played live stations tagged trucker, truckers or trucking, plus US classic country, country and Americana, and plays them. Only secure (https) streams are used. If the directory or a stream can't be reached, the display says NO NET RADIO or NO SIGNAL and the built-in stations still work. Station names come from the directory and change over time.
+
 ## Update 7: roundabout exits and side streets you can see
 
 - Roundabouts: each exit is now a real road leaving the circle on the right. You see it coming, with a green sign first. To take it, steer right onto it (a hint says "YOUR EXIT – KEEP RIGHT" at the right one). Miss it and you go round again.

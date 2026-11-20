@@ -51,7 +51,7 @@ export class Career {
   }
 
   save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ node: this.node, clock: this.clock, money: this.money, ledger: this.ledger, stats: this.stats, hunger: this.hunger, fatigue: this.fatigue })); } catch (e) { /* storage may be unavailable */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ node: this.node, clock: this.clock, money: this.money, ledger: this.ledger, stats: this.stats, hunger: this.hunger, fatigue: this.fatigue, taken: this.taken || [] })); } catch (e) { /* storage may be unavailable */ }
   }
   load() {
     try {

@@ -7,6 +7,11 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 9: bigger roundabouts
+
+- Roundabouts are now more than twice as wide, so going round feels like a sweeping curve, not a carousel. The swing into the circle is gentler too.
+- The "YOUR EXIT" hint stays up a little longer, because exits peel away from the wider circle more gradually.
+
 ## Update 8: trucking and real internet radio
 
 - New **TRUCK** tab in the hub: Desert Freight posts five loads a day at every town's yard (lumber, US mail, fresh eggs, TV sets and so on), each with a destination, weight, pay and a delivery deadline.

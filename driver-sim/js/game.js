@@ -498,7 +498,7 @@ export class Game {
     const p = this.player, tr = this.track, i = s.i, pct = (p.z % SEG) / SEG;
     // hints as they come up
     for (const br of tr.branches) {
-      if (br.fixed || i < br.i0 - 40 || i > br.i0 + 6) continue;
+      if (br.fixed || i < br.i0 - 40 || i > br.i0 + (br.kind === 'exit' ? 14 : 6)) continue;
       if (br.kind === 'side' && Math.abs(p.speed) < 35) this.roadHint = 'SIDE STREETS: STEER LEFT OR RIGHT TO TURN IN';
       if (br.kind === 'tee') this.roadHint = 'STOP SIGN: STEER LEFT OR RIGHT';
       if (br.kind === 'exit' && i > br.i0 - 9 && !tr.branches.some(o => o.kind === 'exit' && o !== br && o.i0 < br.i0 && i - o.i0 < 16)) {

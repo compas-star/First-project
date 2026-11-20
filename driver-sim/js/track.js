@@ -1,9 +1,9 @@
 // Builds the drivable pseudo-3D road from the map: each highway edge becomes a run of segments
 // whose curves follow the real road's turns, whose scenery follows the real landscape,
 // and whose towns sit where they are on the map. Edges are appended as you drive.
-import { SEG, SEG_PER_MILE, RUMBLE, ZONE_LEN, DRAW_DIST } from './config.js';
+import { SEG, SEG_PER_MILE, RUMBLE, ZONE_LEN, DRAW_DIST, ROAD_W } from './config.js';
 import { mulberry, hex, lerpC, easeInOut } from './gfx.js';
-import { BUILDINGS, ADS_COUNT, welcomeSprite, greenSign, routeShield, carSprite } from './sprites.js';
+import { BUILDINGS, ADS_COUNT, welcomeSprite, greenSign, routeShield, carSprite, gantrySign } from './sprites.js';
 import { NODES, heading, normAng, biomeAtMap, outEdges } from './world.js';
 
 export const BIOMES = {
@@ -51,11 +51,36 @@ function serviceNames(key) {
 }
 
 export const reverseEdge = e => ({ road: e.road, from: e.to, to: e.from, rev: !e.rev });
-// What sits at a town's centre: a roundabout (junctions, dead ends, small-town forks) or a crossroads.
+// What sits at a node: a highway split you steer into (interchanges, and leaving the big cities),
+// a roundabout (dead ends, small-town forks) or a plain crossroads.
 export function nodeKind(id) {
   const n = NODES[id], deg = outEdges(id).length;
-  return n.type === 'junction' || deg === 1 || (deg >= 3 && n.type === 'town') ? 'roundabout' : 'cross';
+  if (n.type === 'junction' || (n.type === 'city' && deg >= 3)) return 'split';
+  return deg === 1 || (deg >= 3 && n.type === 'town') ? 'roundabout' : 'cross';
 }
+
+// ---------- road splits ----------
+// Every road leaving a split is a "ribbon". All ribbons start on top of each other and peel apart,
+// each at its own angle theta. Positions are worked out in one shared frame, so the ribbon you are
+// on can be swapped for another one at any moment without anything on screen moving.
+export const SPLIT_LS = 180;               // segments over which the roads ease apart
+export const SPLIT_Q = SPLIT_LS + 220;     // whole split, including where the other roads curve away
+export const SPLIT_LOCK = SPLIT_LS + 30;   // past this the roads are apart: your choice is made
+const splitF = q => q <= 0 ? 0 : q <= SPLIT_LS ? q * q / (2 * SPLIT_LS) : SPLIT_LS / 2 + (q - SPLIT_LS);
+export const splitSlope = q => q <= 0 ? 0 : Math.min(1, q / SPLIT_LS);
+export const splitL = (sp, j, q) => SEG * sp.theta[j] * splitF(q);
+const splitG = q => q > SPLIT_LS + 40 ? 1.5 * (q - SPLIT_LS - 40) ** 2 : 0;
+// lateral position of ribbon j seen from ribbon `ref`, in half-road widths (positive = right)
+export function splitOff(sp, j, ref, q) {
+  if (j === ref) return 0;
+  return (splitL(sp, j, q) - splitL(sp, ref, q) + Math.sign(sp.theta[j] - sp.theta[ref]) * splitG(q)) / ROAD_W;
+}
+export function splitPos(j, k) {
+  if (k === 2) return j ? 'RIGHT' : 'LEFT';
+  if (k === 3) return ['LEFT', 'MIDDLE', 'RIGHT'][j];
+  return j === 0 ? 'FAR LEFT' : j === k - 1 ? 'FAR RIGHT' : j < (k - 1) / 2 ? 'LEFT' : j > (k - 1) / 2 ? 'RIGHT' : 'MIDDLE';
+}
+const arrowFor = rel => rel < -0.5 ? '<' : rel > 0.5 ? '>' : '^';
 
 // ---------- road profiles: each road is built once, so it looks the same in both directions ----------
 const PROFILES = new Map();
@@ -201,7 +226,7 @@ function pickVeg(bioName, r) {
 export class Track {
   constructor(seed = 66, opts = {}) {
     this.segs = []; this.r = mulberry(seed);
-    this.y = 0; this.heading = 0; this.legs = []; this.pumps = []; this.services = []; this.marks = []; this.forks = []; this.notices = [];
+    this.y = 0; this.heading = 0; this.legs = []; this.pumps = []; this.services = []; this.marks = []; this.forks = []; this.notices = []; this.splits = [];
     this.pending = null; this.ring = null; this.sideStreets = !!opts.sideStreets;
   }
   get length() { return this.segs.length * SEG; }
@@ -248,6 +273,7 @@ export class Track {
     this.services = this.services.filter(p => p.idx < at);
     this.forks = this.forks.filter(f => f.a < at);
     this.notices = this.notices.filter(n => n.idx < at);
+    this.splits = this.splits.filter(sp => sp.s0 <= at);
     this.pending = null; this.ring = null;
   }
 
@@ -490,9 +516,135 @@ export class Track {
     return this.appendEdge(e, k0);
   }
 
+  // Advance signs for a split, a mile and a bit before it (ending at segment `end`).
+  splitSigns(end, edges) {
+    const rels = edges.map(e => normAng(entryHeading(e, 0) - this.segs[Math.min(end, this.segs.length) - 1].heading));
+    const lines = edges.map((e, j) => {
+      const a = arrowFor(rels[j]), t = `${e.road.hw} ${NODES[e.to].name}`;
+      return a === '<' ? '< ' + t : a === '>' ? t + ' >' : '^ ' + t;
+    });
+    const town = this.segs[end - 1]?.town;
+    const i = town ? end - 26 : end - 190;
+    if (this.segs[i]) this.place(i, greenSign(lines), town ? -1.75 : 1.75, { solid: true });
+    if (!town && this.segs[end - 60]) this.place(end - 60, greenSign(['ROAD SPLITS', 'KEEP LEFT OR RIGHT']), 1.75, { solid: true });
+  }
+
+  // A split at a node: the roads in `edges` (ordered left to right) peel apart and you drive
+  // onto ribbon `ref`. `fixed` = the bus, which can't change its mind.
+  appendSplit(node, edges, ref, fixed) {
+    const info = this.nodeInfo(node), k = edges.length;
+    const rels = edges.map(e => normAng(entryHeading(e, 0) - this.heading));
+    const spacing = k <= 2 ? 0.38 : k === 3 ? 0.34 : 0.3;
+    const mean = rels.reduce((a, b) => a + b, 0) / k;
+    const c = Math.max(-0.3, Math.min(0.3, mean * 0.4));
+    const sp = { node, info, edges, k, rels, fixed, theta: edges.map((e, j) => c + (j - (k - 1) / 2) * spacing), seed: Math.floor(this.r() * 1e9), deco: [] };
+    if (info.town) this.appendStraight(10, info, (s, q) => { if (q >= 3) s.cross = q === 3 || q === 9 ? 2 : 1; });
+    else this.appendStraight(20, { ...info, quiet: true });
+    sp.s0 = this.segs.length;
+    this.decorateSplit(sp);
+    this.splits.push(sp);
+    return this.appendSplitRun(sp, ref, 0);
+  }
+
+  // Scenery for a split, attached to its ribbons so it is the same whichever road you take.
+  decorateSplit(sp) {
+    const r = mulberry(sp.seed), k = sp.k, town = sp.info.town;
+    const add = (q, j, o, key, extra) => { if (q >= 0 && q < SPLIT_Q) (sp.deco[q] ||= []).push({ j, o, k: key, ...extra }); };
+    const gap = (j, q) => (splitL(sp, j + 1, q) - splitL(sp, j, q)) / ROAD_W;  // centre to centre
+    // the sign bridge, one panel per road
+    const mid = Math.floor((k - 1) / 2);
+    const meanL = q => sp.theta.reduce((a, t, j) => a + splitL(sp, j, q), 0) / k;
+    const panels = sp.edges.map((e, j) => ({ arrow: arrowFor(sp.rels[j]), lines: [e.road.hw, NODES[e.to].name] }));
+    add(3, mid, (meanL(3) - splitL(sp, mid, 3)) / ROAD_W, gantrySign(panels, Math.max(9, k * 3.6 + 2)), { center: true });
+    const bio = BIOMES[sp.info.bio.a];
+    const veg = () => { let roll = r(), key = bio.veg[0][0]; for (const [kk, w] of bio.veg) { if (roll < w) { key = kk; break; } roll -= w; } return key; };
+    for (let j = 0; j < k; j++) {
+      // where this road parts from the next one: a striped marker, then its route shield
+      let qn = SPLIT_LS;
+      if (j < k - 1) { for (let q = 0; q < SPLIT_Q; q++) if (gap(j, q) >= 2.1) { qn = q; break; } add(qn, j, gap(j, qn) / 2, 'gore', { solid: true, side: 0 }); }
+      const e = sp.edges[j];
+      let qs = SPLIT_LS + 10;
+      if (j < k - 1) { for (let q = qn; q < SPLIT_Q; q++) if (gap(j, q) >= 3.6) { qs = q; break; } }
+      add(qs, j, 1.45, routeShield(e.road.hw), { solid: true, side: 1 });
+      add(qs + 40, j, j === k - 1 ? 1.75 : Math.min(1.7, gap(j, qs + 40) - 2.5), greenSign([NODES[e.to].name]), { solid: true, side: 1 });
+    }
+    for (let q = 0; q < SPLIT_Q; q++) {
+      // outside the outermost roads
+      for (const [j, side] of [[0, -1], [k - 1, 1]]) {
+        if (town) {
+          if (q % 16 === (side > 0 ? 8 : 0)) add(q, j, side * 1.45, 'lamp', { solid: true });
+          if (r() < 0.085) add(q, j, side * (2.5 + r() * 0.6), BUILDINGS[Math.floor(r() * BUILDINGS.length)], { solid: true });
+        } else {
+          if (r() < 0.5) add(q, j, side * (1.36 + r() * 1.4), bio === BIOMES.forest || bio === BIOMES.woodland || bio === BIOMES.plains ? 'pebbles' : 'pebbles2');
+          if (r() < bio.density * 0.55) {
+            const key = veg(), big = key.startsWith('pine') || key === 'joshua' || key === 'saguaro' || key === 'boulder' || key.startsWith('juniper');
+            add(q, j, side * ((big ? 1.9 : 1.4) + r() * r() * 7), key, { solid: big });
+          }
+          if (q % 22 === 0 && side < 0) add(q, j, -1.65, 'pole');
+        }
+      }
+      // in the growing wedge between two roads
+      for (let j = 0; j < k - 1; j++) {
+        const g = gap(j, q) - 2;          // edge to edge
+        if (g < 1.6) continue;
+        if (town) { if (q % 16 === 4 && g > 2.2) add(q, j, 1.4, 'lamp', { solid: true }); continue; }
+        if (r() < bio.density * 0.5 * Math.min(1, (g - 1.6) / 3)) {
+          const key = veg(), big = key.startsWith('pine') || key === 'joshua' || key === 'saguaro' || key === 'boulder' || key.startsWith('juniper');
+          if (big && g < 3.5) continue;
+          add(q, j, 1.5 + r() * (g - 1), key, { solid: big, side: 0 });
+        }
+      }
+    }
+  }
+
+  // Build the split from position q onward, driving on ribbon `ref`, then the road it leads to.
+  appendSplitRun(sp, ref, q0) {
+    sp.ref = ref;
+    const L = q => splitL(sp, ref, q);
+    for (let q = q0; q < SPLIT_Q; q++) {
+      const s = this.push(L(q + 2) - 2 * L(q + 1) + L(q), this.y, this.y, { ...sp.info, quiet: true });
+      s.split = sp; s.q = q; s.ref = ref;
+      const offs = [], br = [];
+      for (let j = 0; j < sp.k; j++) offs.push(splitOff(sp, j, ref, q));
+      const covered = (j, x) => offs.some((o, m) => m !== j && Math.abs(o - x) < 0.99);
+      s.noL = covered(ref, -0.95); s.noR = covered(ref, 0.95);
+      for (let j = 0; j < sp.k; j++) {
+        if (j === ref) continue;
+        const o1 = offs[j], o2 = splitOff(sp, j, ref, q + 1);
+        if (Math.min(Math.abs(o1), Math.abs(o2)) < 70) br.push({ j, o1, o2, noL: covered(j, o1 - 0.95), noR: covered(j, o1 + 0.95) });
+      }
+      if (br.length) s.br = br;
+      for (const d of sp.deco[q] || []) {
+        const o = offs[d.j] + d.o;
+        if (Math.abs(o) > 90) continue;
+        s.sprites.push({ k: d.k, o, solid: !!d.solid, side: d.center ? 0 : d.side ?? (Math.abs(d.o) > 1.2 ? Math.sign(d.o) : 0) });
+      }
+    }
+    const e = sp.edges[ref];
+    const delta = normAng(entryHeading(e, 0) - this.heading);
+    this.appendTurn(delta, Math.round(14 + Math.abs(delta) * 22), sp.info);
+    return this.appendEdge(e, 0);
+  }
+
   // Whatever comes after arriving at a node, for a fixed route (the bus).
   appendNode(node, out) {
-    if (nodeKind(node) === 'roundabout') return this.appendRoundabout(node, out);
+    const kind = nodeKind(node);
+    if (kind === 'split') {
+      const inId = this.legs.length ? this.legs[this.legs.length - 1].e.road.id : -1;
+      let outs = outEdges(node).filter(e => e.road.id !== inId);
+      if (!outs.length) outs = outEdges(node);
+      const h = this.heading;
+      outs.sort((a, b) => normAng(entryHeading(a, 0) - h) - normAng(entryHeading(b, 0) - h));
+      const ref = outs.findIndex(e => e.road.id === out.road.id && e.to === out.to);
+      if (outs.length > 1 && ref >= 0) {
+        this.splitSigns(this.segs.length, outs);
+        this.notices.push({ idx: this.segs.length, text: `ROUTE: KEEP ${splitPos(ref, outs.length)} FOR ${out.road.hw} ${NODES[out.to].name}`, color: '#ffd36a' });
+        return this.appendSplit(node, outs, ref, true);
+      }
+      this.appendCross(node, out);
+      return this.appendEdge(out, 0);
+    }
+    if (kind === 'roundabout') return this.appendRoundabout(node, out);
     this.appendCross(node, out);
     return this.appendEdge(out, 0);
   }

@@ -7,6 +7,14 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 5: roads that split in front of you
+
+- Highway interchanges (I-40/AZ-95, Cordes Jct) and the big cities with several roads out (Kingman, Williams, Flagstaff, Prescott) no longer use a menu. The road visibly splits into one road per destination, and they peel apart in front of you.
+- Steer onto the road you want. Whichever road you are on when they separate is the one you take. No buttons.
+- Signs tell you which is which: a green advance sign about a mile and a half before, an overhead sign bridge with one panel and arrow per road, a striped marker where the roads part, and each road's route shield after it.
+- The panel on the right lists the roads from left to right, highlights the one you are on, and stars the one that gets you to your destination. If you're on the wrong one, a hint says which way to steer.
+- The bus sees the same splits but keeps to its route.
+
 ## Update 4: diners, motels and a driver who gets tired
 - **Hunger and tiredness** (FOOD / REST meters, top left) drop as game time passes and are saved with your career.
   Tired drivers yawn, their eyelids start to close and their hands drift on the wheel; hungry drivers tire faster.
@@ -33,7 +41,7 @@ You leave at 15:30 and drive into the sunset; the last leg is at night.
 - **The road you drive is generated from the map**: curves follow the real road's turns, the landscape
   follows the real terrain, towns are where they are on the map, and the sun sits where it should for your heading.
 - **Hub**: bus jobs from each depot (17 daily routes), U-Drive car rental to any town, motel, ledger of your money.
-- **Rental car**: its own cab, faster, you pay for gas. At city crossroads pick a road (Q / E, or the ROAD buttons).
+- **Rental car**: its own cab, faster, you pay for gas. Where the road splits, steer onto the road you want (Update 5).
 - **Paper map in the vehicle**: press M (or MAP) to unfold it and see where you are.
 - 24-hour day/night cycle; progress is saved in the browser.
 
@@ -52,7 +60,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 | Steer | ← / → (A / D) | ◀ ▶ buttons, or drag on the steering wheel |
 | Reverse | hold ↓ at a standstill | hold BRAKE at a standstill |
 | U-turn (car) | U | U-TURN |
-| Pick a road at a city crossroads | Q / E | ROAD buttons |
+| Pick a road where the road splits | Steer onto it | Steer onto it |
 | Paper map | M or Tab | MAP |
 | Open doors / refuel | Space | big pulsing button |
 | Cruise control | C | CRUISE |

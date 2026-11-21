@@ -57,8 +57,10 @@ export const reverseEdge = e => ({ road: e.road, from: e.to, to: e.from, rev: !e
 // a roundabout (dead ends, small-town forks) or a plain crossroads.
 export function nodeKind(id) {
   const n = NODES[id], deg = outEdges(id).length;
-  if (n.type === 'junction' || (n.type === 'city' && deg >= 3)) return 'split';
-  return deg === 1 || (deg >= 3 && n.type === 'town') ? 'roundabout' : 'cross';
+  // no roundabouts: where three or more roads meet, the road splits and you steer onto yours;
+  // elsewhere (two roads, or a dead end where you turn back) the road simply bends
+  if (n.type === 'junction' || deg >= 3) return 'split';
+  return 'cross';
 }
 
 // ---------- road splits ----------

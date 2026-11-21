@@ -2,6 +2,7 @@
 // split windshield, folding entry door, bus mirrors, gauge cluster, switch panel,
 // CB radio, desk fan, flat bus steering wheel and big hairy forearms.
 import { wAng } from './weather.js';
+import { TV_SCREEN } from './vhs.js';
 import { W, H } from './config.js';
 import { makeCanvas, mulberry, rect, px, line, ellipse, circle, poly, shade, clamp, timeStr, css, ditherV, bayer, hex, lerpC, freeze } from './gfx.js';
 import { drawText } from './font.js';
@@ -292,6 +293,38 @@ function needle(ctx, [cx, cy, r], frac, start, sweep, col) {
 // wipers: [pivot x, pivot y, length] for each vehicle; they sweep when it rains
 export const WIPERS = { bus: [[70, DASH_Y - 1, 152], [320, DASH_Y - 1, 74]], car: [[132, 158, 118], [262, 158, 118]] };
 // drawn on the view before the cab goes over it, so the dashboard hides their bottom ends
+// A little TV/VCR combo sitting on the dash, rabbit ears and all. While a tape plays, the
+// YouTube player sits over the screen (see vhs.js); otherwise the screen is dark glass.
+function drawTV(ctx, sc, on, t) {
+  const x = sc.x - 6, y = sc.y - 6, w = sc.w + 12, h = sc.h + 18;
+  line(ctx, x + w / 2 - 4, y, x + w / 2 - 20, y - 22, '#2a2a2a', 1);
+  line(ctx, x + w / 2 + 4, y, x + w / 2 + 22, y - 18, '#2a2a2a', 1);
+  rect(ctx, x + w / 2 - 6, y - 3, 12, 4, '#202022');
+  rect(ctx, x, y, w, h, '#2c2b2e'); rect(ctx, x, y, w, 1, '#4a494e'); rect(ctx, x, y + h - 1, w, 1, '#141416');
+  rect(ctx, x + 2, y + 2, w - 4, sc.h + 8, '#18181a');
+  // screen with rounded corners
+  rect(ctx, sc.x, sc.y, sc.w, sc.h, on ? '#000' : '#1e2522');
+  for (const [cx, cy] of [[sc.x, sc.y], [sc.x + sc.w - 2, sc.y], [sc.x, sc.y + sc.h - 2], [sc.x + sc.w - 2, sc.y + sc.h - 2]]) rect(ctx, cx, cy, 2, 2, '#18181a');
+  if (!on) {
+    rect(ctx, sc.x + 5, sc.y + 4, 16, 2, 'rgba(255,255,255,0.10)'); rect(ctx, sc.x + 5, sc.y + 6, 8, 2, 'rgba(255,255,255,0.06)');
+    drawText(ctx, 'V - TAPE', sc.x + sc.w / 2, sc.y + sc.h / 2 - 2, 'rgba(160,180,170,0.35)', 1, 'center');
+  }
+  // the VCR slot, the label and the power light underneath
+  const by = sc.y + sc.h + 4;
+  rect(ctx, x + 6, by + 2, 26, 3, '#0a0a0a'); rect(ctx, x + 6, by + 1, 26, 1, '#3c3b40');
+  drawText(ctx, 'VHS', x + w - 18, by, '#8a8a90', 1, 'center');
+  rect(ctx, x + w - 7, by + 2, 3, 3, on ? (Math.floor(t * 2) % 4 ? '#5aff5a' : '#2a8a2a') : '#7a2020');
+}
+function tvGlow(ctx, sc, sky, t) {
+  if (sky.night < 0.2) return;
+  const flick = 0.75 + 0.25 * Math.sin(t * 7) * Math.sin(t * 2.3);
+  const cx = sc.x + sc.w / 2, cy = sc.y + sc.h / 2;
+  const g = ctx.createRadialGradient(cx, cy, 4, cx, cy, 90);
+  g.addColorStop(0, `rgba(120,150,255,${0.22 * sky.night * flick})`); g.addColorStop(1, 'rgba(120,150,255,0)');
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = g; ctx.fillRect(cx - 90, cy - 90, 180, 180);
+  ctx.globalCompositeOperation = 'source-over';
+}
 export function drawWipers(ctx, pivots, w) {
   const a = wAng(w);
   for (const [px0, py0, len] of pivots) {
@@ -425,6 +458,7 @@ export function renderCockpit(main, game, sky, t) {
     ctx.drawImage(side < 0 ? handL : handR, Math.round(hx - 24), Math.round(hy - 12));
   }
 
+  drawTV(ctx, TV_SCREEN.bus, game.tvOn, t);
   // night: darken the cab before drawing anything that glows
   const tintA = sky.tintA * 0.92;
   if (tintA > 0) {
@@ -433,6 +467,7 @@ export function renderCockpit(main, game, sky, t) {
     ctx.fillRect(0, 0, W, H);
     ctx.globalCompositeOperation = 'source-over';
   }
+  if (game.tvOn) tvGlow(ctx, game.mode === 'car' ? TV_SCREEN.car : TV_SCREEN.bus, sky, t);
   const glow = 0.35 + sky.night * 0.65;
   if (sky.night > 0.1) {
     ctx.globalCompositeOperation = 'lighter';
@@ -573,6 +608,7 @@ function renderCarCockpit(main, game, sky, t) {
     drawArm(ctx, hx, hy + 26, side < 0 ? 30 : 380, 360, side < 0);
     ctx.drawImage(side < 0 ? handL : handR, Math.round(hx - 24), Math.round(hy - 12));
   }
+  drawTV(ctx, TV_SCREEN.car, game.tvOn, t);
   const tintA = sky.tintA * 0.92;
   if (tintA > 0) {
     ctx.globalCompositeOperation = 'source-atop';
@@ -580,6 +616,7 @@ function renderCarCockpit(main, game, sky, t) {
     ctx.fillRect(0, 0, W, H);
     ctx.globalCompositeOperation = 'source-over';
   }
+  if (game.tvOn) tvGlow(ctx, game.mode === 'car' ? TV_SCREEN.car : TV_SCREEN.bus, sky, t);
   const glow = 0.35 + sky.night * 0.65;
   if (sky.night > 0.1) {
     ctx.globalCompositeOperation = 'lighter';

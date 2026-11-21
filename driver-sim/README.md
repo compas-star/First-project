@@ -7,6 +7,13 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 11: safer roundabout exits
+
+- The big green SERVICES sign no longer stands at the mouth of roundabout exits, where holding right a moment too long ran you into it. It's further down the road and further from the edge.
+- Steer onto an exit and straighten up: you're on the exit road, no need to keep holding the wheel over.
+- A crash into something at the roadside puts you back at the road edge, so one mistake costs one crash, not two or three in a row.
+- Buildings around town roundabouts stay clear of the exit roads (the bigger circles made exits peel off more slowly).
+
 ## Update 10: weather, night lights and sound
 
 - **Weather:** clear, overcast, rain, thunderstorms, dust storms in the desert and snow up in the pines around Flagstaff. It changes by itself every hour or two of game time and fades in slowly. Press F (or WEATHER) to change it yourself.

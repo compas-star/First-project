@@ -427,7 +427,8 @@ export class Track {
     const r = this.r;
     const putS = (q, key, lo, extra) => { const s = this.segs[at(k0 + q)]; if (s) s.sprites.push({ k: key, att: 'svc', lo, o: lo, ...extra }); };
     const want = items.map(([type]) => type === 'gas' ? 'GAS' : type === 'diner' ? 'FOOD' : 'LODGING').join(' ');
-    this.place(at(k0 - 70), greenSign(['SERVICES', want]), 1.75, { solid: true });
+    // well clear of the road, and not right at the mouth of a roundabout exit
+    this.place(at(Math.max(k0 - 70, 34)), greenSign(['SERVICES', want]), 2.15, { solid: true });
     // the striped marker where the service road leaves, and again where it comes back
     for (const q of [Math.round(LOOP_R * 0.62), Math.round(L - LOOP_R * 0.62)]) {
       const s = this.segs[at(k0 + q)];
@@ -542,7 +543,7 @@ export class Track {
       }
       if (j % 6 === 0) this.place(s.i, r() < 0.5 ? 'grass' : 'sage', -1.45 - r() * 0.4);
       if (j % 18 === 9) this.place(s.i, pickVeg(R.info.bio.a, r), -2.4 - r() * 0.8);
-      const nearExit = R.exits.some(ex => { const d = ((jj - (ex.x % RING)) % RING + RING) % RING; return d < 26 || d > RING - 16; });
+      const nearExit = R.exits.some(ex => { const d = ((jj - (ex.x % RING)) % RING + RING) % RING; return d < 55 || d > RING - 16; });
       if (j % 12 === 3 && R.info.town && !nearExit) this.place(s.i, BUILDINGS[Math.floor(r() * BUILDINGS.length)], 2.6 + r() * 0.5);
     }
     if (forks) R.laps++;

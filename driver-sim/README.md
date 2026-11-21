@@ -7,6 +7,12 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 17: NO SIGNAL instead of a broken player
+
+- Some YouTube videos can't be played outside YouTube, or are private or gone. Instead of YouTube's "Video unavailable" box, the TV now shows full static and NO SIGNAL, and a message says why (for example "THIS TAPE WON'T PLAY HERE - ITS OWNER ONLY ALLOWS IT ON YOUTUBE").
+- If YouTube doesn't answer at all within 10 seconds (no internet), the TV shows NO SIGNAL too, and picks the picture up if the video turns up later.
+- While a tape loads you see static, not YouTube's black loading screen.
+
 ## Update 16: road splits you can actually take
 
 - Fixed: at a split you sometimes steered for your road and still carried on along the old one (Williams, Prescott, Ash Fork and others). If you started steering once you could see the roads coming apart, the other road pulled away faster than you could cross to it, and with a road on the left you were even switched back to the road you were leaving.

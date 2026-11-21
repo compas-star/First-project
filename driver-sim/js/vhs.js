@@ -8,7 +8,7 @@
 import { W, H } from './config.js';
 
 // screen rectangles in game pixels, per cab
-export const TV_SCREEN = { bus: { x: 316, y: 121, w: 60, h: 45 }, car: { x: 390, y: 129, w: 60, h: 45 } };
+export const TV_SCREEN = { bus: { x: 318, y: 114, w: 68, h: 50 }, car: { x: 376, y: 112, w: 80, h: 60 } };
 const KEY = 'motherroad_vhs';
 // the player is laid out at this size, then scaled down to the screen: YouTube wants a
 // player of at least 200x200, and the scaling makes it look lower-res, which suits VHS

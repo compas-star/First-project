@@ -7,6 +7,12 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 14: souvenirs and a bigger TV
+
+- **Souvenirs:** deliver a load or finish a bus route in a town, eat there, or sleep in a motel there, and you pick up something from its tourist shop: first a postcard, then a photo, then a little figure. Each town has its own: a dinosaur from Holbrook, a mule from the Grand Canyon, a snow globe from Flagstaff, a steam engine from Williams, the London Bridge from Lake Havasu, a Route 66 shield from Kingman and Seligman, and so on. Truck stops out on the highway don't sell any.
+- Postcards and photos are taped along the top of the windshield, figures stand on the left of the dashboard, and the newest figure sits on top of the TV. They're saved with your career.
+- The TV is bigger (the bus has a slightly smaller one, so it doesn't fill the door-side window).
+
 ## Update 13: VHS TV, map tips, radio keeps playing
 
 - **VHS TV:** a little TV/VCR combo sits on the dashboard. Press V (or VHS) and paste a YouTube link: it plays on the TV with a worn-tape look (colour bleed, soft picture, scanlines, static, a rolling tracking band and the VCR's green PLAY). The game waits while you're typing. Press V again to change or eject the tape. N mutes it with the rest of the sound. The video is the real YouTube player (youtube-nocookie.com) laid over the TV's screen, so it needs an internet connection, and some videos can't be played outside YouTube.
@@ -145,6 +151,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 | `track.js` | Route, towns, schedule, biomes, procedural road and scenery placement |
 | `render.js` | Pseudo-3D road and sprite renderer, fog, night lighting |
 | `backgrounds.js` | Parallax mountains per biome, sky, sun, moon, stars and Milky Way by time of day |
+| `souvenirs.js` | Postcards, photos and figures from the towns you visit, and where they go in the cab |
 | `vhs.js` | The dashboard TV: YouTube player with a VHS filter, the tape dialog |
 | `weather.js` | Weather changes, rain, snow and dust, drops on the glass, wipers, lightning |
 | `cockpit.js` | Dashboard, gauges, wheel, hands, mirror, LCD |

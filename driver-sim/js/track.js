@@ -404,19 +404,19 @@ export class Track {
     }
     if (svcFrom) {
       const nm = serviceNames(e.from);
-      loops.push([LOOP_TOWN_K, NODES[e.from].name, [['gas', NODES[e.from].name], ['diner', nm.diner], ['motel', nm.motel]]]);
+      loops.push([LOOP_TOWN_K, NODES[e.from].name, [['gas', NODES[e.from].name], ['diner', nm.diner], ['motel', nm.motel]], e.from]);
     }
     if (NODES[e.to].type !== 'junction') this.townCenter(e.to, s0 + (N - 1 - k0), at(N - hArr), s0);
-    for (const [kl, title, items] of loops) this.serviceLoop(at, kl, title, items);
+    for (const [kl, title, items, town] of loops) this.serviceLoop(at, kl, title, items, town);
     this.pending = { node: e.to, at: this.segs.length, e };
     return leg;
   }
 
   // A service road from edge-order k0: gas, diner and motel in a row on its right-hand side.
-  serviceLoop(at, k0, title, items) {
+  serviceLoop(at, k0, title, items, town = null) {
     const L = loopLen(items.length);
     for (let q = -2; q < L; q++) if (at(k0 + q) < 0) return;   // only on a whole stretch of road
-    const lp = { a: at(k0), L, on: false, segs: [], title };
+    const lp = { a: at(k0), L, on: false, segs: [], title, town };
     for (let q = -2; q < L; q++) {
       const s = this.segs[at(k0 + q)];
       s.loop = lp; s.lq = q;

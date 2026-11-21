@@ -1,4 +1,5 @@
 // Simulation: a bus shift or a rental-car trip on the map's roads.
+import { collect } from './souvenirs.js';
 import { Weather, NAMES as WX_NAMES } from './weather.js';
 import { SEG, MPH2U, BUS_FRONT_SEGS, ZONE_LEN, SEG_PER_MILE, DRAW_DIST, TIME_SCALE, ROAD_W } from './config.js';
 import { clamp, timeStr, mulberry } from './gfx.js';
@@ -224,6 +225,7 @@ export class Game {
       c.hunger = 0; c.fatigue = Math.max(0, c.fatigue - 8);
       this.clock += 35 * 60;
       this.msg('FULL AND HAPPY. BACK ON THE ROAD.', 3, '#9aff8a');
+      this.souvenir(b.sv.loop ? b.sv.loop.town : this.seg().town || this.seg().node);
     } else {
       c.add(`MOTEL - ${b.sv.name}`, -MOTEL_PRICE);
       const hr = (this.clock % 86400) / 3600;
@@ -235,6 +237,7 @@ export class Game {
       this.audio.door();
       const morning = (this.clock % 86400) / 3600 < 11;
       this.msg(morning ? `GOOD MORNING! IT'S ${timeStr(this.clock)}.` : `YOU WAKE UP REFRESHED AT ${timeStr(this.clock)}.`, 4, '#ffd36a');
+      this.souvenir(b.sv.loop ? b.sv.loop.town : this.seg().town || this.seg().node);
     }
     this.busy = null;
   }
@@ -267,7 +270,12 @@ export class Game {
     }
   }
 
-  finish(node) { this.finished = true; this.finishTimer = 2.5; this.endNode = node; }
+  finish(node) {
+    this.finished = true; this.finishTimer = 2.5; this.endNode = node;
+    // a load delivered or a bus route done: something from the town's tourist shop
+    if (this.mode !== 'car') this.souvenir(node);
+  }
+  souvenir(node) { const m = collect(this.career, node); if (m) this.msg(m, 4, '#ffb0e0'); }
 
   // ---------- junctions, roundabouts, side streets (car) ----------
   buildChoice(pd) {

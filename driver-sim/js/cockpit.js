@@ -3,6 +3,7 @@
 // CB radio, desk fan, flat bus steering wheel and big hairy forearms.
 import { wAng } from './weather.js';
 import { TV_SCREEN } from './vhs.js';
+import { drawSouvenirs } from './souvenirs.js';
 import { W, H } from './config.js';
 import { makeCanvas, mulberry, rect, px, line, ellipse, circle, poly, shade, clamp, timeStr, css, ditherV, bayer, hex, lerpC, freeze } from './gfx.js';
 import { drawText } from './font.js';
@@ -459,6 +460,7 @@ export function renderCockpit(main, game, sky, t) {
   }
 
   drawTV(ctx, TV_SCREEN.bus, game.tvOn, t);
+  drawSouvenirs(ctx, game.career, 'bus', TV_SCREEN.bus, (game.diceSwing || 0) * 3);
   // night: darken the cab before drawing anything that glows
   const tintA = sky.tintA * 0.92;
   if (tintA > 0) {
@@ -609,6 +611,7 @@ function renderCarCockpit(main, game, sky, t) {
     ctx.drawImage(side < 0 ? handL : handR, Math.round(hx - 24), Math.round(hy - 12));
   }
   drawTV(ctx, TV_SCREEN.car, game.tvOn, t);
+  drawSouvenirs(ctx, game.career, 'car', TV_SCREEN.car, (game.diceSwing || 0) * 3);
   const tintA = sky.tintA * 0.92;
   if (tintA > 0) {
     ctx.globalCompositeOperation = 'source-atop';

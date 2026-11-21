@@ -177,10 +177,10 @@ export class Hub {
     drawText(ctx, mood, x0, y0 + 20, '#6a5a4a');
     drawText(ctx, `DINER IN ${c.here.name}`.slice(0, 40), x0, y0 + 34, '#1a1a4a');
     drawText(ctx, `HOT MEAL & PIE ${money(MEAL_PRICE)} - 35 MIN`, x0, y0 + 43, '#3a3a3a');
-    this.button(ctx, x0, y0 + 52, PW - 14, 'EAT', () => { if (c.hunger < 8) this.note = "YOU'RE NOT HUNGRY."; else { c.eat(); this.note = 'BEST PIE IN ARIZONA.'; } }, false);
+    this.button(ctx, x0, y0 + 52, PW - 14, 'EAT', () => { if (c.hunger < 8) this.note = "YOU'RE NOT HUNGRY."; else { this.note = c.eat() || 'BEST PIE IN ARIZONA.'; } }, false);
     drawText(ctx, `MOTEL IN ${c.here.name}`.slice(0, 40), x0, y0 + 76, '#1a1a4a');
     drawText(ctx, `ONE NIGHT ${money(MOTEL_PRICE)} - UNTIL 07:00`, x0, y0 + 85, '#3a3a3a');
-    this.button(ctx, x0, y0 + 94, PW - 14, 'CHECK IN', () => { c.sleep(); this.note = 'GOOD MORNING! RISE AND SHINE.'; }, true);
+    this.button(ctx, x0, y0 + 94, PW - 14, 'CHECK IN', () => { this.note = c.sleep() || 'GOOD MORNING! RISE AND SHINE.'; }, true);
     drawText(ctx, 'ON THE ROAD: STOP AT DINERS AND', x0, y0 + 118, '#6a5a4a');
     drawText(ctx, 'MOTELS, OR GRAB COFFEE AT THE PUMPS.', x0, y0 + 126, '#6a5a4a');
   }

@@ -517,16 +517,11 @@ export class Game {
       if (br.fixed) continue;
       const Dp = D + dx * pct, Lp = p.x * ROAD_W;
       if (Math.abs(Dp) < 0.3 * ROAD_W) continue;
+      // you have to be steering that way, so drifting in your lane never turns you off by accident
+      if (Math.sign(p.wheel) !== Math.sign(Dp) || Math.abs(p.wheel) < 0.25) continue;
+      if (br.kind !== 'exit' && Math.abs(p.speed) > 32) continue;
       const lane = 0.5 * ROAD_W;
       if (!(Math.abs(Lp - Dp - lane) + 0.25 * ROAD_W < Math.abs(Lp - lane))) continue;
-      // once you're clearly over on the other road, you're on it, whatever the wheel is doing
-      // (you steer onto an exit, then straighten up: that still takes it)
-      const onIt = Math.abs(Dp) > 1.3 * ROAD_W && Math.abs(Lp - Dp - lane) < 0.8 * ROAD_W;
-      if (!onIt) {
-        // otherwise you have to be steering that way, so drifting in your lane never turns you off by accident
-        if (Math.sign(p.wheel) !== Math.sign(Dp) || Math.abs(p.wheel) < 0.25) continue;
-        if (br.kind !== 'exit' && Math.abs(p.speed) > 32) continue;
-      }
       // take it: rebuild the road from where the branch starts, keeping the view where it was
       const ghost = { i0: br.i0, curves: [], fixed: true, oneway: !!s.island || !!s.oneway, kind: 'ghost' };
       for (let q = 0; q < 60 && tr.segs[br.i0 + q]; q++) ghost.curves.push(tr.segs[br.i0 + q].curve);
@@ -744,15 +739,11 @@ export class Game {
       p.x = clamp(p.x, lo, hi);
     }
 
-    this.hitT = Math.max(0, (this.hitT || 0) - dt);
-    if (Math.abs(p.x) > 1.25 && Math.abs(p.speed) > 3 && !this.hitT) {
+    if (Math.abs(p.x) > 1.25 && Math.abs(p.speed) > 3) {
       const sObj = segs[Math.floor(p.z / SEG) + (p.speed > 0 ? 6 : -1)];
-      // driving on a road beside this one (an exit, a service road): its verge isn't yours
-      const onOther = side.some(o => Math.abs(p.x - o) < 1.1);
-      for (const sprite of onOther ? [] : sObj?.sprites || []) {
+      for (const sprite of sObj?.sprites || []) {
         if (sprite.solid && Math.abs(sprite.o - p.x) < 0.55) {
-          // stop, and end up back at the edge of the road: one mistake is one crash, not three
-          p.speed = 0; p.x = Math.sign(p.x) * 1.1; p.wheel = 0; this.hitT = 1.2;
+          p.speed = 0; p.x -= Math.sign(p.x) * 0.25;
           this.bump(15, 'OOF! THAT WAS NOT A ROAD.', true);
           break;
         }

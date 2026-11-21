@@ -7,6 +7,13 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 16: road splits you can actually take
+
+- Fixed: at a split you sometimes steered for your road and still carried on along the old one (Williams, Prescott, Ash Fork and others). If you started steering once you could see the roads coming apart, the other road pulled away faster than you could cross to it, and with a road on the left you were even switched back to the road you were leaving.
+- The roads now peel apart more gradually, giving about twice as long to cross once you see them part.
+- Once you're off the edge of your road and still steering toward the next one, you're on that one. You're never switched back to a road you're steering away from.
+- Lamps, trees and rocks in the wedge between two roads don't stop you while you can still change road.
+
 ## Update 15: no more roundabouts
 
 - Every place where three or more roads meet is now a road split: the roads peel apart under signs and you steer onto yours (the box lists them and stars the one toward your destination). That includes Seligman, Ash Fork, Williams, Valle, Cameron and Wickenburg, which had roundabouts.

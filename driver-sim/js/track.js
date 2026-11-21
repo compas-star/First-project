@@ -67,9 +67,9 @@ export function nodeKind(id) {
 // Every road leaving a split is a "ribbon". All ribbons start on top of each other and peel apart,
 // each at its own angle theta. Positions are worked out in one shared frame, so the ribbon you are
 // on can be swapped for another one at any moment without anything on screen moving.
-export const SPLIT_LS = 180;               // segments over which the roads ease apart
+export const SPLIT_LS = 280;               // segments over which the roads ease apart (slowly: time to steer across once you see them part)
 export const SPLIT_Q = SPLIT_LS + 220;     // whole split, including where the other roads curve away
-export const SPLIT_LOCK = SPLIT_LS + 30;   // past this the roads are apart: your choice is made
+export const SPLIT_LOCK = SPLIT_LS + 45;   // past this the roads are apart: your choice is made
 const splitF = q => q <= 0 ? 0 : q <= SPLIT_LS ? q * q / (2 * SPLIT_LS) : SPLIT_LS / 2 + (q - SPLIT_LS);
 export const splitSlope = q => q <= 0 ? 0 : Math.min(1, q / SPLIT_LS);
 export const splitL = (sp, j, q) => SEG * sp.theta[j] * splitF(q);
@@ -709,11 +709,13 @@ export class Track {
       for (let j = 0; j < k - 1; j++) {
         const g = gap(j, q) - 2;          // edge to edge
         if (g < 1.6) continue;
-        if (town) { if (q % 16 === 4 && g > 2.2) add(q, j, 1.4, 'lamp', { solid: true }); continue; }
+        // nothing in the wedge stops you while you can still cross to another road
+        const firm = q > SPLIT_LOCK + 20;
+        if (town) { if (q % 16 === 4 && g > 2.2) add(q, j, 1.4, 'lamp', { solid: firm }); continue; }
         if (r() < bio.density * 0.5 * Math.min(1, (g - 1.6) / 3)) {
           const key = veg(), big = key.startsWith('pine') || key === 'joshua' || key === 'saguaro' || key === 'boulder' || key.startsWith('juniper');
           if (big && g < 3.5) continue;
-          add(q, j, 1.5 + r() * (g - 1), key, { solid: big, side: 0 });
+          add(q, j, 1.5 + r() * (g - 1), key, { solid: big && firm, side: 0 });
         }
       }
     }

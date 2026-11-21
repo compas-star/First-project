@@ -7,6 +7,11 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 18: hands on the radio and the tape
+
+- Putting a tape in: the right hand lets go of the wheel, carries a VHS cassette over to the TV and pushes it into the slot. The video starts as the tape goes in, then the hand goes back to the wheel.
+- Changing station (R): a hand reaches over and turns the radio's knob (the right hand in the car, the left in the bus and truck, where the radio sits on the left). You keep steering with the other hand.
+
 ## Update 17: NO SIGNAL instead of a broken player
 
 - Some YouTube videos can't be played outside YouTube, or are private or gone. Instead of YouTube's "Video unavailable" box, the TV now shows full static and NO SIGNAL, and a message says why (for example "THIS TAPE WON'T PLAY HERE - ITS OWNER ONLY ALLOWS IT ON YOUTUBE").

@@ -29,6 +29,8 @@ const audio = new Audio();
 const vhs = new VHS(canvas);
 // when a tape won't play, say why (the TV itself shows NO SIGNAL)
 vhs.onNote = text => { if (state === 'drive') game.msg(text, 4.5, '#ff8a6a'); };
+// putting a tape in: the hand reaches over with the cassette, and it plays once it's in the slot
+vhs.onInsert = id => { if (state === 'drive') game.startHand('tape', () => vhs.insert(id)); else vhs.insert(id); };
 // browsers (and sandboxed frames) only allow audio to start from a user gesture
 for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, () => { try { audio.init(); } catch (e) {} }, true);
 

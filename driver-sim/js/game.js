@@ -275,6 +275,11 @@ export class Game {
     // a load delivered or a bus route done: something from the town's tourist shop
     if (this.mode !== 'car') this.souvenir(node);
   }
+  // the driver's hand leaves the wheel for a moment; `then` runs at the moment it gets there
+  startHand(kind, then) {
+    if (this.hand && !this.hand.fired) this.hand.then?.();
+    this.hand = kind === 'tape' ? { kind, t: 0, dur: 1.6, at: 0.5, then } : { kind, t: 0, dur: 0.9, at: 0.4, then };
+  }
   souvenir(node) { const m = collect(this.career, node); if (m) this.msg(m, 4, '#ffb0e0'); }
 
   // ---------- junctions, roundabouts, side streets (car) ----------
@@ -584,7 +589,14 @@ export class Game {
       else if (p.speed > 15) { p.cruise = true; p.cruiseSpeed = p.speed; this.msg(`CRUISE SET ${Math.round(p.speed)} MPH`, 1.5, '#9aff8a'); }
       else this.msg('CRUISE NEEDS 15+ MPH', 1.5);
     }
-    if (input.take('radio')) { const st = this.audio.cycleRadio(); this.msg(st.off ? 'RADIO OFF' : `RADIO: ${st.label}`, 2.5, '#ffb040'); }
+    if (input.take('radio')) { const st = this.audio.cycleRadio(); this.msg(st.off ? 'RADIO OFF' : `RADIO: ${st.label}`, 2.5, '#ffb040'); this.startHand('radio'); }
+    // a hand off the wheel (tuning the radio, putting a tape in)
+    if (this.hand) {
+      const h = this.hand;
+      h.t += dt;
+      if (!h.fired && h.t >= h.dur * h.at) { h.fired = true; h.then?.(); }
+      if (h.t >= h.dur) this.hand = null;
+    }
     if (input.take('lights')) this.lightsManual = !this.lightsOn;
     // weather: changes by itself now and then; F (or the WEATHER button) changes it by hand
     const bioName = (this.seg().bio || {}).a;

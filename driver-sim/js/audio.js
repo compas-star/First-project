@@ -56,6 +56,19 @@ export class Audio {
     const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 280;
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600;
     this.radioIn = hp; hp.connect(lp); lp.connect(this.radioG); this.radioG.connect(this.master);
+    // ambience: looping filtered noise for rain, wind and wet tyres
+    const amb = (type, f, q) => {
+      const src = ctx.createBufferSource(); src.buffer = nb; src.loop = true;
+      const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; if (q) fl.Q.value = q;
+      const g = ctx.createGain(); g.gain.value = 0;
+      src.connect(fl); fl.connect(g); g.connect(this.master); src.start(0, Math.random() * 1.8);
+      return { f: fl, g };
+    };
+    this.rainHi = amb('highpass', 1100);      // the hiss of rain on the roof and glass
+    this.rainLo = amb('lowpass', 420);        // and its heavier drumming
+    this.wind = amb('bandpass', 380, 0.9);    // wind past the cab
+    this.tyres = amb('highpass', 2600);       // tyres on a wet road
+    this.env = null; this.nextBug = 0; this.nextBird = 0;
     this.nextNote = ctx.currentTime + 0.2;
     setInterval(() => this.schedule(), 40);
   }
@@ -92,8 +105,49 @@ export class Audio {
     this.roadG.gain.setTargetAtTime(paused ? 0 : Math.min(0.035, speed / 2000) + (offroad ? 0.06 : 0), t, 0.15);
     this.roadF.frequency.setTargetAtTime(offroad ? 220 : 90 + speed, t, 0.2);
     this.radioG.gain.setTargetAtTime(paused ? 0 : 0.09, t, 0.1);
+    if (paused && this.rainHi) { for (const a of [this.rainHi, this.rainLo, this.wind, this.tyres]) a.g.gain.setTargetAtTime(0, t, 0.2); this.env = null; }
     this.net.setPaused(paused);
   }
+
+  // weather and night sounds; called every frame while the world is drawn
+  ambience(wx, sky, speed, paused) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const on = paused ? 0 : 1;
+    const v = Math.min(1, speed / 65);
+    this.env = paused ? null : { rain: wx.rain, snow: wx.snow, dust: wx.dust, night: sky.night, h: sky.h, speed };
+    this.rainHi.g.gain.setTargetAtTime(on * wx.rain * 0.05, t, 0.5);
+    this.rainLo.g.gain.setTargetAtTime(on * wx.rain * wx.rain * 0.07, t, 0.5);
+    const gust = 0.75 + 0.25 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1);
+    this.wind.g.gain.setTargetAtTime(on * (0.003 + v * v * 0.02 + wx.dust * 0.06 * gust + wx.snow * 0.015 * gust + (wx.rain > 0.8 ? 0.015 * gust : 0)), t, 0.4);
+    this.wind.f.frequency.setTargetAtTime(260 + v * 380 + wx.dust * 200 * gust, t, 0.6);
+    this.tyres.g.gain.setTargetAtTime(on * wx.wet * v * 0.035, t, 0.3);
+  }
+  thunder(big) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, dur = 3 + big * 3;
+    const s = ctx.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(120 + big * 400, t); f.frequency.exponentialRampToValueAtTime(60, t + dur);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.25 + big * 0.45, t + 0.08 + (1 - big) * 0.5);
+    g.gain.setTargetAtTime(0.12 + big * 0.1, t + 0.6, 0.4);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f); f.connect(g); g.connect(this.master); s.start(t, Math.random()); s.stop(t + dur + 0.1);
+    if (big > 0.6) this.noise(0.35, 2200, 0.12, null, 'bandpass', 300);
+  }
+  whoosh(big, side) {
+    if (!this.ctx || this.muted) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const s = ctx.createBufferSource(); s.buffer = this.noiseBuf;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 0.7;
+    f.frequency.setValueAtTime(1500, t); f.frequency.exponentialRampToValueAtTime(320, t + 0.8);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(big ? 0.12 : 0.06, t + 0.18); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+    let out = g;
+    if (ctx.createStereoPanner) { const pn = ctx.createStereoPanner(); pn.pan.value = Math.max(-1, Math.min(1, side)) * 0.7; g.connect(pn); out = pn; }
+    s.connect(f); f.connect(g); out.connect(this.master); s.start(t, Math.random()); s.stop(t + 1);
+  }
+  wiper() { this.tone(85, 0.09, 0.035, 'sine'); this.noise(0.08, 700, 0.012, null, 'bandpass'); }
 
   horn(on) { if (this.ctx) this.hornG.gain.setTargetAtTime(on ? 0.09 : 0, this.ctx.currentTime, 0.02); }
 
@@ -131,12 +185,31 @@ export class Audio {
   // ---------- generative radio ----------
   schedule() {
     if (!this.ctx) return;
+    this.nature();
     const st = STATIONS[this.station] || {};
     while (this.nextNote < this.ctx.currentTime + 0.15) {
       if (st.style) this.playStep(st.style, this.step, this.nextNote - this.ctx.currentTime);
       const bpm = st.style === 'desert' ? 72 : 104;
       this.nextNote += 60 / bpm / 2;
       this.step++;
+    }
+  }
+  // single raindrops on the roof, crickets at night, birds in the morning
+  nature() {
+    const e = this.env; if (!e || this.muted) return;
+    const now = this.ctx.currentTime, r = Math.random;
+    if (e.rain > 0.05 && r() < e.rain * 0.9) this.noise(0.025, 1800 + r() * 4500, 0.008 + r() * e.rain * 0.025, null, 'bandpass');
+    const calm = e.rain < 0.15 && e.snow < 0.2 && e.dust < 0.3;
+    const quiet = Math.max(0.25, 1 - e.speed / 80);
+    if (calm && e.night > 0.6 && now > this.nextBug) {
+      this.nextBug = now + 0.5 + r() * 1.4;
+      const f = 4100 + r() * 700, vol = 0.006 * quiet * (0.5 + r());
+      for (let k = 0; k < 3; k++) this.tone(f, 0.028, vol, 'sine', null, k * 0.055);
+    }
+    if (calm && e.night < 0.2 && e.h > 5.8 && e.h < 9.5 && now > this.nextBird) {
+      this.nextBird = now + 2 + r() * 6;
+      const f = 2400 + r() * 1400, n = 2 + Math.floor(r() * 4);
+      for (let k = 0; k < n; k++) this.tone(f * (1 + k * 0.04), 0.09, 0.008 * quiet, 'sine', null, k * 0.13, f * 1.35);
     }
   }
   playStep(style, step, when) {

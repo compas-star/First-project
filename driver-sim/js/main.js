@@ -1,10 +1,11 @@
+import { weatherSky, drawPrecip, drawGlass, drawBolt } from './weather.js';
 import { W, H } from './config.js';
 import { rect, timeStr } from './gfx.js';
 import { drawText, textWidth } from './font.js';
 import { buildSprites } from './sprites.js';
 import { buildBackgrounds, skyAt, drawSky } from './backgrounds.js';
-import { renderWorld, worldCanvas, drawEmissive, drawHeadlights } from './render.js';
-import { initCockpit, renderCockpit } from './cockpit.js';
+import { renderWorld, worldCanvas, drawEmissive, drawFlash } from './render.js';
+import { initCockpit, renderCockpit, WIPERS } from './cockpit.js';
 import { input, initInput } from './input.js';
 import { Audio } from './audio.js';
 import { Game } from './game.js';
@@ -55,15 +56,23 @@ function say(str, y, color, s = 2, shadow = '#000') {
 function setPlaying(on) { document.body.classList.toggle('playing', on); input.pressed.clear(); input.taps.length = 0; }
 
 function drawScene(g) {
-  const sky = skyAt(g.clock);
+  const wx = g.weather;
+  const sky = weatherSky(skyAt(g.clock), wx);
   const sh = g.shake;
   const ox = sh ? Math.round((Math.random() - 0.5) * 4 * sh) : 0;
   const oy = sh ? Math.round((Math.random() - 0.5) * 4 * sh) : (g.player.speed > 5 && Math.random() < 0.05 ? 1 : 0);
   drawSky(ctx, sky, g.heading(), t);
+  if (wx) drawBolt(ctx, wx);
   const { emissive } = renderWorld(g, sky);
   ctx.drawImage(worldCanvas, ox, oy);
-  if (g.lightsOn) drawHeadlights(ctx, Math.max(sky.night, 0.4));
-  drawEmissive(ctx, emissive, sky.night, ox, oy);
+  drawFlash(ctx, sky, ox, oy);
+  drawEmissive(ctx, emissive, sky.night, ox, oy, sky.wet || 0);
+  if (wx) {
+    drawPrecip(ctx, wx, sky.night, ox, oy);
+    wx.wipe(WIPERS[g.mode === 'car' ? 'car' : 'bus']);
+    drawGlass(ctx, wx, sky);
+    audio.ambience?.(wx, sky, Math.abs(g.player.speed), state !== 'drive' || paused || g.mapOpen);
+  }
   ctx.fillStyle = 'rgba(255,255,255,0.03)';
   for (const [x0, w] of [[250, 14], [272, 6], [330, 18]]) { ctx.beginPath(); ctx.moveTo(x0, 17); ctx.lineTo(x0 + w, 17); ctx.lineTo(x0 + w - 90, 176); ctx.lineTo(x0 - 90, 176); ctx.fill(); }
   renderCockpit(ctx, g, sky, t);
@@ -178,7 +187,7 @@ function drawTitle() {
   if (!input.touch) {
     box(70, 168, 340, 84, 0.8);
     ['ARROWS / WASD - DRIVE AND STEER     SPACE - DOORS / FUEL / PARK', 'M - PAPER MAP     STEER ONTO THE ROAD YOU WANT AT SPLITS',
-      'C - CRUISE   R - RADIO (+ ONLINE)   H - HORN   L - LIGHTS   N - MUTE', 'P - PAUSE (BACK TO MAP IN THE MENU)'].forEach((k, i) => say(k, 176 + i * 18, '#e8e0d0', 1));
+      'C - CRUISE  R - RADIO  H - HORN  L - LIGHTS  F - WEATHER  N - MUTE', 'P - PAUSE (BACK TO MAP IN THE MENU)'].forEach((k, i) => say(k, 176 + i * 18, '#e8e0d0', 1));
   }
 }
 

@@ -182,21 +182,94 @@ function rebuildSky(sky) {
   cloudX.globalCompositeOperation = 'source-over';
 }
 
-const STARS = (() => { const r = mulberry(5); return Array.from({ length: 110 }, () => [r() * W | 0, r() * (HORIZON - 6) | 0, r()]); })();
+// stars all the way round the sky, so they turn with you; denser along the Milky Way
+const STARS = (() => {
+  const r = mulberry(5), out = [];
+  for (let i = 0; i < 300; i++) out.push([r() * BG_W | 0, r() * (HORIZON - 4) | 0, r()]);
+  return out;
+})();
+// the Milky Way: a faint dithered band of dust and tiny stars arching across part of the sky
+const MILKY = (() => {
+  const [c, x] = makeCanvas(BG_W, HORIZON);
+  const r = mulberry(11);
+  for (let i = 0; i < 6000; i++) {
+    const u = r();                       // along the band
+    const bx = 140 + u * 680;
+    const by = 6 + u * 62;
+    const spread = 10 + Math.sin(u * Math.PI) * 9;
+    const g = (r() + r() + r() - 1.5) * spread;
+    const px = Math.round(bx + g * 0.6), py = Math.round(by + g);
+    if (py < 0 || py >= HORIZON - 3) continue;
+    const bright = r();
+    x.fillStyle = bright > 0.985 ? 'rgba(255,255,245,0.9)' : bright > 0.9 ? 'rgba(220,215,255,0.35)' : 'rgba(170,165,210,0.13)';
+    x.fillRect(px, py, 1, 1);
+  }
+  // the fixed stars go into the same picture; only the bright ones twinkle (drawn each frame)
+  for (const [sx, sy, b] of STARS) if (b <= 0.9) { x.fillStyle = `rgba(255,255,240,${0.25 + b * 0.6})`; x.fillRect(sx, sy, 1, 1); }
+  return c;
+})();
+const BRIGHT = STARS.filter(s => s[2] > 0.9);
+// the moon: a small cratered disc, cached
+const MOON = (() => {
+  const [c, x] = makeCanvas(15, 15);
+  for (let y = -7; y <= 7; y++) for (let xx = -7; xx <= 7; xx++) {
+    const d = Math.hypot(xx, y);
+    if (d > 6.6) continue;
+    const shade = xx + y > 4 ? '#c8c6b6' : '#eceadc';
+    x.fillStyle = shade; x.fillRect(xx + 7, y + 7, 1, 1);
+  }
+  for (const [cx, cy, cr] of [[5, 5, 1.6], [9, 8, 1.2], [6, 10, 0.9], [10, 4, 0.8]]) {
+    x.fillStyle = 'rgba(150,148,130,0.6)';
+    for (let y = -2; y <= 2; y++) for (let xx = -2; xx <= 2; xx++) if (Math.hypot(xx, y) <= cr) x.fillRect(cx + xx, cy + y, 1, 1);
+  }
+  return c;
+})();
+const MOON_GLOW = (() => {
+  const [c, x] = makeCanvas(53, 53);
+  for (const [rr, a] of [[26, 0.05], [16, 0.08], [10, 0.12]]) {
+    x.fillStyle = `rgba(210,215,255,${a})`;
+    for (let y = -rr; y <= rr; y++) { const w = Math.round(Math.sqrt(Math.max(0, rr * rr - y * y))); x.fillRect(26 - w, 26 + y, w * 2 + 1, 1); }
+  }
+  x.drawImage(MOON, 19, 19);
+  return c;
+})();
+const MOON_AZ = 200 * Math.PI / 180, MOON_EL = 0.42;
 export function drawSky(ctx, sky, hdg, t) {
   const bgOffset = hdg * (1920 / (2 * Math.PI));
   if (sky.key !== skyKey) { skyKey = sky.key; rebuildSky(sky); }
   ctx.drawImage(skyC, 0, 0);
   ctx.fillStyle = css(sky.bottom); ctx.fillRect(0, skyC.height, W, 270 - skyC.height);
-  if (sky.night > 0) for (const [sx, sy, b] of STARS) {
-    const tw = 0.6 + 0.4 * Math.sin(t * 2 + b * 30);
-    ctx.fillStyle = `rgba(255,255,240,${sky.night * tw * (0.35 + b * 0.65)})`;
-    ctx.fillRect(sx, sy, b > 0.93 ? 2 : 1, 1);
+  const clear = 1 - (sky.cloud || 0);
+  const starA = sky.night * clear * clear;
+  if (starA > 0.02) {
+    const off = ((bgOffset * 0.8 % BG_W) + BG_W) % BG_W;
+    ctx.globalAlpha = starA;
+    ctx.drawImage(MILKY, -off, 0); ctx.drawImage(MILKY, BG_W - off, 0);
+    ctx.globalAlpha = 1;
+    for (const [sx0, sy, b] of BRIGHT) {
+      let sx = sx0 - off; if (sx < 0) sx += BG_W;
+      if (sx >= W) continue;
+      const tw = 0.6 + 0.4 * Math.sin(t * 2 + b * 30);
+      ctx.fillStyle = `rgba(255,255,240,${starA * tw * (0.3 + b * 0.7)})`;
+      ctx.fillRect(sx, sy, b > 0.95 ? 2 : 1, 1);
+    }
+    // the moon, with a soft halo
+    let mrel = MOON_AZ - hdg;
+    while (mrel > Math.PI) mrel -= 2 * Math.PI; while (mrel < -Math.PI) mrel += 2 * Math.PI;
+    if (Math.abs(mrel) < 1.1) {
+      const mx = Math.round(W / 2 + Math.tan(mrel) * W / 2), my = Math.round(HORIZON - Math.tan(MOON_EL) * W / 2) + 30;
+      const ma = sky.night * (1 - (sky.cloud || 0) * 0.85);
+      ctx.globalAlpha = ma;
+      ctx.drawImage(MOON_GLOW, mx - 26, my - 26);
+      ctx.globalAlpha = 1;
+    }
   }
   // sun: placed by its real compass direction relative to where we are heading
   let rel = sky.sunAz - hdg;
   while (rel > Math.PI) rel -= 2 * Math.PI; while (rel < -Math.PI) rel += 2 * Math.PI;
-  if (Math.abs(rel) < 1.2 && sky.sunEl > -0.1) {
+  const sunVis = sky.sunVis ?? 1;
+  if (Math.abs(rel) < 1.2 && sky.sunEl > -0.1 && sunVis > 0.02) {
+    ctx.globalAlpha = sunVis;
     const sunX = Math.round(W / 2 + Math.tan(rel) * W / 2);
     const sy = Math.round(HORIZON - Math.tan(sky.sunEl) * W / 2);
     const low = clamp(1 - sky.sunEl * 5, 0, 1);
@@ -210,10 +283,25 @@ export function drawSky(ctx, sky, hdg, t) {
     for (let y = -r; y <= r; y++) { const w = Math.round(Math.sqrt(Math.max(0, r * r - y * y))); ctx.fillRect(sunX - w, sy + y, w * 2 + 1, 1); }
     ctx.fillStyle = css(lerpC(col, [255, 255, 255], 0.5));
     for (let y = -r + 2; y < -r / 3; y++) { const w = Math.round(Math.sqrt(Math.max(0, (r - 3) ** 2 - y * y))); ctx.fillRect(sunX - w, sy + y, w, 1); }
+    ctx.globalAlpha = 1;
   }
   // clouds drift slowly and shift with the road's curves
   const off = (((bgOffset * 0.5 + t * 1.5) % BG_W) + BG_W) % BG_W;
   ctx.globalAlpha = 1 - sky.night * 0.5;
   ctx.drawImage(cloudC, -off, 0); ctx.drawImage(cloudC, BG_W - off, 0);
+  // overcast: a second, lower deck of cloud and a grey lid over the top of the sky
+  const cl = sky.cloud || 0;
+  if (cl > 0.03) {
+    const off2 = (((bgOffset * 0.7 + t * 3 + 700) % BG_W) + BG_W) % BG_W;
+    ctx.globalAlpha = Math.min(1, cl * 1.2) * (1 - sky.night * 0.4);
+    ctx.drawImage(cloudC, -off2, 22); ctx.drawImage(cloudC, BG_W - off2, 22);
+    const off3 = (((bgOffset * 0.6 + t * 2 + 1300) % BG_W) + BG_W) % BG_W;
+    ctx.drawImage(cloudC, -off3, 44); ctx.drawImage(cloudC, BG_W - off3, 44);
+    ctx.globalAlpha = 1;
+    const lid = ctx.createLinearGradient(0, 0, 0, HORIZON);
+    const g = lerpC(sky.top, sky.bottom, 0.4);
+    lid.addColorStop(0, css(g, cl * 0.75)); lid.addColorStop(1, css(sky.bottom, cl * 0.25));
+    ctx.fillStyle = lid; ctx.fillRect(0, 0, W, HORIZON + 6);
+  }
   ctx.globalAlpha = 1;
 }

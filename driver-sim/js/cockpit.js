@@ -307,8 +307,11 @@ function drawTV(ctx, sc, on, t) {
   rect(ctx, sc.x, sc.y, sc.w, sc.h, on ? '#000' : '#1e2522');
   for (const [cx, cy] of [[sc.x, sc.y], [sc.x + sc.w - 2, sc.y], [sc.x, sc.y + sc.h - 2], [sc.x + sc.w - 2, sc.y + sc.h - 2]]) rect(ctx, cx, cy, 2, 2, '#18181a');
   if (!on) {
-    rect(ctx, sc.x + 5, sc.y + 4, 16, 2, 'rgba(255,255,255,0.10)'); rect(ctx, sc.x + 5, sc.y + 6, 8, 2, 'rgba(255,255,255,0.06)');
-    drawText(ctx, 'V - TAPE', sc.x + sc.w / 2, sc.y + sc.h / 2 - 2, 'rgba(160,180,170,0.35)', 1, 'center');
+    // switched off: dark curved glass with a soft reflection
+    rect(ctx, sc.x + 2, sc.y + 2, sc.w - 4, sc.h - 4, '#222a27');
+    rect(ctx, sc.x + 5, sc.y + 4, 18, 2, 'rgba(255,255,255,0.10)'); rect(ctx, sc.x + 5, sc.y + 6, 9, 2, 'rgba(255,255,255,0.06)');
+    rect(ctx, sc.x + 4, sc.y + 4, 2, 12, 'rgba(255,255,255,0.05)');
+    rect(ctx, sc.x + sc.w - 14, sc.y + sc.h - 7, 9, 2, 'rgba(255,255,255,0.04)');
   }
   // the VCR slot, the label and the power light underneath
   const by = sc.y + sc.h + 4;

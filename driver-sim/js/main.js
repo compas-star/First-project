@@ -8,6 +8,7 @@ import { renderWorld, worldCanvas, drawEmissive, drawFlash } from './render.js';
 import { initCockpit, renderCockpit, WIPERS, drawWipers } from './cockpit.js';
 import { input, initInput } from './input.js';
 import { Audio } from './audio.js';
+import { VHS, TV_SCREEN } from './vhs.js';
 import { Game } from './game.js';
 import { Career, RENT_PRICE } from './career.js';
 import { Hub } from './hub.js';
@@ -25,6 +26,7 @@ initCockpit();
 initInput(canvas);
 if (document.body.classList.contains('touch')) input.touch = true;
 const audio = new Audio();
+const vhs = new VHS(canvas);
 // browsers (and sandboxed frames) only allow audio to start from a user gesture
 for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, () => { try { audio.init(); } catch (e) {} }, true);
 
@@ -157,6 +159,29 @@ function drawPaperMap(g) {
   box(18, H - 26, W - 36, 14, 0.85);
   drawText(ctx, info, 24, H - 22, '#ffd36a');
   drawText(ctx, input.touch ? 'TAP MAP TO FOLD' : 'M - FOLD THE MAP', W - 24, H - 22, '#c8c8c8', 1, 'right');
+  drawTips(g);
+}
+
+// how to play, in the corner of the map
+const TIPS_KEYS = [
+  ['ARROWS / WASD', 'DRIVE AND STEER'], ['SPACE', 'DOORS, GAS, EAT, SLEEP'], ['C', 'CRUISE CONTROL'],
+  ['R', 'RADIO'], ['V', 'VHS TAPE (TV)'], ['L', 'HEADLIGHTS'], ['F', 'WEATHER'], ['H', 'HORN'],
+  ['U', 'U-TURN (CAR)'], ['M / TAB', 'THIS MAP'], ['N', 'SOUND ON/OFF'], ['P', 'PAUSE'],
+];
+const TIPS_TOUCH = [
+  ['GAS / BRAKE', 'DRIVE, HOLD BRAKE TO BACK UP'], ['ARROWS / WHEEL', 'STEER'], ['BIG BUTTON', 'DOORS, GAS, EAT, SLEEP'],
+  ['CRUISE', 'CRUISE CONTROL'], ['RADIO', 'NEXT STATION'], ['VHS', 'PUT IN A TAPE'], ['LIGHTS', 'HEADLIGHTS'],
+  ['WEATHER', 'CHANGE THE WEATHER'], ['U-TURN', 'TURN AROUND (CAR)'], ['MAP', 'THIS MAP'], ['II', 'PAUSE'],
+];
+function drawTips(g) {
+  const tips = input.touch ? TIPS_TOUCH : TIPS_KEYS;
+  const w = 150, x = W - 22 - w, y = 18, h = 16 + tips.length * 8;
+  box(x, y, w, h, 0.82);
+  drawText(ctx, 'HOW TO DRIVE', x + w / 2, y + 4, '#ffd36a', 1, 'center');
+  tips.forEach(([k, what], i) => {
+    drawText(ctx, k, x + 5, y + 14 + i * 8, '#9aff8a');
+    drawText(ctx, what, x + w - 5, y + 14 + i * 8, '#e8e0d0', 1, 'right');
+  });
 }
 
 function drawTitle() {
@@ -238,7 +263,7 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now; t += dt;
-  if (input.take('mute')) { audio.setMuted(!audio.muted); document.getElementById('tMute').textContent = audio.muted ? 'SOUND OFF' : 'SOUND'; }
+  if (input.take('mute')) { audio.setMuted(!audio.muted); vhs.setMuted(audio.muted); document.getElementById('tMute').textContent = audio.muted ? 'SOUND OFF' : 'SOUND'; }
   if (state === 'title') {
     audio.update(0, 0, false, true);
     drawScene(demo); drawTitle();
@@ -252,11 +277,15 @@ function frame(now) {
     if (r && r.type === 'title') { state = 'title'; setPlaying(false); }
   } else if (state === 'drive') {
     input.take('start');
+    if (input.take('vhs')) { if (vhs.dialogOpen) vhs.close(); else vhs.open(); }
+    game.tvOn = vhs.playing;
     if (input.take('pause')) paused = !paused;
     if (game.mapOpen && input.taps.length) { input.taps.length = 0; game.mapOpen = false; }
     input.taps.length = 0;
-    if (!paused) game.update(dt, input);
-    audio.update(Math.abs(game.player.speed), game.player.throttle, game.offroad && Math.abs(game.player.speed) > 3, paused || game.mapOpen);
+    // the game waits while you're picking a tape
+    if (!paused && !vhs.dialogOpen) game.update(dt, input);
+    // the radio keeps playing while you're paused or looking at the map
+    audio.update(Math.abs(game.player.speed), game.player.throttle, game.offroad && Math.abs(game.player.speed) > 3, paused || game.mapOpen, false);
     drawScene(game); drawEyes(game); drawHud(game);
     if (game.mapOpen) drawPaperMap(game);
     if (paused) {
@@ -269,6 +298,8 @@ function frame(now) {
     drawScene(game); drawReport();
     if (input.take('start') || input.take('action') || input.take('enter')) { state = 'hub'; hub.tab = 0; hub.sel = 0; hub.dest = null; setPlaying(false); }
   }
+  // the TV's video sits over the cab while you drive (also paused, not over the map)
+  vhs.update(dt, state === 'drive' ? TV_SCREEN[game.mode === 'car' ? 'car' : 'bus'] : null, state === 'drive' && !game.mapOpen, state === 'drive');
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

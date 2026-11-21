@@ -12,12 +12,14 @@ const KEYMAP = {
 };
 const ONESHOT = {
   Space: 'action', KeyC: 'cruise', KeyR: 'radio', KeyN: 'mute', KeyM: 'map', Tab: 'map',
-  KeyP: 'pause', Escape: 'pause', Enter: 'enter', KeyL: 'lights', KeyF: 'weather', KeyQ: 'prevRoute', KeyE: 'nextRoute', KeyU: 'uturn',
+  KeyP: 'pause', Escape: 'pause', Enter: 'enter', KeyL: 'lights', KeyF: 'weather', KeyV: 'vhs', KeyQ: 'prevRoute', KeyE: 'nextRoute', KeyU: 'uturn',
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
 };
 
 export function initInput(canvas) {
   addEventListener('keydown', e => {
+    // typing in a text box (the VHS link) isn't driving
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     if (KEYMAP[e.code]) { input[KEYMAP[e.code]] = true; e.preventDefault(); }
     if (ONESHOT[e.code] && !e.repeat) { input.pressed.add(ONESHOT[e.code]); e.preventDefault(); }
     if (e.code === 'Space' || e.code === 'Enter') input.pressed.add('start');
@@ -41,7 +43,7 @@ export function initInput(canvas) {
   };
   hold('tLeft', 'left'); hold('tRight', 'right'); hold('tGas', 'gas'); hold('tBrake', 'brake'); hold('tHorn', 'horn');
   tap('tCruise', 'cruise'); tap('tRadio', 'radio'); tap('tPause', 'pause'); tap('tAction', 'action'); tap('tMute', 'mute');
-  tap('tMap', 'map'); tap('tWeather', 'weather'); tap('tLights', 'lights'); tap('tUturn', 'uturn'); tap('tPrev', 'prevRoute'); tap('tNext', 'nextRoute');
+  tap('tMap', 'map'); tap('tWeather', 'weather'); tap('tVhs', 'vhs'); tap('tLights', 'lights'); tap('tUturn', 'uturn'); tap('tPrev', 'prevRoute'); tap('tNext', 'nextRoute');
 
   // drag on the steering wheel to steer (analog)
   let drag = null;

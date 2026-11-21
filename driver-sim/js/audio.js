@@ -90,7 +90,8 @@ export class Audio {
     return { label: st.online ? `${st.name} (ONLINE)` : st.label, off: this.station === 0 };
   }
 
-  update(speed, throttle, offroad, paused) {
+  // paused: engine and road go quiet. radioPaused: the radio too (menus); defaults to the same
+  update(speed, throttle, offroad, paused, radioPaused = paused) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     const gears = [0, 12, 25, 40, 55, 80];
@@ -104,9 +105,9 @@ export class Audio {
     this.engG.gain.setTargetAtTime(paused ? 0 : 0.05 + throttle * 0.05, t, 0.1);
     this.roadG.gain.setTargetAtTime(paused ? 0 : Math.min(0.035, speed / 2000) + (offroad ? 0.06 : 0), t, 0.15);
     this.roadF.frequency.setTargetAtTime(offroad ? 220 : 90 + speed, t, 0.2);
-    this.radioG.gain.setTargetAtTime(paused ? 0 : 0.09, t, 0.1);
+    this.radioG.gain.setTargetAtTime(radioPaused ? 0 : 0.09, t, 0.1);
     if (paused && this.rainHi) { for (const a of [this.rainHi, this.rainLo, this.wind, this.tyres]) a.g.gain.setTargetAtTime(0, t, 0.2); this.env = null; }
-    this.net.setPaused(paused);
+    this.net.setPaused(radioPaused);
   }
 
   // weather and night sounds; called every frame while the world is drawn

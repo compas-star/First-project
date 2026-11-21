@@ -7,6 +7,12 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 13: VHS TV, map tips, radio keeps playing
+
+- **VHS TV:** a little TV/VCR combo sits on the dashboard. Press V (or VHS) and paste a YouTube link: it plays on the TV with a worn-tape look (colour bleed, soft picture, scanlines, static, a rolling tracking band and the VCR's green PLAY). The game waits while you're typing. Press V again to change or eject the tape. N mutes it with the rest of the sound. The video is the real YouTube player (youtube-nocookie.com) laid over the TV's screen, so it needs an internet connection, and some videos can't be played outside YouTube.
+- **The paper map (M)** shows a list of the controls.
+- **The radio keeps playing** while the game is paused or the map is open.
+
 ## Update 12: wider roundabouts, wipers behind the dashboard
 
 - Roundabouts are wider again (240 segments round instead of 168), with a gentler swing into the circle, so there's more room between exits to pick yours. The exit hint stays up a little longer to match.
@@ -114,6 +120,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 | Cruise control | C | CRUISE |
 | Radio (built-in and online stations) | R | RADIO |
 | Change the weather | F | WEATHER |
+| Put a tape in the TV (YouTube link) | V | VHS |
 | Headlights | L | LIGHTS |
 | Horn, mute, pause | H, N, P | HORN, SOUND, II |
 
@@ -138,6 +145,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 | `track.js` | Route, towns, schedule, biomes, procedural road and scenery placement |
 | `render.js` | Pseudo-3D road and sprite renderer, fog, night lighting |
 | `backgrounds.js` | Parallax mountains per biome, sky, sun, moon, stars and Milky Way by time of day |
+| `vhs.js` | The dashboard TV: YouTube player with a VHS filter, the tape dialog |
 | `weather.js` | Weather changes, rain, snow and dust, drops on the glass, wipers, lightning |
 | `cockpit.js` | Dashboard, gauges, wheel, hands, mirror, LCD |
 | `sprites.js` | Procedural pixel-art sprites |

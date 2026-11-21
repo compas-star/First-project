@@ -73,7 +73,7 @@ export class VHS {
     const nosig = this.nosigEl = document.createElement('div');
     Object.assign(nosig.style, { position: 'absolute', inset: '0', display: 'none', alignItems: 'center', justifyContent: 'center', font: 'bold 34px monospace', color: '#f4f4f4', textShadow: '3px 3px 0 #000, 0 0 10px #000', letterSpacing: '3px' });
     nosig.textContent = 'NO SIGNAL';
-    for (const el of [lines, noise, band, rim, osd, nosig]) wrap.appendChild(el);
+    for (const el of [lines, noise, band, rim, osd, nosig]) { el.style.pointerEvents = 'none'; wrap.appendChild(el); }
     // the YouTube player reports how it's doing over postMessage
     addEventListener('message', e => this.fromPlayer(e));
     document.body.appendChild(wrap);
@@ -178,13 +178,25 @@ export class VHS {
     }
     if (d.event === 'onReady' && this.state === 'loading') this.readyT = 0;
     const ps = d.event === 'onStateChange' ? +d.info : d.event === 'infoDelivery' && d.info ? d.info.playerState : undefined;
-    // 1 playing, 2 paused, 3 buffering: there's a picture
-    if (ps === 1 || ps === 2 || ps === 3) this.picture();
+    if (ps === undefined) return;
+    this.ps = ps;
+    // 1 playing, 3 buffering: it's going
+    if (ps === 1 || ps === 3) this.picture();
+    // paused by itself (a phone holding back sound) while we want it playing: it needs a tap
+    else if (ps === 2 && this.state === 'playing' && this.running && !this.selfPaused) this.needTap();
   }
   picture() {
     if (this.state === 'playing') return;
     this.state = 'playing'; this.osd = 4;
     this.setScreen();
+  }
+  // Phones (and some browsers) won't start a video with sound by itself: the first tap has to
+  // land on the YouTube player. So the TV shows TAP TV and, just until it plays, lets taps through.
+  needTap() {
+    if (this.state === 'tap') return;
+    this.state = 'tap';
+    this.setScreen();
+    this.onNote?.('TAP THE TV TO START THE TAPE');
   }
   noSignal(why) {
     if (this.state === 'nosignal') return;
@@ -193,10 +205,14 @@ export class VHS {
     if (why) this.onNote?.(why);
   }
   setScreen() {
-    const pic = this.state === 'playing';
+    const pic = this.state === 'playing' || this.state === 'tap';
     if (this.frame) this.frame.style.visibility = pic ? 'visible' : 'hidden';
     this.noise.style.opacity = pic ? '0.16' : '0.85';
     this.nosigEl.style.display = this.state === 'nosignal' ? 'flex' : 'none';
+    // taps go to the player only while it's waiting for one; otherwise the TV ignores them
+    const tap = this.state === 'tap';
+    this.wrap.style.pointerEvents = tap ? 'auto' : 'none';
+    if (this.frame) this.frame.style.pointerEvents = tap ? 'auto' : 'none';
   }
   // tell the YouTube player what to do (its iframe API, over postMessage)
   cmd(func) {
@@ -209,7 +225,7 @@ export class VHS {
   update(dt, rect, visible, running) {
     if (this.running !== running) {
       // leaving the cab (trip over, menus): the tape pauses; back in the cab it plays on
-      if (this.running !== undefined && this.id) this.cmd(running ? 'playVideo' : 'pauseVideo');
+      if (this.running !== undefined && this.id) { this.selfPaused = !running; this.cmd(running ? 'playVideo' : 'pauseVideo'); }
       this.running = running;
     }
     const show = !!(this.id && visible && rect);
@@ -236,10 +252,11 @@ export class VHS {
     // once it's ready, show the picture even if it hasn't said it's playing (autoplay may be held back)
     if (this.state === 'loading') {
       this.wait += dt;
-      if (this.readyT !== null && (this.readyT += dt) > 2) this.picture();
+      if (this.readyT !== null && (this.readyT += dt) > 1.5) this.needTap();
       else if (!this.heard && this.wait > 10) this.noSignal("NO SIGNAL - THE TV CAN'T REACH YOUTUBE");
     }
     this.osd = Math.max(0, this.osd - dt);
-    this.osdEl.textContent = this.osd > 0 ? 'PLAY ▶' : '';
+    this.tapBlink = (this.tapBlink || 0) + dt;
+    this.osdEl.textContent = this.state === 'tap' ? (this.tapBlink % 1 < 0.6 ? 'TAP TV \u25B6' : '') : this.osd > 0 ? 'PLAY \u25B6' : '';
   }
 }

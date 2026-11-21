@@ -7,6 +7,11 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 12: wider roundabouts, wipers behind the dashboard
+
+- Roundabouts are wider again (240 segments round instead of 168), with a gentler swing into the circle, so there's more room between exits to pick yours. The exit hint stays up a little longer to match.
+- The wipers are drawn behind the dashboard, so their pivots no longer sit on top of the dash or the clipboard.
+
 ## Update 11: nothing in the way at roundabout exits
 
 - The big green SERVICES sign no longer stands at the mouth of roundabout exits, where holding right a moment too long ran you into it. It's further down the road and further from the edge.

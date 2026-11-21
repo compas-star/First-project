@@ -5,7 +5,7 @@ import { drawText, textWidth } from './font.js';
 import { buildSprites } from './sprites.js';
 import { buildBackgrounds, skyAt, drawSky } from './backgrounds.js';
 import { renderWorld, worldCanvas, drawEmissive, drawFlash } from './render.js';
-import { initCockpit, renderCockpit, WIPERS } from './cockpit.js';
+import { initCockpit, renderCockpit, WIPERS, drawWipers } from './cockpit.js';
 import { input, initInput } from './input.js';
 import { Audio } from './audio.js';
 import { Game } from './game.js';
@@ -71,6 +71,7 @@ function drawScene(g) {
     drawPrecip(ctx, wx, sky.night, ox, oy);
     wx.wipe(WIPERS[g.mode === 'car' ? 'car' : 'bus']);
     drawGlass(ctx, wx, sky);
+    drawWipers(ctx, WIPERS[g.mode === 'car' ? 'car' : 'bus'], wx.wiper);
     audio.ambience?.(wx, sky, Math.abs(g.player.speed), state !== 'drive' || paused || g.mapOpen);
   }
   ctx.fillStyle = 'rgba(255,255,255,0.03)';

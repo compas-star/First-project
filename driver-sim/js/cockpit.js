@@ -290,8 +290,9 @@ function needle(ctx, [cx, cy, r], frac, start, sweep, col) {
 // Steering wheel: a flat ellipse seen from above. The rim doesn't change when it turns;
 // the spokes, grips and hands slide around it.
 // wipers: [pivot x, pivot y, length] for each vehicle; they sweep when it rains
-export const WIPERS = { bus: [[70, DASH_Y - 1, 152], [320, DASH_Y - 1, 74]], car: [[132, 161, 118], [262, 161, 118]] };
-function drawWipers(ctx, pivots, w) {
+export const WIPERS = { bus: [[70, DASH_Y - 1, 152], [320, DASH_Y - 1, 74]], car: [[132, 158, 118], [262, 158, 118]] };
+// drawn on the view before the cab goes over it, so the dashboard hides their bottom ends
+export function drawWipers(ctx, pivots, w) {
   const a = wAng(w);
   for (const [px0, py0, len] of pivots) {
     const ex = px0 + Math.cos(a) * len, ey = py0 + Math.sin(a) * len;
@@ -349,7 +350,6 @@ export function renderCockpit(main, game, sky, t) {
   ctx.clearRect(0, 0, W, H);
   mirrorGlass(ctx, MIRL, sky, false); mirrorGlass(ctx, MIRR, sky, true);
   ctx.drawImage(base, 0, 0);
-  drawWipers(ctx, WIPERS.bus, game.weather ? game.weather.wiper : 0);
 
   const truck = game.mode === 'truck';
   if (truck) {
@@ -553,7 +553,6 @@ function renderCarCockpit(main, game, sky, t) {
   const p = game.player;
   ctx.clearRect(0, 0, W, H);
   ctx.drawImage(carBase, 0, 0);
-  drawWipers(ctx, WIPERS.car, game.weather ? game.weather.wiper : 0);
   // rear-view mirror: back window and empty back seat
   rect(ctx, 196, 18, 88, 18, '#0e0e0e'); rect(ctx, 198, 19, 84, 15, css(lerpC(sky.top, sky.bottom, 0.6)));
   rect(ctx, 198, 28, 84, 6, '#5a5048'); rect(ctx, 204, 26, 30, 4, '#6a6058'); rect(ctx, 246, 26, 30, 4, '#6a6058');

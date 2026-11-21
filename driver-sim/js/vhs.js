@@ -124,7 +124,8 @@ export class VHS {
     if (!id) { this.err.textContent = "That doesn't look like a YouTube link."; return; }
     this.lastLink = this.input.value.trim();
     try { localStorage.setItem(KEY, this.lastLink); } catch (e) { /* fine */ }
-    this.insert(id);
+    // in the cab, the driver's hand carries the tape over first (see main.js); otherwise straight in
+    if (this.onInsert) this.onInsert(id); else this.insert(id);
     this.close();
   }
 

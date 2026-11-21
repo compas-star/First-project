@@ -337,6 +337,49 @@ export function drawWipers(ctx, pivots, w) {
     rect(ctx, px0 - 2, py0 - 2, 5, 4, '#1a1a1a');
   }
 }
+// Where a hand goes when it leaves the wheel: the radio's tuning knob, and the TV's tape slot.
+const REACH = {
+  bus: { radio: { x: 106, y: 207, side: -1 }, tape: { x: 331, y: 186, side: 1, slot: 170 } },
+  car: { radio: { x: 368, y: 212, side: 1 }, tape: { x: 389, y: 194, side: 1, slot: 178 } },
+};
+const ease = u => u * u * (3 - 2 * u);
+// a black VHS cassette: label, two reels behind the window
+function cassette(ctx, x, y, h = 15) {
+  if (h < 1) return;
+  const w = 26; x = Math.round(x); y = Math.round(y); h = Math.round(h);
+  // a light edge so it shows up against the dark TV
+  rect(ctx, x - 1, y - 1, w + 2, h + 1, '#6a6a70');
+  rect(ctx, x, y, w, h, '#0c0c0e');
+  if (h >= 4) { rect(ctx, x + 3, y + 1, w - 6, Math.min(4, h - 2), '#e8e2cc'); rect(ctx, x + 4, y + 2, 9, 1, '#c0202a'); }
+  if (h >= 10) { rect(ctx, x + 7, y + h - 5, 12, 3, '#3a3a40'); px(ctx, x + 9, y + h - 4, '#8a8a90'); px(ctx, x + 16, y + h - 4, '#8a8a90'); }
+}
+// Both hands on the wheel, except when one is off putting a tape in or tuning the radio:
+// it reaches over in an arc, does its thing, and comes back.
+function drawHands(ctx, game, geo, elbows, cab, wa) {
+  const hand = game.hand, R = hand && REACH[cab][hand.kind];
+  for (const side of [-1, 1]) {
+    const a = -Math.PI / 2 + side * 1.0 + wa * 0.6;
+    let hx = geo.cx + Math.cos(a) * (geo.rx - 4), hy = geo.cy + Math.sin(a) * (geo.ry - 4);
+    let tape = null;
+    if (R && R.side === side) {
+      const u = Math.min(1, hand.t / hand.dur);
+      // out (0-35%), at it (35-65%), back (65-100%)
+      const e = u < 0.35 ? ease(u / 0.35) : u < 0.65 ? 1 : ease((1 - u) / 0.35);
+      const lift = Math.sin(e * Math.PI) * 16;
+      hx += (R.x - hx) * e; hy += (R.y - hy) * e - lift;
+      if (hand.kind === 'radio' && u >= 0.35 && u < 0.65) hx += Math.sin((u - 0.35) * 60) * 1.5;   // a twist of the knob
+      if (hand.kind === 'tape') {
+        // the cassette is held up in the fingers, then slides into the slot
+        // held in the fingertips on the way over, then pushed into the slot until it's gone
+        if (u < 0.35) tape = { x: hx - 13, y: hy - 25, h: 15 };
+        else if (u < 0.5) { const h = 15 * (1 - (u - 0.35) / 0.15); tape = { x: R.x - 13, y: R.slot + 2 - h, h }; }
+      }
+    }
+    drawArm(ctx, hx, hy + 26, side < 0 ? elbows[0] : elbows[1], 360, side < 0);
+    ctx.drawImage(side < 0 ? handL : handR, Math.round(hx - 24), Math.round(hy - 12));
+    if (tape) cassette(ctx, tape.x, tape.y, tape.h);
+  }
+}
 function drawWheel(ctx, ang, geo = WH, badge = 'PDC') {
   const { cx, cy, rx, ry, t } = geo;
   for (let yy = Math.floor(cy - ry - 1); yy < H; yy++) for (let xx = cx - rx - 2; xx <= cx + rx + 2; xx++) {
@@ -452,15 +495,9 @@ export function renderCockpit(main, game, sky, t) {
   // steering wheel, arms and hands
   const wa = p.wheel * 0.85;
   drawWheel(ctx, wa, WH, truck ? 'DF' : 'PDC');
-  for (const side of [-1, 1]) {
-    const a = -Math.PI / 2 + side * 1.0 + wa * 0.6;
-    const hx = WH.cx + Math.cos(a) * (WH.rx - 4), hy = WH.cy + Math.sin(a) * (WH.ry - 4);
-    drawArm(ctx, hx, hy + 26, side < 0 ? 40 : 380, 360, side < 0);
-    ctx.drawImage(side < 0 ? handL : handR, Math.round(hx - 24), Math.round(hy - 12));
-  }
-
   drawTV(ctx, TV_SCREEN.bus, game.tvOn, t);
   drawSouvenirs(ctx, game.career, 'bus', TV_SCREEN.bus, (game.diceSwing || 0) * 3);
+  drawHands(ctx, game, WH, [40, 380], 'bus', wa);
   // night: darken the cab before drawing anything that glows
   const tintA = sky.tintA * 0.92;
   if (tintA > 0) {
@@ -604,14 +641,9 @@ function renderCarCockpit(main, game, sky, t) {
   const wa = p.wheel * 0.85;
   drawWheel(ctx, wa, CWH);
   rect(ctx, CWH.cx - 14, CWH.cy - 10, 28, 9, '#2a2826'); drawText(ctx, 'SRS', CWH.cx, CWH.cy - 8, '#5a5650', 1, 'center');
-  for (const side of [-1, 1]) {
-    const a = -Math.PI / 2 + side * 1.0 + wa * 0.6;
-    const hx = CWH.cx + Math.cos(a) * (CWH.rx - 4), hy = CWH.cy + Math.sin(a) * (CWH.ry - 4);
-    drawArm(ctx, hx, hy + 26, side < 0 ? 30 : 380, 360, side < 0);
-    ctx.drawImage(side < 0 ? handL : handR, Math.round(hx - 24), Math.round(hy - 12));
-  }
   drawTV(ctx, TV_SCREEN.car, game.tvOn, t);
   drawSouvenirs(ctx, game.career, 'car', TV_SCREEN.car, (game.diceSwing || 0) * 3);
+  drawHands(ctx, game, CWH, [30, 380], 'car', wa);
   const tintA = sky.tintA * 0.92;
   if (tintA > 0) {
     ctx.globalCompositeOperation = 'source-atop';

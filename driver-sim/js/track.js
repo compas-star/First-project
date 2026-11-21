@@ -37,7 +37,7 @@ for (const b of Object.values(BIOMES)) b.groundRGB = b.ground.map(hex);
 const HALF = { city: 1.6, town: 1.2, junction: 0 };
 const halfSegs = node => Math.round(HALF[NODES[node].type] * SEG_PER_MILE);
 const TAU = Math.PI * 2;
-export const RING = 168;         // segments around a roundabout: a wide circle you can take at 25-30 mph
+export const RING = 240;         // segments around a roundabout: a wide, gentle circle
 const EXIT_T = 16;               // segments of the swing out of a roundabout
 export const BR_M = 90;          // how far ahead a branch road is drawn before it's built for real
 const VEER = 0.6;                // radians: the swing into and out of a roundabout
@@ -509,7 +509,7 @@ export class Track {
     this.notices.push({ idx: pre, text: 'ROUNDABOUT AHEAD - SLOW DOWN', color: '#ffd36a' });
     this.appendStraight(6, info, (s, k) => { if (k === 4) s.yieldline = true; });
     this.place(pre + 4, 'yield', 1.4, { solid: true });
-    this.appendTurn(VEER, 16, info, s => { s.stub = -1; });
+    this.appendTurn(VEER, 22, info, s => { s.stub = -1; });
     const rs = this.segs.length, hr0 = this.heading;
     const exits = outEdges(node).map(e => {
       let x = (((hr0 - (entryHeading(e, 0) - VEER)) % TAU) + TAU) % TAU / TAU * RING;
@@ -532,7 +532,7 @@ export class Track {
       const jj = j % RING;
       for (const ex of R.exits) {
         const d = jj - (ex.x % RING);
-        if (d >= 0 && d <= 14) s.noR = true;
+        if (d >= 0 && d <= 17) s.noR = true;
         if (d === -12 || d === -12 + RING) this.place(s.i, greenSign([ex.e.road.hw, NODES[ex.e.to].name]), 1.45);
         // each exit is a real road leaving the circle on the right
         if (d === 0) {
@@ -543,7 +543,7 @@ export class Track {
       }
       if (j % 6 === 0) this.place(s.i, r() < 0.5 ? 'grass' : 'sage', -1.45 - r() * 0.4);
       if (j % 18 === 9) this.place(s.i, pickVeg(R.info.bio.a, r), -2.4 - r() * 0.8);
-      const nearExit = R.exits.some(ex => { const d = ((jj - (ex.x % RING)) % RING + RING) % RING; return d < 55 || d > RING - 16; });
+      const nearExit = R.exits.some(ex => { const d = ((jj - (ex.x % RING)) % RING + RING) % RING; return d < 66 || d > RING - 16; });
       if (j % 12 === 3 && R.info.town && !nearExit) this.place(s.i, BUILDINGS[Math.floor(r() * BUILDINGS.length)], 2.6 + r() * 0.5);
     }
     if (forks) R.laps++;

@@ -114,10 +114,13 @@ function drawHud(g) {
   }
   if (g.prompt) {
     const blink = g.action ? Math.floor(t * 3) % 2 === 0 : true;
-    const s = textWidth(g.prompt, 2) > W - 20 ? 1 : 2;
+    // with a tape in, keep it left of the TV (the video covers anything drawn under it)
+    const tv = TV_SCREEN[g.mode === 'car' ? 'car' : 'bus'];
+    const room = vhs.playing ? tv.x - 12 : W - 20, cx = vhs.playing ? 6 + room / 2 : CX;
+    const s = textWidth(g.prompt, 2) > room ? 1 : 2;
     const w = textWidth(g.prompt, s) + 12;
-    box(CX - w / 2, 136, w, 18, 0.6);
-    if (blink) drawText(ctx, g.prompt, CX, s === 2 ? 140 : 142, g.action ? '#ffd36a' : '#ffffff', s, 'center');
+    box(cx - w / 2, 136, w, 18, 0.6);
+    if (blink) drawText(ctx, g.prompt, cx, s === 2 ? 140 : 142, g.action ? '#ffd36a' : '#ffffff', s, 'center');
   }
   // junction chooser
   const ch = g.choice;
@@ -126,8 +129,10 @@ function drawHud(g) {
   if (showChoice) {
     const head = ch.ring ? `ROUNDABOUT: STEER RIGHT AT YOUR EXIT` : ch.split ? `ROAD SPLITS: STEER ONTO YOUR ROAD` : `AT ${NODES[ch.node].name}: ${input.touch ? 'ROAD BUTTONS' : 'Q / E'}`;
     const w = Math.max(textWidth(head) + 10, ...ch.opts.map(o => textWidth(o.label) + 26));
-    const x = W - w - 30, y = 82;
-    box(x, y, w, 14 + ch.opts.length * 9, 0.8);
+    // the TV's video sits on top of the game picture, so with a tape in, the box goes above the TV
+    const h = 14 + ch.opts.length * 9, tv = TV_SCREEN[g.mode === 'car' ? 'car' : 'bus'];
+    const x = W - w - 30, y = vhs.playing ? Math.min(82, tv.y - 3 - h) : 82;
+    box(x, y, w, h, 0.8);
     drawText(ctx, head, x + 5, y + 4, '#9aff8a');
     ch.opts.forEach((o, i) => {
       const yy = y + 14 + i * 9;

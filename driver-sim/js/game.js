@@ -461,7 +461,16 @@ export class Game {
     const lane = 0.5 * ROAD_W;
     let best = sp.ref, bd = Math.abs(Lp - Lr - lane) - 0.25 * ROAD_W;
     for (let j = 0; j < sp.k; j++) { const d = Math.abs(Lp - splitL(sp, j, qf) - lane); if (d < bd) { bd = d; best = j; } }
+    // heading for the next road over: once you're off the edge of yours and still steering that
+    // way, you're taking that road (otherwise, steering late, it can pull away faster than you
+    // can cross to it). Roads are numbered left to right.
+    if (best === sp.ref) {
+      const dir = Math.sign(p.wheel), nb = sp.ref + dir;
+      if (Math.abs(p.wheel) > 0.25 && (dir > 0 ? p.x > 1.15 : p.x < -1.15) && nb >= 0 && nb < sp.k) best = nb;
+    }
     if (best === sp.ref) return;
+    // never onto a road you're steering away from (you may still be nearer the one you just left)
+    if (Math.abs(p.wheel) > 0.25 && Math.sign(best - sp.ref) === -Math.sign(p.wheel)) return;
     // swap roads: rebuild what's ahead around the new road, keeping the view exactly where it was
     const yaw = (sp.theta[best] - sp.theta[sp.ref]) * splitSlope(qf);
     p.x = (Lp - splitL(sp, best, qf)) / ROAD_W;

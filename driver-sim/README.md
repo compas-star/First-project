@@ -7,6 +7,10 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 19: tapes on phones
+
+- Phones (and some browsers) won't start a YouTube video with sound by themselves, so the tape sat paused on the TV. Now, if it hasn't started a moment after loading, the TV blinks TAP TV and a tap on the TV starts it. Only then does the TV take taps; once the tape plays it ignores them again, so it never gets in the way of steering.
+
 ## Update 18: hands on the radio and the tape
 
 - Putting a tape in: the right hand lets go of the wheel, carries a VHS cassette over to the TV and pushes it into the slot. The video starts as the tape goes in, then the hand goes back to the wheel.

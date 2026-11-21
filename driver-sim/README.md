@@ -7,6 +7,11 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 15: no more roundabouts
+
+- Every place where three or more roads meet is now a road split: the roads peel apart under signs and you steer onto yours (the box lists them and stars the one toward your destination). That includes Seligman, Ash Fork, Williams, Valle, Cameron and Wickenburg, which had roundabouts.
+- Where two roads meet, the road simply bends. At dead ends (Lake Havasu City, Holbrook, Page) the road curves round and takes you back the way you came.
+
 ## Update 14: souvenirs and a bigger TV
 
 - **Souvenirs:** deliver a load or finish a bus route in a town, eat there, or sleep in a motel there, and you pick up something from its tourist shop: first a postcard, then a photo, then a little figure. Each town has its own: a dinosaur from Holbrook, a mule from the Grand Canyon, a snow globe from Flagstaff, a steam engine from Williams, the London Bridge from Lake Havasu, a Route 66 shield from Kingman and Seligman, and so on. Truck stops out on the highway don't sell any.

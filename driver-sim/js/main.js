@@ -16,6 +16,13 @@ import { NODES, shortestPath } from './world.js';
 import { drawMap } from './mapview.js';
 
 const canvas = document.getElementById('screen');
+// On sites that embed the game in a frame (itch.io), the keyboard only reaches the game once the
+// frame has focus. Take it at start and on every click or touch, and say so when it's missing.
+canvas.tabIndex = 0;
+canvas.style.outline = 'none';
+const grabFocus = () => { try { window.focus(); canvas.focus({ preventScroll: true }); } catch (e) { /* fine */ } };
+addEventListener('pointerdown', e => { if (!(e.target && e.target.closest && e.target.closest('#vhsDialog'))) grabFocus(); }, true);
+grabFocus();
 canvas.width = W; canvas.height = H;
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
@@ -309,6 +316,13 @@ function frame(now) {
   }
   // the TV's video sits over the cab while you drive (also paused, not over the map)
   vhs.update(dt, state === 'drive' ? TV_SCREEN[game.mode === 'car' ? 'car' : 'bus'] : null, state === 'drive' && !game.mapOpen, state === 'drive');
+  // no keyboard focus (e.g. the itch.io page around the game has it): ask for a click
+  if (!input.touch && !vhs.dialogOpen && !document.hasFocus()) {
+    const msg = 'CLICK THE GAME TO USE THE KEYBOARD';
+    const w = textWidth(msg, 2) + 20;
+    box(CX - w / 2, H / 2 - 16, w, 30, 0.88);
+    drawText(ctx, msg, CX, H / 2 - 8, Math.floor(t * 2) % 2 ? '#ffd36a' : '#ffffff', 2, 'center');
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

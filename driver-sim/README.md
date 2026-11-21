@@ -7,6 +7,10 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 20: keyboard on itch.io
+
+- On sites that show the game in a frame (like itch.io), the keyboard only reaches the game once it has focus. The game now takes focus when it starts and whenever you click or tap it, and if it has lost focus (you clicked elsewhere on the page), it says CLICK THE GAME TO USE THE KEYBOARD until you do.
+
 ## Update 19: tapes on phones
 
 - Phones (and some browsers) won't start a YouTube video with sound by themselves, so the tape sat paused on the TV. Now, if it hasn't started a moment after loading, the TV blinks TAP TV and a tap on the TV starts it. Only then does the TV take taps; once the tape plays it ignores them again, so it never gets in the way of steering.

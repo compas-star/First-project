@@ -12,6 +12,7 @@ You leave at 15:30 and drive into the sunset; the last leg is at night.
 - **Souvenirs:** deliver a load or finish a bus route in a town, eat there, or sleep in a motel there, and you pick up something from its tourist shop: first a postcard, then a photo, then a little figure. Each town has its own: a dinosaur from Holbrook, a mule from the Grand Canyon, a snow globe from Flagstaff, a steam engine from Williams, the London Bridge from Lake Havasu, a Route 66 shield from Kingman and Seligman, and so on. Truck stops out on the highway don't sell any.
 - Postcards and photos are taped along the top of the windshield, figures stand on the left of the dashboard, and the newest figure sits on top of the TV. They're saved with your career.
 - The TV is bigger (the bus has a slightly smaller one, so it doesn't fill the door-side window).
+- With a tape in, the road-choice box moves up above the TV and hints move left of it, so the video never hides them.
 
 ## Update 13: VHS TV, map tips, radio keeps playing
 

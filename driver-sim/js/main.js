@@ -27,6 +27,8 @@ initInput(canvas);
 if (document.body.classList.contains('touch')) input.touch = true;
 const audio = new Audio();
 const vhs = new VHS(canvas);
+// when a tape won't play, say why (the TV itself shows NO SIGNAL)
+vhs.onNote = text => { if (state === 'drive') game.msg(text, 4.5, '#ff8a6a'); };
 // browsers (and sandboxed frames) only allow audio to start from a user gesture
 for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, () => { try { audio.init(); } catch (e) {} }, true);
 

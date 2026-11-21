@@ -69,7 +69,13 @@ export class VHS {
     Object.assign(rim.style, { position: 'absolute', inset: '0', background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 58%, rgba(0,0,0,0.6) 100%)', boxShadow: 'inset 0 0 30px rgba(0,0,0,0.7)' });
     const osd = this.osdEl = document.createElement('div');
     Object.assign(osd.style, { position: 'absolute', left: '22px', top: '18px', font: 'bold 26px monospace', color: '#e8ffe8', textShadow: '2px 2px 0 #000, 0 0 6px #4f4', letterSpacing: '2px' });
-    for (const el of [lines, noise, band, rim, osd]) wrap.appendChild(el);
+    // when there's no picture: full static and NO SIGNAL, like a VCR on the wrong channel
+    const nosig = this.nosigEl = document.createElement('div');
+    Object.assign(nosig.style, { position: 'absolute', inset: '0', display: 'none', alignItems: 'center', justifyContent: 'center', font: 'bold 34px monospace', color: '#f4f4f4', textShadow: '3px 3px 0 #000, 0 0 10px #000', letterSpacing: '3px' });
+    nosig.textContent = 'NO SIGNAL';
+    for (const el of [lines, noise, band, rim, osd, nosig]) wrap.appendChild(el);
+    // the YouTube player reports how it's doing over postMessage
+    addEventListener('message', e => this.fromPlayer(e));
     document.body.appendChild(wrap);
     this.bandY = 0;
 
@@ -131,14 +137,65 @@ export class VHS {
     f.title = 'VHS tape';
     f.allow = 'autoplay; encrypted-media; picture-in-picture';
     f.referrerPolicy = 'strict-origin-when-cross-origin';
-    Object.assign(f.style, { position: 'absolute', inset: '0', width: PW + 'px', height: PH + 'px', border: '0', filter: 'saturate(1.45) contrast(1.18) brightness(1.06) sepia(0.14) blur(0.9px)' });
-    f.addEventListener('load', () => { if (this.muted) this.cmd('mute'); });
+    Object.assign(f.style, { position: 'absolute', inset: '0', width: PW + 'px', height: PH + 'px', border: '0', visibility: 'hidden', filter: 'saturate(1.45) contrast(1.18) brightness(1.06) sepia(0.14) blur(0.9px)' });
+    f.addEventListener('load', () => {
+      if (this.muted) this.cmd('mute');
+      // ask the player to tell us about itself (it answers once its API is up)
+      clearInterval(this.hello);
+      let n = 0;
+      this.hello = setInterval(() => {
+        if (this.heard || !this.frame || ++n > 40) { clearInterval(this.hello); return; }
+        this.frame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
+      }, 250);
+    });
     this.screen.appendChild(f);
-    this.osd = 4;
+    // static until the picture comes
+    this.state = 'loading'; this.heard = false; this.wait = 0; this.readyT = null;
+    this.setScreen();
   }
   eject() {
     if (this.frame) this.frame.remove();
-    this.frame = null; this.id = null;
+    clearInterval(this.hello);
+    this.frame = null; this.id = null; this.state = null;
+  }
+
+  // what the YouTube player says: its state, or an error (the video's owner may not allow it to
+  // play outside YouTube, or it's private or gone). On an error the TV shows NO SIGNAL.
+  fromPlayer(e) {
+    if (!this.frame || e.source !== this.frame.contentWindow) return;
+    let d = e.data;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (err) { return; } }
+    if (!d || !d.event) return;
+    this.heard = true;
+    if (d.event === 'onError') {
+      const code = +d.info;
+      const why = code === 101 || code === 150 ? "THIS TAPE WON'T PLAY HERE - ITS OWNER ONLY ALLOWS IT ON YOUTUBE"
+        : code === 100 ? 'THIS TAPE IS BLANK - THE VIDEO IS PRIVATE OR GONE'
+          : code === 2 ? "THAT LINK ISN'T A VIDEO THE TV CAN PLAY" : 'THE TAPE IS CHEWED UP - THE VIDEO WOULD NOT PLAY';
+      this.noSignal(why);
+      return;
+    }
+    if (d.event === 'onReady' && this.state === 'loading') this.readyT = 0;
+    const ps = d.event === 'onStateChange' ? +d.info : d.event === 'infoDelivery' && d.info ? d.info.playerState : undefined;
+    // 1 playing, 2 paused, 3 buffering: there's a picture
+    if (ps === 1 || ps === 2 || ps === 3) this.picture();
+  }
+  picture() {
+    if (this.state === 'playing') return;
+    this.state = 'playing'; this.osd = 4;
+    this.setScreen();
+  }
+  noSignal(why) {
+    if (this.state === 'nosignal') return;
+    this.state = 'nosignal';
+    this.setScreen();
+    if (why) this.onNote?.(why);
+  }
+  setScreen() {
+    const pic = this.state === 'playing';
+    if (this.frame) this.frame.style.visibility = pic ? 'visible' : 'hidden';
+    this.noise.style.opacity = pic ? '0.16' : '0.85';
+    this.nosigEl.style.display = this.state === 'nosignal' ? 'flex' : 'none';
   }
   // tell the YouTube player what to do (its iframe API, over postMessage)
   cmd(func) {
@@ -174,6 +231,13 @@ export class VHS {
     }
     this.bandY = (this.bandY + dt * 38) % (PH + 60);
     this.band.style.top = (this.bandY - 30) + 'px';
+    // no word from the player at all (no internet, YouTube blocked): give up and show NO SIGNAL;
+    // once it's ready, show the picture even if it hasn't said it's playing (autoplay may be held back)
+    if (this.state === 'loading') {
+      this.wait += dt;
+      if (this.readyT !== null && (this.readyT += dt) > 2) this.picture();
+      else if (!this.heard && this.wait > 10) this.noSignal("NO SIGNAL - THE TV CAN'T REACH YOUTUBE");
+    }
     this.osd = Math.max(0, this.osd - dt);
     this.osdEl.textContent = this.osd > 0 ? 'PLAY ▶' : '';
   }

@@ -17,6 +17,7 @@ const LOOK = {
 const HIGH = new Set(['forest', 'woodland']);
 const DRY = new Set(['desert', 'sonoran', 'plains', 'mesa']);
 
+const fits = (kind, bio) => (kind !== 'snow' || HIGH.has(bio)) && (kind !== 'dust' || DRY.has(bio));
 export const NAMES = { clear: 'CLEAR SKIES', cloudy: 'OVERCAST', rain: 'RAIN', storm: 'THUNDERSTORM', dust: 'DUST STORM', snow: 'SNOW' };
 
 export class Weather {
@@ -53,10 +54,12 @@ export class Weather {
     this.snapTo(this.kind);
   }
   snapTo(kind) { const L = LOOK[kind]; this.cloud = L.cloud; this.rain = L.rain; this.dust = L.dust; this.snow = L.snow; this.wet = L.rain > 0 || L.snow > 0 ? 1 : 0; this.cover = L.snow; }
+  // F: the next kind of weather this landscape can have (no dust in the pines, no snow in the desert)
   cycle(bio) {
     let i = KINDS.indexOf(this.kind);
-    i = (i + 1) % KINDS.length;
+    do { i = (i + 1) % KINDS.length; } while (!fits(KINDS[i], bio));
     this.kind = KINDS[i]; this.manual = true; this.timer = 3600 * 3;
+    this.shown = this.kind;
     return this.kind;
   }
 
@@ -69,10 +72,17 @@ export class Weather {
       this.timer = 3600 * (0.8 + this.rand() * 2.2);
       if (next !== this.kind) { this.kind = next; this.manual = false; said = next; }
     }
-    // snow turns to rain down low, rain turns to snow up high
+    // the landscape has the last word, even over weather you picked: snow turns to rain down low,
+    // and a dust storm dies down once you're out of the dry country
     let kind = this.kind;
-    if (!this.manual && kind === 'snow' && !HIGH.has(bio)) kind = 'rain';
-    if (!this.manual && kind === 'dust' && !DRY.has(bio)) kind = 'cloudy';
+    if (kind === 'snow' && !HIGH.has(bio)) kind = 'rain';
+    if (kind === 'dust' && !DRY.has(bio)) kind = 'cloudy';
+    if (this.shown && kind !== this.shown && !said) {
+      if (this.shown === 'dust') said = 'dustEnd';
+      else if (this.shown === 'snow') said = 'snowEnd';
+      else if (kind === 'dust' || kind === 'snow') said = kind;
+    }
+    this.shown = kind;
     const L = LOOK[kind];
     // about a real minute to fade from one kind to the next (faster when you press W)
     const k = Math.min(1, dt * (this.manual ? 0.5 : 0.06));

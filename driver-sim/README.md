@@ -11,6 +11,7 @@ You leave at 15:30 and drive into the sunset; the last leg is at night.
 
 - Roundabouts are wider again (240 segments round instead of 168), with a gentler swing into the circle, so there's more room between exits to pick yours. The exit hint stays up a little longer to match.
 - The wipers are drawn behind the dashboard, so their pivots no longer sit on top of the dash or the clipboard.
+- Dust storms die down once you leave the dry country, and snow turns to rain down low, even when you picked the weather yourself with F. F only offers weather the landscape around you can have.
 
 ## Update 11: nothing in the way at roundabout exits
 

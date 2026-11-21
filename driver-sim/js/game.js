@@ -25,6 +25,7 @@ export const VEHICLES = {
 const WX_SAY = {
   clear: 'THE SKY IS CLEARING UP', cloudy: 'CLOUDS ROLLING IN', rain: 'IT STARTS TO RAIN',
   storm: 'A THUNDERSTORM IS COMING', dust: 'DUST STORM AHEAD - SLOW DOWN', snow: 'IT STARTS TO SNOW',
+  dustEnd: 'OUT OF THE DUST AT LAST', snowEnd: 'THE SNOW TURNS TO RAIN DOWN HERE',
 };
 export class Game {
   constructor(audio, career) {

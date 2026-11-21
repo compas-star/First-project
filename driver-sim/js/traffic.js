@@ -42,6 +42,8 @@ export class Traffic {
         target = -1.05; // swerve onto the shoulder
         if (!c.honked && dist < 7000) { c.honked = true; game.audio.honk(0.6); }
       }
+      // the rush of air as a car goes by
+      if (!c.whoosh && Math.abs(dist) < 400 && Math.abs(c.dir * c.mph - p.speed) > 12) { c.whoosh = true; game.audio.whoosh?.(c.type === 'semi' || c.type === 'rv', c.x - game.mainX()); }
       c.x += Math.sign(target - c.x) * Math.min(Math.abs(target - c.x), 1.2 * dt);
       // collisions with the bus
       const wide = c.type === 'semi' || c.type === 'rv' ? 0.72 : 0.62;

@@ -7,6 +7,15 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 10: weather, night lights and sound
+
+- **Weather:** clear, overcast, rain, thunderstorms, dust storms in the desert and snow up in the pines around Flagstaff. It changes by itself every hour or two of game time and fades in slowly. Press F (or WEATHER) to change it yourself.
+- Rain streaks past you and beads on the windshield, and the wipers sweep the drops away. Storms bring lightning that lights up the whole landscape, with thunder a few seconds later. Snow builds up on the ground. Dust storms turn the air brown and cut how far you can see.
+- Wet roads are darker and reflect every street lamp and tail light. They also make your brakes a little weaker. Headlights switch on by themselves in heavy weather.
+- **Headlights** are now a soft pool of light that follows the road over hills and round bends, instead of a hard triangle. Other cars' lights and lit windows glow softly.
+- **Night sky:** stars that turn with you, the Milky Way and a moon.
+- **Sound:** rain on the roof, single drops, thunder, wind that rises with speed and in storms, the hiss of wet tyres, a whoosh when cars pass, the wipers, crickets at night and birds in the morning.
+
 ## Update 9: bigger roundabouts
 
 - Roundabouts are now more than twice as wide, so going round feels like a sweeping curve, not a carousel. The swing into the circle is gentler too.
@@ -91,8 +100,10 @@ python3 -m http.server 8000   # then open http://localhost:8000
 | Paper map | M or Tab | MAP |
 | Open doors / refuel | Space | big pulsing button |
 | Cruise control | C | CRUISE |
-| Radio (2 stations) | R | RADIO |
-| Horn, lights, mute, pause | H, L, N, P | HORN, SOUND, II |
+| Radio (built-in and online stations) | R | RADIO |
+| Change the weather | F | WEATHER |
+| Headlights | L | LIGHTS |
+| Horn, mute, pause | H, N, P | HORN, SOUND, II |
 
 ## What's in the prototype
 - First-person cab view only: pixel-art dashboard, big steering wheel, hairy forearms in a flannel shirt,
@@ -114,7 +125,8 @@ python3 -m http.server 8000   # then open http://localhost:8000
 | `config.js` | Resolution, road and world constants, time compression (1 real s = 20 game s) |
 | `track.js` | Route, towns, schedule, biomes, procedural road and scenery placement |
 | `render.js` | Pseudo-3D road and sprite renderer, fog, night lighting |
-| `backgrounds.js` | Parallax mountains per biome, sky and sun by time of day |
+| `backgrounds.js` | Parallax mountains per biome, sky, sun, moon, stars and Milky Way by time of day |
+| `weather.js` | Weather changes, rain, snow and dust, drops on the glass, wipers, lightning |
 | `cockpit.js` | Dashboard, gauges, wheel, hands, mirror, LCD |
 | `sprites.js` | Procedural pixel-art sprites |
 | `game.js` | Bus physics, stops, boarding, fuel, comfort, report |

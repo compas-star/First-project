@@ -1,4 +1,5 @@
 // Simulation: a bus shift or a rental-car trip on the map's roads.
+import { Weather, NAMES as WX_NAMES } from './weather.js';
 import { SEG, MPH2U, BUS_FRONT_SEGS, ZONE_LEN, SEG_PER_MILE, DRAW_DIST, TIME_SCALE, ROAD_W } from './config.js';
 import { clamp, timeStr, mulberry } from './gfx.js';
 import { Track, nodeKind, reverseEdge, edgeSegs, RING, SPLIT_LOCK, splitL, splitSlope, splitPos, loopG, applyLoop, walkBranch, BR_M } from './track.js';
@@ -21,6 +22,10 @@ export const VEHICLES = {
   car: { type: 'car', camH: 600, revMph: 14, maxMph: 88, accel: 9, brake: 24, tank: 330, steer: 1.45, tankGal: 16 },
 };
 
+const WX_SAY = {
+  clear: 'THE SKY IS CLEARING UP', cloudy: 'CLOUDS ROLLING IN', rain: 'IT STARTS TO RAIN',
+  storm: 'A THUNDERSTORM IS COMING', dust: 'DUST STORM AHEAD - SLOW DOWN', snow: 'IT STARTS TO SNOW',
+};
 export class Game {
   constructor(audio, career) {
     this.audio = audio; this.career = career;
@@ -563,6 +568,12 @@ export class Game {
     }
     if (input.take('radio')) { const st = this.audio.cycleRadio(); this.msg(st.off ? 'RADIO OFF' : `RADIO: ${st.label}`, 2.5, '#ffb040'); }
     if (input.take('lights')) this.lightsManual = !this.lightsOn;
+    // weather: changes by itself now and then; F (or the WEATHER button) changes it by hand
+    const bioName = (this.seg().bio || {}).a;
+    if (!this.weather) { this.weather = new Weather(); this.weather.start(bioName, this.clock); }
+    if (input.take('weather')) { const k = this.weather.cycle(bioName); this.msg(`WEATHER: ${WX_NAMES[k]}`, 2.5, '#c8d8ff'); }
+    const turned = this.weather.update(dt, dt * TIME_SCALE, bioName, Math.abs(p.speed), this.audio);
+    if (turned) this.msg(WX_SAY[turned], 3.5, '#c8d8ff');
     this.audio.horn(input.horn);
     this.updateRoads(input);
     // route checks are a little costly: a few times a second is plenty
@@ -704,7 +715,9 @@ export class Game {
       let acc = throttle * V.accel * (1 - p.speed / V.maxMph) - 0.6 - p.speed * 0.008 - grade * 40;
       // low gear: with the gas down you always crawl up a hill, however heavy the load
       if (throttle > 0 && p.speed < 12) acc = Math.max(acc, 1.5 * throttle);
-      if (braking) acc -= held ? 30 : V.brake;
+      // a wet or snowy road: the brakes bite less
+      const grip = 1 - (this.weather ? this.weather.wet * (this.weather.snow > 0.5 ? 0.4 : 0.22) : 0);
+      if (braking) acc -= held ? 30 : V.brake * grip;
       if (this.offroad && p.speed > 22) acc -= 12;
       p.speed = clamp(p.speed + acc * dt, 0, V.maxMph);
       if (held) p.speed = Math.max(0, p.speed - 30 * dt);
@@ -785,7 +798,8 @@ export class Game {
     if (this.offroad && Math.abs(p.speed) > 3) this.shake = Math.max(this.shake, 0.25);
 
     const hr = (this.clock % 86400) / 3600;
-    this.lightsOn = this.lightsManual ?? (hr > 17.4 || hr < 6.9);
+    const wx = this.weather;
+    this.lightsOn = this.lightsManual ?? (hr > 17.4 || hr < 6.9 || (wx && (wx.rain > 0.4 || wx.dust > 0.4 || wx.snow > 0.4)));
     this.traffic.update(dt, this);
     if (this.finished) this.finishTimer -= dt;
   }

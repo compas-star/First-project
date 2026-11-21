@@ -12,7 +12,7 @@ const KEYMAP = {
 };
 const ONESHOT = {
   Space: 'action', KeyC: 'cruise', KeyR: 'radio', KeyN: 'mute', KeyM: 'map', Tab: 'map',
-  KeyP: 'pause', Escape: 'pause', Enter: 'enter', KeyL: 'lights', KeyQ: 'prevRoute', KeyE: 'nextRoute', KeyU: 'uturn',
+  KeyP: 'pause', Escape: 'pause', Enter: 'enter', KeyL: 'lights', KeyF: 'weather', KeyQ: 'prevRoute', KeyE: 'nextRoute', KeyU: 'uturn',
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
 };
 
@@ -41,7 +41,7 @@ export function initInput(canvas) {
   };
   hold('tLeft', 'left'); hold('tRight', 'right'); hold('tGas', 'gas'); hold('tBrake', 'brake'); hold('tHorn', 'horn');
   tap('tCruise', 'cruise'); tap('tRadio', 'radio'); tap('tPause', 'pause'); tap('tAction', 'action'); tap('tMute', 'mute');
-  tap('tMap', 'map'); tap('tUturn', 'uturn'); tap('tPrev', 'prevRoute'); tap('tNext', 'nextRoute');
+  tap('tMap', 'map'); tap('tWeather', 'weather'); tap('tLights', 'lights'); tap('tUturn', 'uturn'); tap('tPrev', 'prevRoute'); tap('tNext', 'nextRoute');
 
   // drag on the steering wheel to steer (analog)
   let drag = null;

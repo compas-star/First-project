@@ -1,6 +1,7 @@
 // The driver's cab of a 90s intercity coach, drawn at 480x270:
 // split windshield, folding entry door, bus mirrors, gauge cluster, switch panel,
 // CB radio, desk fan, flat bus steering wheel and big hairy forearms.
+import { wAng } from './weather.js';
 import { W, H } from './config.js';
 import { makeCanvas, mulberry, rect, px, line, ellipse, circle, poly, shade, clamp, timeStr, css, ditherV, bayer, hex, lerpC, freeze } from './gfx.js';
 import { drawText } from './font.js';
@@ -81,9 +82,6 @@ function buildBase() {
     rect(x, mx - 3, my, 3, mh, '#141414'); rect(x, mx + mw, my, 3, mh, '#141414');
     rect(x, mx - 2, my - 2, mw + 4, 1, '#3a3a3a');
   }
-  // ---- wipers parked at the bottom ----
-  line(x, 70, DASH_Y - 1, 220, DASH_Y - 9, '#121212', 2); line(x, 220, DASH_Y - 9, 226, DASH_Y - 10, '#2a2a2a');
-  line(x, 320, DASH_Y - 1, 392, DASH_Y - 7, '#121212', 2);
   // ---- bugs and grime on the glass ----
   for (let i = 0; i < 9; i++) {
     const bx = 30 + r() * 360, by = 50 + r() * 110;
@@ -291,6 +289,19 @@ function needle(ctx, [cx, cy, r], frac, start, sweep, col) {
 
 // Steering wheel: a flat ellipse seen from above. The rim doesn't change when it turns;
 // the spokes, grips and hands slide around it.
+// wipers: [pivot x, pivot y, length] for each vehicle; they sweep when it rains
+export const WIPERS = { bus: [[70, DASH_Y - 1, 152], [320, DASH_Y - 1, 74]], car: [[132, 161, 118], [262, 161, 118]] };
+function drawWipers(ctx, pivots, w) {
+  const a = wAng(w);
+  for (const [px0, py0, len] of pivots) {
+    const ex = px0 + Math.cos(a) * len, ey = py0 + Math.sin(a) * len;
+    line(ctx, px0, py0, ex, ey, '#121212', 2);
+    // the rubber blade along the outer part of the arm
+    const bx = px0 + Math.cos(a) * len * 0.3, by = py0 + Math.sin(a) * len * 0.3;
+    line(ctx, bx + 1, by + 1, ex + 1, ey + 1, '#2a2a2a', 1);
+    rect(ctx, px0 - 2, py0 - 2, 5, 4, '#1a1a1a');
+  }
+}
 function drawWheel(ctx, ang, geo = WH, badge = 'PDC') {
   const { cx, cy, rx, ry, t } = geo;
   for (let yy = Math.floor(cy - ry - 1); yy < H; yy++) for (let xx = cx - rx - 2; xx <= cx + rx + 2; xx++) {
@@ -338,6 +349,7 @@ export function renderCockpit(main, game, sky, t) {
   ctx.clearRect(0, 0, W, H);
   mirrorGlass(ctx, MIRL, sky, false); mirrorGlass(ctx, MIRR, sky, true);
   ctx.drawImage(base, 0, 0);
+  drawWipers(ctx, WIPERS.bus, game.weather ? game.weather.wiper : 0);
 
   const truck = game.mode === 'truck';
   if (truck) {
@@ -541,6 +553,7 @@ function renderCarCockpit(main, game, sky, t) {
   const p = game.player;
   ctx.clearRect(0, 0, W, H);
   ctx.drawImage(carBase, 0, 0);
+  drawWipers(ctx, WIPERS.car, game.weather ? game.weather.wiper : 0);
   // rear-view mirror: back window and empty back seat
   rect(ctx, 196, 18, 88, 18, '#0e0e0e'); rect(ctx, 198, 19, 84, 15, css(lerpC(sky.top, sky.bottom, 0.6)));
   rect(ctx, 198, 28, 84, 6, '#5a5048'); rect(ctx, 204, 26, 30, 4, '#6a6058'); rect(ctx, 246, 26, 30, 4, '#6a6058');

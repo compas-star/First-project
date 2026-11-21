@@ -7,6 +7,16 @@ import { LAYERS, BG_W } from './backgrounds.js';
 
 const [world, wctx] = makeCanvas(W, H);
 export const worldCanvas = world;
+// the world before the night tint, for the parts your headlights light up
+const [litC, litX] = makeCanvas(W, H);
+
+// the headlight beam, drawn small and scaled up smoothly so its edges are soft
+const LS = 4, LW = W / LS, LH = Math.ceil(H / LS);
+const [beamC, beamX] = makeCanvas(LW, LH);
+const [warmC, warmX] = makeCanvas(LW, LH);
+const [tintC, tintX] = makeCanvas(LW, LH);
+let beamSegs = [], wetNow = 0, snowNow = 0;
+const SNOW = [226, 230, 238];
 
 const ASPHALT = [hex('#55555b'), hex('#515157')];
 const SHOULDER = [hex('#7e796b'), hex('#75705f')];
@@ -33,14 +43,15 @@ function quad(ctx, x1, y1, w1, x2, y2, w2, col) {
 
 const fogC = (c, fog, f) => css(lerpC(c, fog, f));
 
+const WET = hex('#34343c');
 const GRASS = hex('#5f7a3a'), CURB = hex('#b8b4a8');
 function drawSegment(ctx, s, fog, f) {
   const p1 = s.p1, p2 = s.p2, a = s.alt;
   // other roads beside this one: static (splits, service roads) and this frame's branch roads
   const BR = s.dbr ? (s.br ? s.br.concat(s.dbr) : s.dbr) : s.br;
   const x1 = p1.sx, y1 = p1.sy, w1 = p1.sw, x2 = p2.sx, y2 = p2.sy, w2 = p2.sw;
-  const asphalt = fogC(ASPHALT[a], fog, f);
-  ctx.fillStyle = fogC(s.ground, fog, f);
+  const asphalt = fogC(wetNow ? lerpC(ASPHALT[a], WET, wetNow) : ASPHALT[a], fog, f);
+  ctx.fillStyle = fogC(snowNow ? lerpC(s.ground, SNOW, snowNow) : s.ground, fog, f);
   ctx.fillRect(0, y2, W, y1 - y2 + 1);
   if (s.cross) {
     // a crossing street: asphalt from one side of the view to the other
@@ -194,6 +205,9 @@ export function renderWorld(game, sky) {
   const segs = track.segs;
   ctx.clearRect(0, 0, W, H);
   const fog = lerpC(sky.bottom, [128, 128, 140], 0.1);
+  const fogD = FOG * (sky.fogMul || 1);
+  wetNow = (sky.wet || 0) * 0.55;
+  snowNow = (sky.snowCover || 0) * 0.8;
 
   // backgrounds with biome cross-fade
   const bio = (segs[Math.floor(player.z / SEG)] || segs[0]).bio;
@@ -248,7 +262,7 @@ export function renderWorld(game, sky) {
   for (let n = 0; n < DRAW_DIST; n++) {
     const s = segs[baseIdx + n];
     if (!s) break;
-    s.fog = 1 - Math.exp(-Math.pow(n / DRAW_DIST, 2) * FOG);
+    s.fog = 1 - Math.exp(-Math.pow(n / DRAW_DIST, 2) * fogD);
     project(s.p1, player.x * ROAD_W - x, camY, player.z);
     project(s.p2, player.x * ROAD_W - x - dx, camY, player.z);
     x += dx; dx += s.curve;
@@ -256,6 +270,7 @@ export function renderWorld(game, sky) {
     drawn.push(s);
     if (s.p1.cz <= CAM_DEPTH * 10 || s.p2.sy >= s.p1.sy || s.p2.sy >= maxy) continue;
     visible.push(s);
+    s.n = n;
     maxy = s.p2.sy;
   }
   for (let k = visible.length - 1; k >= 0; k--) drawSegment(ctx, visible[k], fog, visible[k].fog);
@@ -297,8 +312,23 @@ export function renderWorld(game, sky) {
     }
   }
 
+  // remember the beam's path along the road, and the world as it looks in full light
+  beamSegs = game.lightsOn && sky.tintA > 0.08 ? visible.filter(s => s.n < 90) : [];
+  buildBeam(game, sky);
+  if (sky.flash > 0) { litX.clearRect(0, 0, W, H); litX.drawImage(world, 0, 0); }
   // world tint (golden hour / dusk / night)
-  if (sky.tintA > 0) {
+  if (beamBox) {
+    ctx.globalCompositeOperation = 'source-atop';
+    // plain tint everywhere but the beam's box, the soft one inside it
+    const B = beamBox;
+    ctx.fillStyle = css(sky.tint, sky.tintA);
+    ctx.fillRect(0, 0, W, B.Y); ctx.fillRect(0, B.Y + B.BH, W, H);
+    ctx.fillRect(0, B.Y, B.X, B.BH); ctx.fillRect(B.X + B.BW, B.Y, W, B.BH);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(tintC, B.x0, B.y0, B.bw, B.bh, B.X, B.Y, B.BW, B.BH);
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalCompositeOperation = 'source-over';
+  } else if (sky.tintA > 0) {
     ctx.globalCompositeOperation = 'source-atop';
     ctx.fillStyle = css(sky.tint, sky.tintA);
     ctx.fillRect(0, 0, W, H);
@@ -307,40 +337,156 @@ export function renderWorld(game, sky) {
   return { emissive };
 }
 
-export function drawEmissive(ctx, emissive, night, ox, oy) {
+// A blurred copy of a glow layer (made once): shrink it with smoothing, then grow it back.
+const HALO = new WeakMap();
+function halo(img) {
+  let h = HALO.get(img);
+  if (h) return h;
+  const sw = Math.max(2, Math.round(img.width / 6)), sh = Math.max(2, Math.round(img.height / 6));
+  const [a, ax] = makeCanvas(sw + 4, sh + 4);
+  ax.imageSmoothingEnabled = true;
+  ax.drawImage(img, 2, 2, sw, sh);
+  const [b, bx] = makeCanvas((sw + 4) * 3, (sh + 4) * 3);
+  bx.imageSmoothingEnabled = true;
+  bx.filter = 'blur(2px)';
+  bx.drawImage(a, 0, 0, b.width, b.height);
+  bx.filter = 'none';
+  HALO.set(img, b);
+  return b;
+}
+// Cached soft glow sprites, one per colour: a wide faint halo with a small hot core.
+const GLOWS = {};
+function glowSprite(c) {
+  if (GLOWS[c]) return GLOWS[c];
+  const [g, x] = makeCanvas(64, 64);
+  const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, `rgba(${c},1)`); gr.addColorStop(0.12, `rgba(${c},0.75)`);
+  gr.addColorStop(0.35, `rgba(${c},0.22)`); gr.addColorStop(1, `rgba(${c},0)`);
+  x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+  return (GLOWS[c] = g);
+}
+export function drawEmissive(ctx, emissive, night, ox, oy, wet = 0) {
   if (night <= 0.05) return;
+  const sm = ctx.imageSmoothingEnabled;
   for (const e of emissive) {
     const { spr, dx, dy, dw, dh, clipH } = e;
     if (spr.glow) {
-      ctx.globalAlpha = night * e.alpha * 0.7;
       const gl = level(spr.glow, dh);
       const srcH = Math.max(1, Math.round(gl.height * (1 - clipH / dh)));
-      ctx.drawImage(gl, 0, 0, gl.width, srcH, Math.round(dx + ox), Math.round(dy + oy), Math.round(dw), Math.round(dh - clipH));
+      const rx = Math.round(dx + ox), ry = Math.round(dy + oy), rw = Math.round(dw), rh = Math.round(dh - clipH);
+      ctx.globalAlpha = night * e.alpha * 0.75;
+      ctx.drawImage(gl, 0, 0, gl.width, srcH, rx, ry, rw, rh);
+      // the light spilling round the windows: a blurred copy, added on top
+      if (dh > 40) {
+        const hc = halo(spr.glow), f = 1 - clipH / dh, pad = dw * 0.08;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.imageSmoothingEnabled = true;
+        ctx.globalAlpha = night * e.alpha * 0.28;
+        ctx.drawImage(hc, 0, 0, hc.width, Math.max(1, hc.height * f), dx + ox - pad, dy + oy - pad, dw + pad * 2, (dh + pad * 2) * f);
+        ctx.imageSmoothingEnabled = sm;
+        ctx.globalCompositeOperation = 'source-over';
+      }
     }
-    if (spr.lights) for (const l of spr.lights) {
-      const lx = dx + l.x * dw + ox, ly = dy + l.y * dh + oy;
-      if (ly > dy + dh - clipH) continue;
-      const r = Math.max(1.5, dw * (l.r || 0.12));
-      const g = ctx.createRadialGradient(lx, ly, 0, lx, ly, r);
-      const c = l.c || (spr.front ? '255,250,220' : '255,40,30');
-      g.addColorStop(0, `rgba(${c},${0.55 * night})`); g.addColorStop(1, `rgba(${c},0)`);
-      ctx.globalAlpha = 1;
+    if (spr.lights) {
+      ctx.imageSmoothingEnabled = true;
       ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = g; ctx.fillRect(lx - r, ly - r, r * 2, r * 2);
+      for (const l of spr.lights) {
+        const lx = dx + l.x * dw + ox, ly = dy + l.y * dh + oy;
+        if (ly > dy + dh - clipH) continue;
+        const front = spr.front && !l.c;
+        const c = l.c || (front ? '255,244,214' : '255,46,30');
+        const r = Math.max(2.5, dw * (l.r || 0.12) * (front ? 2.6 : 1.9));
+        const img = glowSprite(c);
+        ctx.globalAlpha = Math.min(1, night * (front ? 0.95 : 0.8));
+        ctx.drawImage(img, lx - r, ly - r, r * 2, r * 2);
+        // oncoming headlights flare sideways a little
+        if (front && r > 4) { ctx.globalAlpha = night * 0.25; ctx.drawImage(img, lx - r * 2.2, ly - r * 0.25, r * 4.4, r * 0.5); }
+        // on a wet road every light shimmers in a long streak below it
+        if (wet > 0.05) {
+          const base = dy + dh + oy;
+          ctx.globalAlpha = night * wet * (front ? 0.5 : 0.4);
+          ctx.drawImage(img, lx - r * 0.45, base - r * 0.2, r * 0.9, Math.min(60, r * 5 + (base - ly) * 1.5));
+        }
+      }
       ctx.globalCompositeOperation = 'source-over';
+      ctx.imageSmoothingEnabled = sm;
     }
   }
   ctx.globalAlpha = 1;
 }
 
-export function drawHeadlights(ctx, night) {
-  if (night <= 0.05) return;
+// Headlights: a soft pool of light along the road ahead. It follows the road over hills and
+// round bends, fades out with distance and to the sides, and shows the world's true colours
+// (not just a brighter tint) where it falls.
+let beamBox = null, beamStrength = 0;
+// Headlights: a soft pool of light along the road ahead. It follows the road over hills and
+// round bends and fades out with distance and to the sides. It's drawn small and scaled up
+// smoothly, then cut out of the night tint, so the world shows its true colours where it falls.
+function buildBeam(game, sky) {
+  beamBox = null;
+  beamStrength = clamp(sky.tintA * 1.4, 0, 1);
+  if (!beamSegs.length || beamStrength <= 0) return;
+  const px = game.player.x;
+  beamX.clearRect(0, 0, LW, LH);
+  beamX.globalCompositeOperation = 'lighter';
+  let x0 = LW, x1 = 0, y0 = LH, y1 = 0;
+  // nested bands: wide and faint at the edges, bright in the middle of your lane
+  const bands = [[2.0, 0.09], [1.1, 0.25], [0.5, 0.3]];
+  for (const s of beamSegs) {
+    const n = s.n + 0.5;
+    const near = 0.35 + 0.65 * clamp((n - 2) / 9, 0, 1);
+    const far = n < 12 ? 1 : Math.exp(-Math.pow((n - 12) / 34, 2));
+    const a = near * far;
+    if (a < 0.01) continue;
+    const p1 = s.p1, p2 = s.p2;
+    const c1 = (p1.sx + p1.sw * px) / LS, c2 = (p2.sx + p2.sw * px) / LS;
+    const ya = p1.sy / LS + 0.5, yb = p2.sy / LS - 0.5;
+    const wa = p1.sw * 2 / LS, wb = p2.sw * 2 / LS;
+    x0 = Math.min(x0, c1 - wa, c2 - wb); x1 = Math.max(x1, c1 + wa, c2 + wb); y0 = Math.min(y0, yb); y1 = Math.max(y1, ya);
+    for (const [k, al] of bands) {
+      const w1 = p1.sw * k / LS, w2 = p2.sw * k / LS;
+      beamX.fillStyle = `rgba(255,255,255,${al * a})`;
+      beamX.beginPath();
+      beamX.moveTo(c1 - w1, ya); beamX.lineTo(c2 - w2, yb); beamX.lineTo(c2 + w2, yb); beamX.lineTo(c1 + w1, ya);
+      beamX.closePath(); beamX.fill();
+    }
+  }
+  beamX.globalCompositeOperation = 'source-over';
+  // bounding box in small pixels, a pixel of margin for the soft edge
+  x0 = Math.max(0, Math.floor(x0) - 1); y0 = Math.max(0, Math.floor(y0) - 1);
+  x1 = Math.min(LW, Math.ceil(x1) + 1); y1 = Math.min(LH, Math.ceil(y1) + 1);
+  if (x1 <= x0 || y1 <= y0) return;
+  const bw = x1 - x0, bh = y1 - y0;
+  beamBox = { x0, y0, bw, bh, X: x0 * LS, Y: y0 * LS, BW: bw * LS, BH: bh * LS };
+  // a warm copy of the shape
+  warmX.globalCompositeOperation = 'copy';
+  warmX.drawImage(beamC, 0, 0);
+  warmX.globalCompositeOperation = 'source-in';
+  warmX.fillStyle = 'rgb(255,226,170)';
+  warmX.fillRect(0, 0, LW, LH);
+  warmX.globalCompositeOperation = 'source-over';
+  // the night tint, with a soft hole where the beam falls: the world shows its true colours there
+  tintX.globalCompositeOperation = 'copy';
+  tintX.fillStyle = css(sky.tint, sky.tintA);
+  tintX.fillRect(0, 0, LW, LH);
+  tintX.globalCompositeOperation = 'destination-out';
+  tintX.globalAlpha = beamStrength;
+  tintX.drawImage(beamC, 0, 0);
+  // and a faint warm colour where the light falls, so it reads as light and not just colour
+  tintX.globalCompositeOperation = 'source-over';
+  tintX.globalAlpha = 0.1 + 0.1 * sky.night;
+  tintX.drawImage(warmC, 0, 0);
+  tintX.globalAlpha = 1;
+}
+
+// A lightning flash lights the whole landscape for a moment.
+export function drawFlash(ctx, sky, ox, oy) {
+  if (!(sky.flash > 0)) return;
+  ctx.globalAlpha = Math.min(1, sky.flash) * 0.85;
+  ctx.drawImage(litC, ox, oy);
   ctx.globalCompositeOperation = 'lighter';
-  const g = ctx.createRadialGradient(240, 177, 6, 240, 168, 165);
-  g.addColorStop(0, `rgba(255,240,200,${0.32 * night})`);
-  g.addColorStop(0.5, `rgba(255,230,180,${0.12 * night})`);
-  g.addColorStop(1, 'rgba(255,230,180,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.moveTo(15, 180); ctx.lineTo(195, 105); ctx.lineTo(285, 105); ctx.lineTo(465, 180); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = `rgba(200,205,255,${sky.flash * 0.25})`;
+  ctx.fillRect(0, 0, W, H);
   ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
 }

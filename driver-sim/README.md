@@ -7,6 +7,12 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 22: no more zoom on phones
+
+- Typing a link in the PUT IN A TAPE box made iPhones zoom into the page, and inside itch.io's frame you couldn't zoom back out. The link box now uses text big enough that phones don't zoom into it.
+- If the page does get zoomed, a pinch on the black space around the game zooms back out. Pinches on the game and its buttons are still ignored, so two thumbs on GAS and ◀ ▶ never zoom by accident.
+- The game sizes itself from the page, not from the zoomed-in view, so it stays centred, and the TV picture is pinned to the game itself, so it stays on the TV screen.
+
 ## Update 21: tidier phone buttons, car wipers
 
 - On phones and tablets only the driving buttons stay on screen: ◀ ▶, GAS, BRAKE, HORN and CRUISE (next to GAS). Everything else (RADIO, VHS, MAP, LIGHTS, WEATHER, U-TURN, SOUND, PAUSE) sits in a panel behind the ☰ button at the top right. The panel stays open so you can tap RADIO a few times, and closes when you tap ☰ again, tap the road, or open VHS, MAP or PAUSE. The action button and the road choice at splits work as before.

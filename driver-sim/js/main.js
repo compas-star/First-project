@@ -52,7 +52,10 @@ const demo = new Game(audio, demoCareer); demo.startCar('flagstaff'); demo.msgs 
 let state = 'title', paused = false, report = null, t = 0, titleSel = 0;
 
 function fit() {
-  const vw = innerWidth, vh = innerHeight;
+  // the layout viewport, not innerWidth: on phones innerWidth shrinks while the page is zoomed in,
+  // which used to shrink the game and push it off centre
+  const de = document.documentElement;
+  const vw = de.clientWidth || innerWidth, vh = de.clientHeight || innerHeight;
   let s = Math.min(vw / W, vh / H);
   if (s >= 2) s = Math.floor(s * 2) / 2;
   canvas.style.width = Math.floor(W * s) + 'px';

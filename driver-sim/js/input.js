@@ -45,6 +45,14 @@ export function initInput(canvas) {
   tap('tCruise', 'cruise'); tap('tRadio', 'radio'); tap('tPause', 'pause'); tap('tAction', 'action'); tap('tMute', 'mute');
   tap('tMap', 'map'); tap('tWeather', 'weather'); tap('tVhs', 'vhs'); tap('tLights', 'lights'); tap('tUturn', 'uturn'); tap('tPrev', 'prevRoute'); tap('tNext', 'nextRoute');
 
+  // the menu button opens a panel with the less-used buttons; it stays open (so RADIO can be
+  // tapped a few times) until the menu button or the road is tapped, or a screen opens over the road
+  const menu = on => document.body.classList.toggle('menu', on);
+  const mb = document.getElementById('tMenu');
+  if (mb) mb.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); menu(!document.body.classList.contains('menu')); });
+  for (const id of ['tVhs', 'tMap', 'tPause']) document.getElementById(id)?.addEventListener('pointerdown', () => setTimeout(() => menu(false), 130));
+  canvas.addEventListener('pointerdown', () => menu(false));
+
   // drag on the steering wheel to steer (analog)
   let drag = null;
   canvas.addEventListener('pointerdown', e => {

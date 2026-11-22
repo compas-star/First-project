@@ -292,7 +292,9 @@ function needle(ctx, [cx, cy, r], frac, start, sweep, col) {
 // Steering wheel: a flat ellipse seen from above. The rim doesn't change when it turns;
 // the spokes, grips and hands slide around it.
 // wipers: [pivot x, pivot y, length] for each vehicle; they sweep when it rains
-export const WIPERS = { bus: [[70, DASH_Y - 1, 152], [320, DASH_Y - 1, 74]], car: [[132, 158, 118], [262, 158, 118]] };
+export const WIPERS = { bus: [[70, DASH_Y - 1, 152], [320, DASH_Y - 1, 74]], car: [[130, 185, 126], [246, 185, 140]] };
+// (the car's pivots sit at the foot of the windscreen, just under the dash lip: they're drawn on
+// the cab layer over the hood, then the dashboard goes back over their bases)
 // drawn on the view before the cab goes over it, so the dashboard hides their bottom ends
 // A little TV/VCR combo sitting on the dash, rabbit ears and all. While a tape plays, the
 // YouTube player sits over the screen (see vhs.js); otherwise the screen is dark glass.
@@ -329,11 +331,11 @@ function tvGlow(ctx, sc, sky, t) {
   ctx.fillStyle = g; ctx.fillRect(cx - 90, cy - 90, 180, 180);
   ctx.globalCompositeOperation = 'source-over';
 }
-export function drawWipers(ctx, pivots, w) {
+export function drawWipers(ctx, pivots, w, thick = 2) {
   const a = wAng(w);
   for (const [px0, py0, len] of pivots) {
     const ex = px0 + Math.cos(a) * len, ey = py0 + Math.sin(a) * len;
-    line(ctx, px0, py0, ex, ey, '#121212', 2);
+    line(ctx, px0, py0, ex, ey, '#121212', thick);
     // the rubber blade along the outer part of the arm
     const bx = px0 + Math.cos(a) * len * 0.3, by = py0 + Math.sin(a) * len * 0.3;
     line(ctx, bx + 1, by + 1, ex + 1, ey + 1, '#2a2a2a', 1);
@@ -630,6 +632,10 @@ function renderCarCockpit(main, game, sky, t) {
   const p = game.player;
   ctx.clearRect(0, 0, W, H);
   ctx.drawImage(carBase, 0, 0);
+  if (game.weather) {
+    drawWipers(ctx, WIPERS.car, game.weather.wiper, 3);
+    ctx.drawImage(carBase, 0, CAR_DASH, W, H - CAR_DASH, 0, CAR_DASH, W, H - CAR_DASH);
+  }
   // rear-view mirror: back window and empty back seat
   rect(ctx, 196, 18, 88, 18, '#0e0e0e'); rect(ctx, 198, 19, 84, 15, css(lerpC(sky.top, sky.bottom, 0.6)));
   rect(ctx, 198, 28, 84, 6, '#5a5048'); rect(ctx, 204, 26, 30, 4, '#6a6058'); rect(ctx, 246, 26, 30, 4, '#6a6058');

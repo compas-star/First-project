@@ -7,6 +7,11 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 21: tidier phone buttons, car wipers
+
+- On phones and tablets only the driving buttons stay on screen: ◀ ▶, GAS, BRAKE, HORN and CRUISE (next to GAS). Everything else (RADIO, VHS, MAP, LIGHTS, WEATHER, U-TURN, SOUND, PAUSE) sits in a panel behind the ☰ button at the top right. The panel stays open so you can tap RADIO a few times, and closes when you tap ☰ again, tap the road, or open VHS, MAP or PAUSE. The action button and the road choice at splits work as before.
+- The rental car's wipers now swing from the foot of the windscreen, under the dashboard, instead of from the far end of the hood.
+
 ## Update 20: keyboard on itch.io
 
 - On sites that show the game in a frame (like itch.io), the keyboard only reaches the game once it has focus. The game now takes focus when it starts and whenever you click or tap it, and if it has lost focus (you clicked elsewhere on the page), it says CLICK THE GAME TO USE THE KEYBOARD until you do.
@@ -151,16 +156,16 @@ python3 -m http.server 8000   # then open http://localhost:8000
 | Gas / brake | ↑ / ↓ (W / S) | GAS / BRAKE pedals |
 | Steer | ← / → (A / D) | ◀ ▶ buttons, or drag on the steering wheel |
 | Reverse | hold ↓ at a standstill | hold BRAKE at a standstill |
-| U-turn (car) | U | U-TURN |
+| U-turn (car) | U | ☰ → U-TURN |
 | Pick a road where the road splits | Steer onto it | Steer onto it |
-| Paper map | M or Tab | MAP |
+| Paper map | M or Tab | ☰ → MAP |
 | Open doors / refuel | Space | big pulsing button |
 | Cruise control | C | CRUISE |
-| Radio (built-in and online stations) | R | RADIO |
-| Change the weather | F | WEATHER |
-| Put a tape in the TV (YouTube link) | V | VHS |
-| Headlights | L | LIGHTS |
-| Horn, mute, pause | H, N, P | HORN, SOUND, II |
+| Radio (built-in and online stations) | R | ☰ → RADIO |
+| Change the weather | F | ☰ → WEATHER |
+| Put a tape in the TV (YouTube link) | V | ☰ → VHS |
+| Headlights | L | ☰ → LIGHTS |
+| Horn, mute, pause | H, N, P | HORN, ☰ → SOUND / PAUSE |
 
 ## What's in the prototype
 - First-person cab view only: pixel-art dashboard, big steering wheel, hairy forearms in a flannel shirt,

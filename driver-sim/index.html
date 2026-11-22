@@ -25,16 +25,16 @@
   #tGas { bottom: calc(10px + env(safe-area-inset-bottom)); height: 92px; background: rgba(40, 80, 40, 0.45); }
   #tBrake { bottom: calc(110px + env(safe-area-inset-bottom)); height: 64px; background: rgba(90, 30, 30, 0.45); }
   .small { width: 64px; height: 34px; font-size: 10px; letter-spacing: 0; }
-  #tPause { left: calc(8px + env(safe-area-inset-left)); top: calc(8px + env(safe-area-inset-top)); }
-  #tMute { left: calc(8px + env(safe-area-inset-left)); top: calc(48px + env(safe-area-inset-top)); }
-  #tWeather { left: calc(8px + env(safe-area-inset-left)); top: calc(88px + env(safe-area-inset-top)); }
-  #tVhs { left: calc(8px + env(safe-area-inset-left)); top: calc(168px + env(safe-area-inset-top)); }
-  #tLights { left: calc(8px + env(safe-area-inset-left)); top: calc(128px + env(safe-area-inset-top)); }
-  #tCruise { right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); }
-  #tRadio { right: calc(8px + env(safe-area-inset-right)); top: calc(48px + env(safe-area-inset-top)); }
   #tHorn { bottom: calc(82px + env(safe-area-inset-bottom)); left: calc(8px + env(safe-area-inset-left)); width: 64px; height: 40px; font-size: 11px; }
-  #tUturn { right: calc(8px + env(safe-area-inset-right)); top: calc(128px + env(safe-area-inset-top)); }
-  #tMap { right: calc(8px + env(safe-area-inset-right)); top: calc(88px + env(safe-area-inset-top)); }
+  #tCruise { right: calc(80px + env(safe-area-inset-right)); bottom: calc(10px + env(safe-area-inset-bottom)); width: 64px; height: 44px; font-size: 11px; }
+  #tMenu { right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); width: 48px; height: 40px; font-size: 22px; }
+  body.menu #tMenu { background: rgba(255, 211, 106, 0.45); }
+  /* the tucked-away buttons: a little panel under the menu button */
+  #tPanel { display: none; position: fixed; z-index: 6; right: calc(62px + env(safe-area-inset-right)); top: calc(4px + env(safe-area-inset-top));
+    grid-template-columns: repeat(4, 76px); gap: 6px; padding: 6px; background: rgba(20, 16, 14, 0.85); border: 2px solid rgba(242, 226, 184, 0.35); border-radius: 8px; }
+  body.touch.playing.menu #tPanel { display: grid; }
+  #tPanel .tbtn { position: static; width: 76px; height: 38px; font-size: 11px; }
+  body.busmode #tUturn { opacity: 0.35; }
   #tPrev, #tNext { display: none !important; top: calc(8px + env(safe-area-inset-top)); width: 70px; }
   #tPrev { left: calc(50% - 76px); } #tNext { left: calc(50% + 6px); }
   body.junction.playing #tPrev, body.junction.playing #tNext { display: flex !important; }
@@ -60,18 +60,21 @@
   <div class="tbtn" id="tHorn">HORN</div>
   <div class="tbtn" id="tBrake">BRAKE</div>
   <div class="tbtn" id="tGas">GAS</div>
-  <div class="tbtn small" id="tPause">II</div>
-  <div class="tbtn small" id="tMute">SOUND</div>
-  <div class="tbtn small" id="tUturn">U-TURN</div>
-  <div class="tbtn small" id="tRadio">RADIO</div>
-  <div class="tbtn small" id="tCruise">CRUISE</div>
+  <div class="tbtn" id="tCruise">CRUISE</div>
   <div class="tbtn" id="tAction">OPEN DOORS</div>
-  <div class="tbtn small" id="tMap">MAP</div>
-  <div class="tbtn small" id="tWeather">WEATHER</div>
-  <div class="tbtn small" id="tLights">LIGHTS</div>
-  <div class="tbtn small" id="tVhs">VHS</div>
   <div class="tbtn small" id="tPrev">&#9664; ROAD</div>
   <div class="tbtn small" id="tNext">ROAD &#9654;</div>
+  <div class="tbtn" id="tMenu">&#9776;</div>
+  <div id="tPanel">
+    <div class="tbtn small" id="tRadio">RADIO</div>
+    <div class="tbtn small" id="tVhs">VHS</div>
+    <div class="tbtn small" id="tMap">MAP</div>
+    <div class="tbtn small" id="tLights">LIGHTS</div>
+    <div class="tbtn small" id="tWeather">WEATHER</div>
+    <div class="tbtn small" id="tUturn">U-TURN</div>
+    <div class="tbtn small" id="tMute">SOUND</div>
+    <div class="tbtn small" id="tPause">PAUSE</div>
+  </div>
 </div>
 <script>
   if ('ontouchstart' in window || matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch');

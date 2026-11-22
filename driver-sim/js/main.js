@@ -66,7 +66,7 @@ function say(str, y, color, s = 2, shadow = '#000') {
   if (textWidth(str, s) > W - 12) s = 1;
   drawText(ctx, str, CX, y, color, s, 'center', shadow);
 }
-function setPlaying(on) { document.body.classList.toggle('playing', on); input.pressed.clear(); input.taps.length = 0; }
+function setPlaying(on) { document.body.classList.toggle('playing', on); if (!on) document.body.classList.remove('menu'); input.pressed.clear(); input.taps.length = 0; }
 
 function drawScene(g) {
   const wx = g.weather;
@@ -84,7 +84,7 @@ function drawScene(g) {
     drawPrecip(ctx, wx, sky.night, ox, oy);
     wx.wipe(WIPERS[g.mode === 'car' ? 'car' : 'bus']);
     drawGlass(ctx, wx, sky);
-    drawWipers(ctx, WIPERS[g.mode === 'car' ? 'car' : 'bus'], wx.wiper);
+    if (g.mode !== 'car') drawWipers(ctx, WIPERS.bus, wx.wiper); // the car's are drawn with its cab
     audio.ambience?.(wx, sky, Math.abs(g.player.speed), state !== 'drive' || paused || g.mapOpen);
   }
   ctx.fillStyle = 'rgba(255,255,255,0.03)';
@@ -153,6 +153,7 @@ function drawHud(g) {
     });
   }
   if (g.player.reverse) { box(CX - 34, 40, 68, 14, 0.7); drawText(ctx, 'R - REVERSE', CX, 44, '#ffd36a', 1, 'center'); }
+  document.body.classList.toggle('busmode', g.mode === 'bus');
   const act = document.getElementById('tAction');
   if (g.action) { act.textContent = { doors: 'OPEN DOORS', park: 'RETURN CAR', deliver: 'DELIVER', fuel: 'REFUEL', coffee: 'COFFEE', eat: 'EAT', sleep: 'SLEEP' }[g.action] || 'OK'; act.classList.add('show'); }
   else act.classList.remove('show');

@@ -7,6 +7,10 @@ You are a Painted Desert Coach Lines driver in **1994**, running Route 66 westbo
 **Flagstaff → Williams → Ash Fork → Seligman → Peach Springs → Kingman**.
 You leave at 15:30 and drive into the sunset; the last leg is at night.
 
+## Update 23: steady view
+
+- While driving, the view out of the windscreen used to drop by a pixel on random frames (a "road bump" effect), which made the landscape look like it was shaking against the cab. It's gone; the view now only shakes when you actually hit something or run off the road.
+
 ## Update 22: no more zoom on phones
 
 - Typing a link in the PUT IN A TAPE box made iPhones zoom into the page, and inside itch.io's frame you couldn't zoom back out. The link box now uses text big enough that phones don't zoom into it.

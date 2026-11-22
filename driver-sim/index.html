@@ -11,6 +11,8 @@
   html, body { margin: 0; overscroll-behavior: none; height: 100%; background: #000; overflow: hidden; touch-action: none;
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   body { display: flex; align-items: center; justify-content: center; font-family: monospace; }
+  /* the TV picture is laid over the canvas inside this box, so it stays on the TV even if the page is zoomed */
+  #stage { position: relative; line-height: 0; }
   #screen { image-rendering: pixelated; image-rendering: crisp-edges; display: block; touch-action: none; }
   #touch { display: none; }
   body.touch #touch { display: block; }
@@ -52,7 +54,7 @@
 </style>
 </head>
 <body>
-<canvas id="screen"></canvas>
+<div id="stage"><canvas id="screen"></canvas></div>
 <div id="rotate">TIP: TURN YOUR PHONE SIDEWAYS FOR A BIGGER WINDSHIELD</div>
 <div id="touch">
   <div class="tbtn" id="tLeft">&#9664;</div>
@@ -82,9 +84,12 @@
 <script>
   // iOS Safari ignores user-scalable=no: block double-tap and pinch zoom ourselves
   let lastTouch = 0;
-  document.addEventListener('touchend', e => { const now = Date.now(); if (now - lastTouch < 400) e.preventDefault(); lastTouch = now; }, { passive: false });
-  document.addEventListener('touchmove', e => { if (e.touches.length > 1 || e.scale && e.scale !== 1) e.preventDefault(); }, { passive: false });
-  for (const ev of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+  // Only on the game itself and its buttons: a pinch on the black space around the game still works,
+  // so if the page ever ends up zoomed in (it can, inside itch.io's frame) you can pinch back out.
+  const onGame = e => !!(e.target && e.target.closest && e.target.closest('#stage, .tbtn, #tPanel'));
+  document.addEventListener('touchend', e => { const now = Date.now(); if (onGame(e) && now - lastTouch < 400) e.preventDefault(); lastTouch = now; }, { passive: false });
+  document.addEventListener('touchmove', e => { if (onGame(e) && (e.touches.length > 1 || e.scale && e.scale !== 1)) e.preventDefault(); }, { passive: false });
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend', 'dblclick']) document.addEventListener(ev, e => { if (onGame(e)) e.preventDefault(); }, { passive: false });
 </script>
 <script type="module" src="js/main.js"></script>
 </body>

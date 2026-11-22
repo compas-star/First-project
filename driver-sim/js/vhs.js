@@ -50,7 +50,7 @@ export class VHS {
     const wrap = this.wrap = document.createElement('div');
     wrap.id = 'vhs';
     Object.assign(wrap.style, {
-      position: 'fixed', left: '0', top: '0', width: PW + 'px', height: PH + 'px', transformOrigin: '0 0',
+      position: 'absolute', left: '0', top: '0', width: PW + 'px', height: PH + 'px', transformOrigin: '0 0',
       overflow: 'hidden', pointerEvents: 'none', display: 'none', background: '#000', borderRadius: '22px', zIndex: '1',
     });
     const screen = this.screen = document.createElement('div');
@@ -76,7 +76,8 @@ export class VHS {
     for (const el of [lines, noise, band, rim, osd, nosig]) { el.style.pointerEvents = 'none'; wrap.appendChild(el); }
     // the YouTube player reports how it's doing over postMessage
     addEventListener('message', e => this.fromPlayer(e));
-    document.body.appendChild(wrap);
+    // inside the canvas's box: positioned against the canvas itself, not the window
+    (this.canvas.parentElement || document.body).appendChild(wrap);
     this.bandY = 0;
 
     // the "put a tape in" box
@@ -91,9 +92,10 @@ export class VHS {
     const st = document.createElement('style');
     st.textContent = `#vhsDialog { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 30; display: none;
         width: min(420px, 92vw); padding: 14px; background: #16120e; border: 3px solid #ffd36a; color: #f2e2b8; font: 14px monospace; box-shadow: 0 6px 30px #000; }
+      #vhsDialog { touch-action: manipulation; }
       #vhsDialog .vt { color: #ffd36a; font-weight: bold; font-size: 18px; margin-bottom: 6px; }
       #vhsDialog .vs { margin-bottom: 10px; opacity: 0.85; }
-      #vhsDialog input { width: 100%; box-sizing: border-box; padding: 8px; font: 14px monospace; background: #000; color: #9aff8a; border: 2px solid #6a5a3a; }
+      #vhsDialog input { width: 100%; box-sizing: border-box; padding: 8px; font: 16px monospace; /* 16px+: iPhones zoom into smaller text boxes */ background: #000; color: #9aff8a; border: 2px solid #6a5a3a; }
       #vhsDialog .ve { color: #ff8a6a; min-height: 18px; margin: 6px 0; }
       #vhsDialog .vb { display: flex; gap: 8px; }
       #vhsDialog button { flex: 1; padding: 10px 0; font: bold 14px monospace; background: #3a2a14; color: #ffd36a; border: 2px solid #ffd36a; cursor: pointer; }
@@ -233,11 +235,11 @@ export class VHS {
     if (!show) return;
     const r = this.canvas.getBoundingClientRect();
     const k = r.width / W;
-    const key = `${r.left},${r.top},${k},${rect.x},${rect.y}`;
+    const key = `${k},${rect.x},${rect.y}`;
     if (key !== this.posKey) {
       this.posKey = key;
       const s = rect.w * k / PW;
-      this.wrap.style.transform = `translate(${r.left + rect.x * k}px, ${r.top + rect.y * k}px) scale(${s}, ${rect.h * k / PH})`;
+      this.wrap.style.transform = `translate(${rect.x * k}px, ${rect.y * k}px) scale(${s}, ${rect.h * k / PH})`;
     }
     // static, redrawn every other frame
     this.tick = (this.tick || 0) + 1;

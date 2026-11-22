@@ -76,7 +76,8 @@ function drawScene(g) {
   const sky = weatherSky(skyAt(g.clock), wx);
   const sh = g.shake;
   const ox = sh ? Math.round((Math.random() - 0.5) * 4 * sh) : 0;
-  const oy = sh ? Math.round((Math.random() - 0.5) * 4 * sh) : (g.player.speed > 5 && Math.random() < 0.05 ? 1 : 0);
+  // only knocks (crashes, off-road) shake the view; a random 1 px road bump read as the landscape twitching
+  const oy = sh ? Math.round((Math.random() - 0.5) * 4 * sh) : 0;
   drawSky(ctx, sky, g.heading(), t);
   if (wx) drawBolt(ctx, wx);
   const { emissive } = renderWorld(g, sky);
